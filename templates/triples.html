@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+    <head>
+        <link rel="stylesheet" href="http://getskeleton.com/dist/css/normalize.css">
+        <link rel="stylesheet" href="http://getskeleton.com/dist/css/skeleton.css">
+
+        <title>Error analysis</title>
+    </head>
+    <body>
+        <div class="container">
+            <div class="row">
+                <h1><a href="/">&lt;&lt;</a> Triple analysis</h1>
+            </div>
+            <div class="row" style="text-align:center">
+                    Predictions directory: {{exp}} <br>
+            </div>
+            {#
+            <div class="row">
+                
+                <div class="six columns">
+                    <table>
+                        <tr>
+                            <th>Score</th>
+                            <th>P<small>recision</small></th>
+                            <th>R<small>ecall</small></th>
+                            <th>F1</th>
+                            <th>A<small>verage</small> P<small>recision</small></th>
+                            <th>Errors</th>
+                        </tr>
+                        {% for scores in score_table %}
+                        <tr>
+                            <td>{{scores.name}}</td>
+                            <td>{{'%.2f' % scores.precision}}</td>
+                            <td>{{'%.2f' % scores.recall}}</td>
+                            <td>{{'%.2f' % scores.f1}}</td>
+                            <td>{{'%.2f' % scores.average_precision}}</td>
+                            <td>{{'%d' % scores.n_error}}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            
+                <div class="six columns" style="text-align:center">
+                    <img src="data:image/png;base64,{{ score_plot }}"\>
+                </div>
+            </div>
+            <div class="row">
+                <table>
+                    <tr>
+                        <th>Table</th>
+                        <th>Method</th>
+                        {% for metric in ['precision','recall', 'f1','ap','n_error'] %}
+                            {% set up=url_for('overview',exp=predpath, sort_asc=True, sort_score=metric, sort_method=sort_method) %}
+                            {% set dn=url_for('overview',exp=predpath, sort_asc=False, sort_score=metric, sort_method=sort_method) %}
+                            {% set is_method = (sort_score==metric) %}
+                            <th style="white-space:nowrap;">
+                                {{metric|title}}<br>
+                                {% if ((sort_asc) and is_method) %} ⬆︎ {% else %} <a href="{{up}}">⬆︎</a> {% endif %}
+                                {% if ((not sort_asc) and is_method) %} ⬇︎ {% else %} <a href="{{dn}}">⬇︎</a> {% endif %}
+                            </th>
+                        {% endfor %}
+                    </tr>
+                {% for table in tables %}
+                    {% for tscores in score_table %}
+                    {% set scores = table_instance_scores[tscores.name][table] %}
+                    <tr>
+                        {% if loop.index==1 %}
+                        <td rowspan={{methods|length}}>
+                            <a href="{{url_for('table',exp=predpath,table=table)}}">{{table}}</a><br>
+                            {{table_class[table]}} <br>
+                            ({{'%d'%table_ngold[table]}} annotations)
+                        </td>
+                        {% else %}
+                        {% endif %}
+                        
+                        <td style="padding-left:0; font-weight:{{'bold' if sort_method==tscores.name else 'normal'}}">
+                            <a href="{{url_for('overview',exp=predpath, sort_score=sort_score, sort_asc=sort_asc,  sort_method=tscores.name)}}">
+                            {{'%s' % tscores.name}}</a></td>
+                        <td>{{'%.2f' % scores.precision}}</td>
+                        <td>{{'%.2f' % scores.recall}}</td>
+                        <td>{{'%.2f' % scores.f1}}</td>
+                        <td>{{'%.2f' % scores.average_precision}}</td>
+                        <td>{{'%d' % scores.n_error}}</td>
+                    </tr>
+                    {% endfor %}
+
+                {% endfor %}
+                </table>
+            </div>
+            #}
+        </div>
+    </body>
+</html>

@@ -1,0 +1,290 @@
+<!doctype html>
+<html>
+    <head>
+        <link rel="stylesheet" href="http://getskeleton.com/dist/css/normalize.css">
+        <link rel="stylesheet" href="http://getskeleton.com/dist/css/skeleton.css">
+        <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+        <style>
+            ::-webkit-scrollbar {
+                -webkit-appearance: none;
+                width: 7px;
+            }
+            ::-webkit-scrollbar-thumb {
+                border-radius: 7px;
+                background-color: rgba(0,0,0,.5);
+/*                 -webkit-box-shadow: 0 0 1px rgba(255,255,255,.5); */
+            }
+            .analysis {
+                display: none;
+            }
+            .container {
+                width:95%;
+                max-width: 95%;
+            }
+            .analysislink:hover {
+                background: #eee;
+                cursor:pointer;
+            }
+            
+            .row_nogold { color: #aaa; display: {{'block' if display_no_gold else 'none'}}; }
+            .row_missing { color: #faa; }
+            .row_both_correct { color: #00a; }
+            .row_only_1 { color: #0a0; }
+            .row_only_2 { color: #a00; }
+            .row_both_error { color: #a80; }
+            
+            
+            a:hover {
+                text-decoration:none;
+            }
+            .correct { border-top:2px solid black; border-bottom:2px solid black; font-weight:bold; }
+            .missing { background:#ddd; }
+            .missgold { background:#faa; }
+            
+            .both_correct { background: #ddf; }
+            .only_1 { background: #dfd; }
+            .only_2 { background: #edd; }
+            .both_error { background: #fda; }
+
+            .ent {
+                width: 12em;
+                max-width: 12em;
+                overflow: hidden;
+            }
+            .compact td, .compact th {
+                padding: 0 4pt;
+            }
+            .nogold, .nogold a {
+                color:#888;
+            }
+            .method-selector1, .method-selector2 {
+                margin:0px;
+            }
+        </style>
+
+        <title>Error analysis for {{table}}</title>
+        <script>
+            
+            $(function(){
+                $('.th').on('mouseover', function(e){
+                    var n = $(this).attr('data-n');
+                    $('.analysis').css('display', 'none');
+                    $('.column[data-n="'+n+'"]').css('display', 'block');
+                })
+                $('#viewfeat').on('mouseover', function(e){
+                    $('.analysis').css('display', 'none');
+                    $('.link').css('display', 'block');
+                })
+                $('#viewfig').on('mouseover', function(e){
+                    $('.analysis').css('display', 'none');
+                    $('#fig').css('display', 'block');
+                })
+                $('.analysislink').on('mouseover', function(e){
+                    var n = $(this).attr('data-n');
+                    console.log(n);
+                    $('.analysis').css('display', 'none');
+                    $('.analysis[data-n="'+n+'"]').css('display', 'block');
+                })
+                $('.method-selector1').on('change', function(e){
+                    var m = $(this).val();
+                    window.location = '?method1='+m+'&method2={{method2}}';
+                })
+                $('.method-selector2').on('change', function(e){
+                    var m = $(this).val();
+                    window.location = '?method2='+m+'&method1={{method1}}';
+                })
+            })
+        </script>
+    </head>
+    <body>
+        <div class="container">
+            <div class="row">
+                <h1 style="padding-top:1em; font-size:24pt;">
+                    <a href="{{url_for('overview', exp=predpath)}}">&lt;&lt;</a>
+                    Error analysis for {{table}}
+                </h1>
+                <table style="float:left; margin:0 2em;" class="compact">
+                    <tr><th></th><th>P</th><th>R</th><th>F1</th><th>AP</th><th>Corr</th><th>Pred</th></tr>
+                    <tr>
+                        <td>
+                            <select class="method-selector1">
+                                {% for m in methods %}
+                                <option {{'selected' if (m==method1) else ''}}>{{m}}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        {% set p,r,f,ap, n_correct,n_pred,n_gold, p_curve, r_curve = scores[method1] %}
+                        <td>{{'%.2f'%p}}</td><td>{{'%.2f'%r}}</td><td>{{'%.2f'%f}}</td><td>{{'%.2f'%ap}}</td>
+                        <td>{{'%d'%n_correct}}</td><td>{{'%d'%n_pred}}</td>
+                    </tr>
+                        <td>
+                            <select class="method-selector2">
+                                {% for m in methods %}
+                                <option {{'selected' if (m==method2) else ''}}>{{m}}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        {% set p,r,f,ap, n_correct,n_pred,n_gold, p_curve, r_curve = scores[method2] %}
+                        <td>{{'%.2f'%p}}</td><td>{{'%.2f'%r}}</td><td>{{'%.2f'%f}}</td><td>{{'%.2f'%ap}}</td>
+                        <td>{{'%d'%n_correct}}</td><td>{{'%d'%n_pred}}</td>
+                    </tr>
+                </table>
+                <p>
+                Table has {{rows | length}} rows ({{hasgold.values() | sum}} annotated).
+                Predictions from {{predpath}}.
+                <br>
+                Legend:
+                <span class="row_nogold">no gold</span>, 
+                <span class="row_missing">not in kb</span>, 
+                <span class="row_both_correct">both correct</span>, 
+                <span class="row_only_1">only 1</span>, 
+                <span class="row_only_2">only 2</span>, 
+                <span class="row_both_error">both error</span>.
+                <br>
+                <a href="javascript:false;" id="viewfeat">View {{nfeat}} top links</a>.
+                &nbsp;
+                <a href="javascript:false;" id="viewfig">View precision-recall curve</a>.
+                </p>
+            </div>
+            <div class="row">
+                <div class="seven columns" style="height:600px; overflow:scroll; border:1px solid black; padding: 4pt">
+                <table id="preview">
+                    <tr>
+                        {% for h in header %}
+                        <th data-n="col{{loop.index0}}" class="th analysislink">
+                            {{h}}
+                        </th>
+                        {% endfor %}
+                    </tr>
+                {% for i,row in rows %}
+                    {% if i in candidates %}
+                        {% set cs = candidates[i] %}
+                        {% set c1 = correct1.get(i, False) %}
+                        {% set c2 = correct2.get(i, False) %}
+                        {% set missgold = (row_gold.get(i, None) not in matches.get(i, {})) %}
+                        {% if (missgold) or (not hasgold[i]) %}
+                            {#{row_gold.get(i, None) }} {{ matches.get(i, {})| list }#}
+                            {% set rowtype = 'row_missing' if (row_gold.get(i, None)) else 'row_nogold' %}
+                        {% else %}
+                            {% set rowtype = ('row_both_correct' if (c1 and c2) else  ('row_only_2' if c2 else ('row_only_1' if c1 else 'row_both_error') ) ) %}
+                        {% endif %}
+                    {% else %}
+                        {% set linktype,rowtype = '','row_nogold' %}
+                    {% endif %}
+                    <tr data-n="{{i}}" class="analysislink {{linktype}} {{ rowtype }} ">
+                        {% for cell in row %}
+                            <td>
+                                {% for s in cell %}
+                                    <span>{{s}}</span>
+                                {% endfor %}
+                            </td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+                </table>
+                </div>
+                <div class="five columns" id="analysis" style="height:600px; overflow-x:scroll;">
+                    {% if result != None %}
+                    <img src="data:image/png;base64,{{ fig }}" id="fig" class="analysis"\>
+                    {% endif %}
+                    {% for c,schemascore in schema.items() %}
+                    <div data-n="col{{c}}" class="column analysis" style="display:none">
+                        <h5>Column {{c}}</h5>
+                        <table>
+                            <tr><th>score</th><th>predicate</th><th>cover</th></tr>
+                            {% for p in schemascore.to_dict('records')  %}
+                                <tr>
+                                    <td>{{'%.2f' % p.colscore}}</td>
+                                    <td><a href="{{p.uri}}">{{p.name}}</a></td>
+                                    <td>{{p.rowcover}}</td>
+                                </tr>
+                            {% endfor %}
+                        </table>
+                    </div>
+                    {% endfor %}
+                    <div class="link analysis">
+                        <h5>Top links</h5>
+                        <tt>
+                            score(f) = rawscore(f) * rowcover(f) * featcover(f) <br>
+                            rawscore(f) = sum[row] mean[entity] strscore(r,e,f)
+                        </tt>
+                        <table>
+                            <tr><th>score</th><th>predicate</th><th>value</th><th>count</th><th>rows</th><th>cover</th><th>salience</th></tr>
+                            {% for f in feats %}
+                                <tr>
+                                    <td>{{'%.6f' % f.featscore}}</td>
+                                    <td><a href="{{f.predicate}}">{{f.predname}}</a></td>
+                                    <td><a href="{{f.value}}">{{f.valname}}</a></td>
+                                    <td>{{f.count}}</td>
+                                    <td>{{f.rowcount}}</td>
+                                    <td>{{'%.2f' % f.cover}}</td>
+                                    <td>{{'%.2f' % f.salience}}</td>
+                                </tr>
+                            {% endfor %}
+                        </table>
+                    </div>
+                    
+                    {% for row, cs in candidates.items() %}
+                    <div data-n="{{row}}" class="candidate analysis">
+                        {% set labelmatches = matches.get(row,{}) %}
+                        
+                        {% if row in errors %}
+                        <h5>Error: row {{row}}</h5>
+                        {% else %}
+                        <h5>Candidates: row {{row}}</h5>
+                        {% endif %}
+                        
+                        <table class="{{ 'nogold' if not hasgold[row] else ''}}">
+                            <tr>
+                                <th style="font-size:small; white-space:nowrap;">{{method1}}</th>
+                                <th style="font-size:small; white-space:nowrap;">{{method2}}</th>
+                                <th>Entity</th><th>Feats</th>
+                            </tr>
+                            <tr>
+                                <td>{{'%.2f'%entropy.get(row, {}).get(method1,0)}}</td><td>{{'%.2f'%entropy.get(row, {}).get(method2,0)}}</td>
+                                <td>(entropy)</td><td></td>
+                            </tr>
+                            {% for c in cs.sort_values(method1, ascending=False, na_position='first').to_dict('records') %}
+                                {% set correct = 'correct' if (c.gold and c.id != -1) else '' %}
+                                {% set missgold = (row_gold.get(row, None) not in labelmatches) %}
+                                {% set missing = (not (c.uri in labelmatches)) %}
+                                {% set c1 = correct1.get(row, False) %}
+                                {% set c2 = correct2.get(row, False) %}
+                                {% set rowtype = ('both_correct' if (c1 and c2) else  ('only_2' if c2 else ('only_1' if c1 else 'both_error') ) ) %}
+                                <tr class="{{correct}}  {{ (('missgold' if (missing and missgold) else rowtype) if loop.index0==0 else ('missing' if missing else '')) if hasgold[row] else '' }}">
+                                    <td>{{'%.2f' % c[method1] if c[method1]>0 else ''}}</td>
+                                    <td>{{'%.2f' % c[method2] if c[method2]>0 else ''}}</td>
+                                    <td class="ent"><a href="{{c.uri}}">{{ c.name }}</a></td>
+                                    <td>{{n_links.get('<%s>'%c.uri,'')}}</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="4" style="margin:0; padding:0">
+                                        {% if c.uri in labelmatches %}
+                                            {% for m in labelmatches[c.uri] %}
+                                                {% if m.col in schema %}
+                                                    {% for p in schema[m.col][schema[m.col].id == m.p].to_dict('records') %}
+                                                        {{m.col}}. 
+                                                        [{{'%.2f' % p.colscore}}] <a href="{{p.uri}}">{{p.name}}</a> 
+                                                        = [{{'%.2f' % m.tokenjaccard}}] {{m.label}}<br>
+                                                    {% endfor %}
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </table>
+                        
+                        
+                        <strong>Coherence score</strong><br>
+                        
+                        
+                    </div>
+                    {% endfor %}
+                    
+                    
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

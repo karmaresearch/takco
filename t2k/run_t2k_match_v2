@@ -1,0 +1,34 @@
+#!/bin/bash
+
+cd "$(dirname "$0")"
+
+ARGS=$@
+
+JAR="./data/t2kmatch-2.1-jar-with-dependencies.jar"
+
+CLS="de.uni_mannheim.informatik.dws.t2k.match.T2KMatch"
+
+# required parameters: Knowledge Base, Web Tables and Ontology (class hierarchy)
+KB="./data/db/dbpedia/"
+ONT="./data/db/OntologyDBpedia"
+
+WEB="./data/v2/tables"
+
+# optional parameters: Index location (will be created if it does not exist), Surface Forms and Redirects
+IDX="./data/db/index/"
+SF="./data/db/surfaceforms.txt"
+RD="./data/db/redirects.txt"
+
+# evaluation parameters (optional): gold standards for class, property and instance mapping
+GS_CLS="./data/v2/gs_class.csv"
+GS_PROP="./data/v2/gs_property.csv"
+GS_INST="./data/v2/gs_instance.csv"
+
+# output location
+RES="./data/output-v2"${ARGS// /_}"/"
+
+mkdir $RES
+
+java -Xmx128G -cp $JAR $CLS -sf $SF -kb $KB -ontology $ONT -web $WEB -index $IDX -classGS $GS_CLS -identityGS $GS_INST -schemaGS $GS_PROP -results $RES -verbose -cellCandidates $ARGS > $RES/log.txt 2>&1
+
+# java -Xdebug -Xnoagent -Xrunjdwp:transport=dt_socket,address=8998,server=y,suspend=y -Xmx128G -cp $JAR $CLS -sf $SF -kb $KB -ontology $ONT -web $WEB -index $IDX -classGS $GS_CLS -identityGS $GS_INST -schemaGS $GS_PROP -results $RES -verbose $ARGS > $RES/log.txt 2>&1
