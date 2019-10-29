@@ -6,6 +6,22 @@ It also contains a cleaned-up version of our method for use in practice. This ve
 
 Both versions use the <a href="https://github.com/karmaresearch/trident">trident</a> library.
 
+## Usage
+
+First, load your KG into trident (for usage information, run `trident help`).
+
+Then, create the label index in sqlite:
+```
+python make_db.py path_to_trident_dir labels.sqlite
+```
+
+Finally, get table-KG matches (for example, table.csv with keycol=0):
+```
+python match.py path_to_trident_dir labels.sqlite table.csv 0 rowmatches.csv colmatches.csv
+```
+
+## Cite
+
 If you find this research relevant to your work, please cite:
 ```
 @inproceedings{kruit2019extracting,
