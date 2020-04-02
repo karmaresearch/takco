@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+
+{% block header %}
+    <h1>{% block title %}TAKCO{% endblock %}</h1>
+{% endblock %}
+
+{% block content %}
+<table>
+    <tr>
+        <th style="padding: 0px 2em">Name</th>
+        <th style="padding: 0px 2em">View</th>
+        <th style="padding: 0px 2em">Classes / tables</th>
+        <th style="padding: 0px 2em">Entities / rows</th>
+        <th style="padding: 0px 2em">Properties / columns</th>
+    </tr>
+{% for dataset, stat in stats.items() %}
+    <tr>
+        <th><a href="{{ url_for('dataset', dataset=dataset) }}">{{dataset}}</a></th>
+        <td style="padding: 0px 2em">
+            {% from 'base.html' import set_table %}
+            {{ set_table(dataset, none, tablenames[dataset]) }}
+        </td>
+        <td>{{stat.numclass or 0}} / {{stat.numtables}}</td>
+        <td>{{stat.numents or 0}} / {{stat.numrows}}</td>
+        <td>{{stat.numprops or 0}} / {{stat.numcols}}</td>
+    </tr>
+{% endfor %}
+</table>
+{% endblock %}

@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+
+{% block header %}
+    <nav>
+        <a href="/">🌮 TAKCO</a>
+        
+        Dataset: <a href="{{ url_for('dataset', dataset=dataset) }}">{% block title %}{{dataset}}{% endblock %}</a>
+        
+        {% from 'base.html' import set_kb %}
+        {{ set_kb(kbid, kbs) }}
+    </nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    small {
+        font-size: 75%
+    }
+    .num {
+        padding-left: 8px;
+        text-align: right;
+    }
+</style
+<p>
+    <h2>Novelty of dataset annotations</h2>
+    {% if novelty %}
+    <!-- {{novelty | tojson | safe }} -->
+    <div style="display:flex">
+        <div style="width:175px; text-align:center; margin:0 16px">
+            <b>Label</b><br>
+            <script>$(function(){ pie('.lbl-novelty-pie', {{novelty.lbl}}, {{novelty.lbl_nomatch}}, {{novelty.lbl_redundant}}, 50) })</script>
+            <div class="lbl-novelty-pie" style="margin:.5em"></div>
+            <small>
+                {{novelty.lbl}} / {{novelty.lbl_total}} = 
+                {{'%d' % (100 * novelty.lbl / novelty.lbl_total) if novelty.lbl_total else 0}}% 
+                att. novel<br>
+                {{novelty.lbl_nomatch}} / {{novelty.lbl_total}} = 
+                {{'%d' % (100 * novelty.lbl_nomatch / novelty.lbl_total) if novelty.lbl_total else 0}}% 
+                val. novel
+            </small>
+        </div>
+        <div style="width:175px; text-align:center; margin:0 16px">
+            <b>Class</b><br>
+            <script>$(function(){ pie('.cls-novelty-pie', {{novelty.cls}}, 0, {{novelty.cls_redundant}}, 50) })</script>
+            <div class="cls-novelty-pie" style="margin:.5em"></div>
+            <small>
+                {{novelty.cls}} / {{novelty.cls_total}} = 
+                {{'%d' % (100 * novelty.cls / novelty.cls_total) if novelty.cls_total else 0}}% 
+                novel
+            </small>
+        </div>
+        <div style="width:175px; text-align:center; margin:0 16px">
+            <b>Property</b><br>
+            <script>$(function(){ pie('.prop-novelty-pie', {{novelty.prop}}, {{novelty.prop_nomatch}}, {{novelty.prop_redundant}}, 50) })</script>
+            <div class="prop-novelty-pie" style="margin:.5em"></div>
+            <small>
+                {{novelty.prop}} / {{novelty.prop_total}} = 
+                {{'%d' % (100 * novelty.prop / novelty.prop_total) if novelty.prop_total else 0}}% 
+                att. novel<br>
+                {{novelty.prop_nomatch}} / {{novelty.prop_total}} = 
+                {{'%d' % (100 * novelty.prop_nomatch / novelty.prop_total) if novelty.prop_total else 0}}% 
+                val. novel
+            </small>
+        </div>
+    </div>
+    {% endif %}
+</p>
+
+<table class="sortable" style="width:621px">
+    <thead>
+        <tr>
+            <th></th>
+            <th></th>
+            <th colspan=8>Novelty (Attribute / Value)</th>
+        </tr>
+        <tr>
+            <th></th>
+            <th></th>
+            <th colspan=3>Label</th>
+            <th colspan=2>Class</th>
+            <th colspan=3>Property</th>
+        </tr>
+        <tr>
+            <th>Table</th>
+            <th>Class</th>
+            
+            <th class="num">A<a class="sort_btn"/></th>
+            <th class="num">V<a class="sort_btn"/></th>
+            <th></th>
+            
+            <th class="num">A<a class="sort_btn"/></th>
+            <th></th>
+            
+            <th class="num">A<a class="sort_btn"/></th>
+            <th class="num">V<a class="sort_btn"/></th>
+            <th></th>
+    </thead>
+    <tbody>
+{% for name, table in tables.items() %}
+    <tr>
+        <td><a href="{{ url_for('table', dataset=dataset, table=table.name) }}">{{table.name[:20]}}</a></td>
+        <td>
+            {% if table.class %}
+                {{ table.class.split('/')[-1] }}
+            {% else %}
+                <i style="color:lightgray">no annotations</i>
+            {% endif %}
+        </td>
+        {% set n = table_novelty[name] %}
+        {% if n.lbl_pct %}
+            <td data-value="{{n.lbl_pct}}" class="num">
+                {{ '.%.0d'%(100*n.lbl_pct) }}
+            </td>
+            <td data-value="{{n.lbl_val_pct}}" class="num">
+                {{ '.%.0d'%(100*n.lbl_val_pct) }}
+            </td>
+            <td>
+                <script>$(function(){ pie('#lbl-pie-{{name}}', {{n.lbl}}, {{n.lbl_nomatch}}, {{n.lbl_redundant}}, 15) })</script>
+                <span id="lbl-pie-{{name}}"></span>
+            </td>
+        {% else %}
+            <td></td><td></td><td></td>
+        {% endif %}
+        {% if n.cls_pct %}
+            <td data-value="{{n.cls_pct}}" class="num">
+                {{ '.%.0d'%(100*n.cls_pct) }}
+            </td>
+            <td>
+                <script>$(function(){ pie('#cls-pie-{{name}}', {{n.cls}}, 0, {{n.cls_redundant}}, 15) })</script>
+                <span id="cls-pie-{{name}}"></span>
+            </td>
+        {% else %}
+            <td></td><td></td>
+        {% endif %}
+        {% if n.prop_pct %}
+            <td data-value="{{n.prop_pct}}" class="num">
+                {{ '.%.0d'%(100*n.prop_pct) }}
+            </td>
+            <td data-value="{{n.prop_val_pct}}" class="num">
+                {{ '.%.0d'%(100*n.prop_val_pct) }}
+            </td>
+            <td>
+                <script>$(function(){ pie('#prop-pie-{{name}}', {{n.prop}}, {{n.prop_nomatch}}, {{n.prop_redundant}}, 15) })</script>
+                <span id="prop-pie-{{name}}"></span>
+            </td>
+        {% else %}
+            <td></td><td></td><td></td>
+        {% endif %}
+    </tr>
+{% endfor %}
+        </tbody>
+</table>
+{% endblock %}

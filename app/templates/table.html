@@ -1,0 +1,213 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {{dataset}}: {{tablename}}
+{% endblock %}
+
+{% block header %}
+<style>
+    div.stats {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+    }
+    .unannotated {
+        color: gray;
+        background: #eee;
+    }
+    .noent, .noent a {
+        color: red;
+    }
+    .noclass, .noclass a {
+        color: green;
+    }
+    .nomatch {
+        background: #8ff;
+    }
+    .match {
+        color: #0aa;
+    }
+    .noprop {
+        background: lightgreen;
+    }
+    
+    #kblinkbox {
+        padding:10px;
+        display:none;
+        position:absolute;
+        background: white;
+        z-index:2;
+        font-size:small;
+        border:1px solid black;
+    }
+    #legend {
+        position:fixed;
+        width:20em;
+        top:0px;
+        right:0px;
+        z-index: 10;
+        padding:1em;
+    }
+</style>
+<nav>
+    <a href="/">🌮 TAKCO</a>
+
+    Dataset: <a href="{{ url_for('dataset', dataset=dataset) }}">{{dataset}}</a>
+
+    <span>    
+        <a href="{{ url_for('table', dataset=dataset, table=prev_table) }}">👈</a>
+        {% from 'base.html' import set_table %}
+        {{ set_table(dataset, tablename, tablenames) }}
+        <a href="{{ url_for('table', dataset=dataset, table=next_table) }}">👉</a>
+    </span>
+
+    {% from 'base.html' import set_kb %}
+    {{ set_kb(kbid, kbs) }}
+</nav>
+{% endblock %}
+
+{% block content %}
+
+<div id="legend">
+    <b>Legend</b><br>
+    <span class="unannotated">unannotated</span><br>
+    <span class="noent">annotated entity not in KG</span><br>
+    <span class="noclass">entity class novel</span><br>
+    <span class="noprop">entity property novel</span><br>
+    <span class="nomatch">property value novel</span><br>
+    <span class="match">[matched value in KG]</span><br>
+</div>
+
+
+
+<script id="tmpl-kblinkbox" type="x-tmpl-mustache">
+{% raw %}
+    <h3>{{uri}}</h3>
+    <p>
+    {{#size}}Size: {{size}} triples{{/size}}
+    {{^size}}{{inlinks}} inlinks, {{outlinks}} outlinks.{{/size}}
+    </p>
+    {{#props}}
+        {{uri}}<ul>{{#vals}}<li>{{.}}</li>{{/vals}}</ul>
+    {{/props}}
+{% endraw %}
+</script>
+<div id="kblinkbox"></div>
+<script>
+    const kbinfo = {{kbinfo | tojson}};
+    $(function(){
+        $('.kblink').on('mouseover', function(e){
+            var pos = $(this).offset()
+            var info = kbinfo[$(this).attr('data-id')]
+            kblinkbox = $('#kblinkbox')
+                .html(Mustache.render($('#tmpl-kblinkbox').html(), info))
+                .css({top: pos.top + $(this).height() + 10, left:pos.left})
+                .show()
+            $(this).on('mouseout', function(){
+                $('#kblinkbox').hide();
+            })
+        })
+    })
+</script>
+
+<p>
+    <h2>Novelty of table annotations</h2>
+    {% if novelty %}
+    
+    <div style="display:flex">
+        <div style="width:200px; text-align:center; margin:0 1em">
+            <b>Label</b><br>
+            <script>$(function(){ pie('.lbl-novelty-pie', {{novelty.lbl}}, {{novelty.lbl_nomatch}}, {{novelty.lbl_redundant}}, 50) })</script>
+            
+            <div class="lbl-novelty-pie" style="margin:.5em"></div>
+            <small>
+            {{novelty.lbl}} / {{novelty.lbl_total}} = 
+            {{'%d' % (100 * novelty.lbl / novelty.lbl_total) if novelty.lbl_total else 0}}% 
+            att. novel<br>
+            {{novelty.lbl_nomatch}} / {{novelty.lbl_total}} = 
+            {{'%d' % (100 * novelty.lbl_nomatch / novelty.lbl_total) if novelty.lbl_total else 0}}%
+            val. novel
+            </small>
+        </div>
+        <div style="width:200px; text-align:center; margin:0 1em">
+            <b>Class</b><br>
+            <script>$(function(){ pie('.cls-novelty-pie', {{novelty.cls}}, 0, {{novelty.cls_redundant}}, 50) })</script>
+            
+            <div class="cls-novelty-pie" style="margin:.5em"></div>
+            <small>
+            {{novelty.cls}} / {{novelty.cls_total}} = 
+            {{'%d' % (100 * novelty.cls / novelty.cls_total) if novelty.cls_total else 0}}% 
+            novel
+            </small>
+        </div>
+        <div style="width:200px; text-align:center; margin:0 1em">
+            <b>Property</b><br>
+            <script>$(function(){ pie('.prop-novelty-pie', {{novelty.prop}}, {{novelty.prop_nomatch}},{{novelty.prop_redundant}}, 50) })</script>
+            
+            <div class="prop-novelty-pie" style="margin:.5em"></div>
+            <small>
+            {{novelty.prop}} / {{novelty.prop_total}} = 
+            {{'%d' % (100 * novelty.prop / novelty.prop_total) if novelty.prop_total else 0}}% 
+            att. novel<br>
+            {{novelty.prop_nomatch}} / {{novelty.prop_total}} = 
+            {{'%d' % (100 * novelty.prop_nomatch / novelty.prop_total) if novelty.prop_total else 0}}%
+            val. novel
+            </small>
+        </div>
+    </div>
+    {% endif %}
+</p>
+
+{% if kblinks.class_id is not none %}
+    <b>Class</b>: {{kbinfo[kblinks.class_id | string].uri}}
+{% else %}
+    <b style="color:red">Class not in KB</b>: {{table.class}}
+{% endif %}
+<table>
+{% for ri in range(table.rows | length) %}
+    {% set row = table.rows[ri] %}
+    {% set header = (not ri >= table.numheaderrows) %}
+    {% set row_isannotated = ((ri|string) in kblinks.entities_id) %}
+    <tr class="{{'unannotated' if not (header or row_isannotated) else ''}}">
+        {% for ci in range(row | length) %}
+            {% set celltext = row[ci] %}
+            {% set ci = (ci | string) %}
+            {% set ri = (ri | string) %}    
+            {% set prop = kblinks.properties_id[ci|string] %}
+            {% if header %}
+                <th class="{{'noent' if prop is none else ''}}">
+                    {% if kblinks.properties_id and (ci in kblinks.properties_id) %}
+                        <a href="javascript:return false;" data-id="{{prop}}" class="kblink" title="{{table.properties[ci|string]}}">{{celltext}}</a>
+                    {% else %}
+                        {{celltext}}
+                    {% endif %}
+                </th>
+            {% else %}
+                {% set key = (ci == table.keycol) %}
+                {% set ent = kblinks.entities_id[ri|string] %}
+                {% set match = kblinks.rownr_colnr_matches.get((ri|string), {}).get((ci|string), {}) %}
+                
+                {% set noent = prop and (ent is none) %}
+                {% if ent and prop and celltext and row_isannotated %}
+                    {% set noclass = (ci == table.keycol) and (not kblinks.entity_hasclass[ent|string]) %}
+                    {% set noprop = (not kblinks.entity_prop_exists.get((ent|string), {}).get(prop|string)) %}
+                    {% set nomatch = not match  %}
+                {% endif %}
+        
+                <td class="{{'key' if key else ''}} {{'noclass' if noclass else ''}} {{'noprop' if noprop else ''}} {{'noent' if noent else ''}} {{'nomatch' if nomatch else ''}}">
+                    {% if (ci == table.keycol) and ((ri|string) in kblinks.entities_id) %}
+                        <a href="javascript:return false;" data-id="{{ent}}" class="kblink">{{celltext}}</a>
+                    {% else %}
+                        {{celltext}}
+                    {% endif %}
+                    {% if match and (1 > match.score) %}
+                        <span class="match">[{{match.lit}}]</span>
+                    {% endif %}
+                </td>
+            {% endif %}
+        {% endfor %}
+    </tr>
+{% endfor %}
+</table>
+
+{% endblock %}
