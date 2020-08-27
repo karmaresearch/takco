@@ -1,0 +1,46 @@
+name = 'consumptionRate'
+datadir = 'output/consumptionRate'
+
+[[assets]]
+    name = "result"
+    class = "Annotation"
+    path = "output/consumptionRate/"
+    fname = "tables.jsonl"
+
+[[kbs]]
+    name = "wikidata-hdt"
+    class = "RDFSearcher"
+    encoding = "wikidata"
+    typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
+        [kbs.store]
+        class = "HDTStore"
+        path = "/export/scratch1/home/kruit/scratch/downloads/wikidata/wikidata20200309.hdt"
+
+[[step]]
+step = "extract"
+
+    [step.source.wiki]
+    pred = "http://www.wikidata.org/prop/direct/P2292"
+    localurlprefix = "http://localhost:8989/wikipedia_en_all_nopic_2019-12/A/"
+    encoding = "utf-8"
+    
+[[step]]
+step = "reshape"
+split_compound_columns = true
+load_user = false
+heuristics = [{class = "NumSuffix"}]
+
+[[step]]
+step = "link"
+linker_config = {}
+    [step.lookup_config]
+    class = 'SQLiteWikiLookup'
+    sqlitedb = 'data/wdid_wpname.sqlitedb'
+    baseuri = 'http://www.wikidata.org/entity/'
+    fallback = {class = 'MediaWikiAPI'}
+    
+    
+[[step]]
+step = "integrate"
+searcher_config = {name = "wikidata-hdt"}
+

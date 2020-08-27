@@ -1,0 +1,8 @@
+__pycache__
+.ipynb_checkpoints
+*.sqlite
+_build
+output
+*.egg-info
+data/
+

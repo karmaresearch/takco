@@ -1,0 +1,54 @@
+datadir = "data"
+resourcedir = "resources"
+cache = false
+#executor = "dask"
+
+[[kbs]]
+name = "dbpedia_t2ksubset"
+class = "RDFSearcher"
+labelProperties = ["http://dbpedia.org/ontology/title"]
+store = {class = "Trident", configuration = 'kb/dbpedia_t2ksubset/db/'}
+
+[[kbs]]
+name = "dbpedia_2014_part2"
+class = "RDFSearcher"
+labelProperties = ["http://dbpedia.org/ontology/title"]
+store = {class = "Trident", configuration = 'kb/dbpedia/2014_part2/'}
+
+[[kbs]]
+name = "dbpedia_2016"
+class = "RDFSearcher"
+labelProperties = ["http://dbpedia.org/ontology/title"]
+store = {class = "Trident", configuration = 'kb/dbpedia/2016-10/'}
+
+[[kbs]]
+name = "dbpedialookup"
+class = "DBpediaLookup"
+    
+
+[[assets]]
+name = "t2d-v1"
+class = "T2D"
+download = [
+    "http://webdatacommons.org/webtables/tables_instance.tar.gz",
+    "http://webdatacommons.org/webtables/entities_instance.tar.gz",
+    "http://webdatacommons.org/webtables/classes_instance.csv",
+    "http://webdatacommons.org/webtables/attributes_instance.tar.gz",
+]
+version = 1
+fixuri = "t2d_fix.csv"
+
+[[assets]]
+name = "t2d-v2"
+class = "T2D"
+download = [
+    "http://webdatacommons.org/webtables/extended_instance_goldstandard.tar.gz",
+]
+version = 2
+fixuri = "t2d_fix.csv"
+
+[[assets]]
+name = "t2d-v2-predictions"
+class = "Annotation"
+path = "output/t2d-v2-baseline/"
+fname = "1-link"

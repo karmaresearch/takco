@@ -1,0 +1,271 @@
+html, body {
+    min-height: 101%
+}
+
+nav * {
+    display:inline-block;
+    text-decoration:none;
+}
+nav > * {
+    padding:0 .5em;
+}
+nav a {
+    color: blue;
+}
+
+th, td {
+    padding: .5em .6em;
+}
+table form, header form {
+    display: inline-block;
+    margin: unset;
+}
+
+table.overview {
+    font-size: 11pt; 
+    font-family: Arial;
+    border-collapse: collapse; 
+    padding:2px;
+}
+
+table.overview td, table.overview th {
+    position: relative;
+    padding: 2px 4px;
+    max-width: 20em;
+}
+table.overview th {
+    text-align: center;
+    white-space: nowrap;
+}
+
+
+table.key {
+    font-weight:bold;
+}
+
+abbr {
+    text-decoration: underline;
+    cursor: help;
+}
+
+
+select {
+    height: 2em;
+    padding: unset;
+    max-width: 30em;
+    margin: unset;
+}
+
+select.align {
+    max-width: 3em;
+    font-size: 20pt;
+}
+
+#permalink {
+    font-size: small;
+    text-align: right;
+}
+#home {
+    font-size: small;
+    float: left;
+}
+#annotate {
+    font-size: small;
+    clear: both;
+    text-align: center;
+}
+
+.wikipage {
+    font-size: 50%;
+    vertical-align: super;
+    text-decoration: none;
+}
+
+.wikitable {
+    background-color: #f8f9fa;
+    color: #222;
+    margin: 1em 0;
+    border-collapse: collapse;
+}
+.wikitable td, .wikitable th {
+    border: 1px solid #a2a9b1;
+    padding: 0.2em 0.4em;
+    position: relative;
+}
+.wikitable td div {
+    max-height: 4em;
+    overflow: hidden;
+}
+.wikitable th {
+    background-color: #eaecf0;
+    text-align: center;
+    font-weight:bold;
+}
+.wikitable th.dim {
+    font-weight: normal;
+    text-align:left;
+    font-style: italic;
+}
+
+.wikitable * > .search {
+    text-decoration: none;
+    font-style: normal;
+    color:black;
+    visibility: hidden;
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    cursor: pointer;
+}
+.wikitable *:hover > .search {
+    visibility: visible;
+}
+.wikitable * > .pivot {
+    text-decoration: none;
+    font-style: normal;
+    color:black;
+    visibility: hidden;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    cursor: pointer;
+}
+
+.wikitable .colmeta, .wikitable .colmeta *, .wikitable tfoot, .wikitable tfoot * {
+    border: 0px;
+    background-color: #fff;
+    text-align: center;
+    text-decoration: none;
+    vertical-align: bottom;
+    font-size:small;
+}
+
+.inline {
+    display:inline-block; 
+    margin:.2em 0; 
+    vertical-align: middle;
+}
+.scrolling {
+    display:block;
+    overflow-y:scroll;
+    overflow-x:visible;
+    max-height:5em;
+}
+.scrolling thead {
+    position:-webkit-sticky;
+    position:sticky;
+    top:0;
+    z-index:10;
+}
+
+.colsim {
+    width: 50%;
+    float:right;
+}
+
+td.numeric {
+    font-family: monospace;
+}
+tr.pad > td {
+    text-align: center;
+    background-color:#fff;
+    font-size: small;
+}
+
+th.pivotcell {
+    background-color: #f8f9fa;
+}
+
+.icon {
+    background: none;
+    border: none;
+    font-size:1em;
+    cursor:pointer;
+    -webkit-appearance:none;
+    appearance:none;
+    width: 1.5em;
+    padding:0px; margin:0px;
+    margin-bottom: -2px;
+}
+
+.discarded {
+    opacity:0.5;
+}
+
+
+.key {
+    font-weight:bold;
+}
+
+table.dataframe {
+    line-height: 1;
+}
+table.dataframe td, table.dataframe  th {
+    padding: .5em .2em;
+}
+
+.tooltip {
+    font-size:10pt;
+}
+
+.sort_btn {
+    text-decoration: none;
+}
+
+div.stats {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+}
+.unannotated {
+    color: gray;
+    background: #eee;
+}
+.noent, .noent a {
+    color: red;
+}
+.noclass, .noclass a {
+    color: green;
+}
+.nomatch {
+    background: #8ff;
+}
+.match {
+    color: #0aa;
+}
+.noprop {
+    background: lightgreen;
+}
+
+#kblinkbox {
+    padding:10px;
+    display:none;
+    position:absolute;
+    background: white;
+    z-index:2;
+    font-size:small;
+    border:1px solid black;
+}
+#kblinkbox * {
+    padding: 0px; margin:0px
+}
+#kblinkbox ul {
+    margin-bottom: .75em;
+}
+#kblinkbox h3 {
+    font-size: 1.5em;
+}
+#kblinkbox h3, #kblinkbox ul, #kblinkbox strong {
+    font-family: monospace;
+}
+
+
+
+#legend {
+    position:fixed;
+    width:20em;
+    top:0px;
+    right:0px;
+    z-index: 10;
+    padding:1em;
+}

@@ -1,0 +1,28 @@
+name = 't2d-v2-baseline'
+datadir = 'data'
+executor = 'tqdm'
+
+[[step]]
+step = "dataset"
+params = "t2d-v2"
+#sample = 2
+
+[[step]]
+step = "link"
+#usecols = "keycol"
+usecols = "non_numeric_cols"
+lookup_config = {}
+    [step.linker_config]
+    class = "Salient"
+    searcher = {name = "dbpedia_t2ksubset"}
+    graph = {name = "dbpedia_t2ksubset"}
+    prop_cover = 0.2
+    class_cover = 0.2
+    #only_majority = "@type"
+    
+
+[[step]]
+step = "score"
+labels = "t2d-v2"
+keycol_only = true
+report = ["pdf", "md"]

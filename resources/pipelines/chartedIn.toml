@@ -1,0 +1,64 @@
+name = 'chartedIn'
+
+[[step]]
+step = "extract"
+
+    [step.source.wiki]
+    pred = "http://www.wikidata.org/prop/direct/P2291"
+    localurlprefix = "http://localhost:8989/wikipedia_en_all_nopic_2019-12/A/"
+    encoding = "utf-8"
+    sample = 50
+    
+[[step]]
+step = "reshape"
+split_compound_columns = true
+load_user = false
+heuristics = [{class = "NumSuffix"}]
+
+
+[[step]]
+step = "cluster"
+addcontext = ["pgTitle"]
+headerunions = true
+#matchers = []
+#agg_func = 'max'
+agg_func = '@mean( headjacc, @max(bodylsh, bodyvec) )'
+agg_threshold = 0.98
+edge_exp = 2
+    
+    [[step.matchers]]
+    name  = 'headjacc'
+    class = 'CellJaccMatcher'
+    source = 'head'
+    tokenize = true
+    cell_threshold = 0.5
+
+    [[step.matchers]]
+    name  = 'bodylsh'
+    class = 'LSHMatcher'
+    source = 'body'
+    redis_dir = "./redis-5.0.5/src/"
+    port = 63790
+    threshold = 0.5
+    
+    [[step.matchers]]
+    name  = 'bodyvec'
+    class = 'EmbeddingMatcher'
+    source = 'body'
+    wordvec_fname = "./data_old/glove.6B/glove.6B.50d.txt"
+    exp = 10
+
+[[step]]
+step = "link"
+linker_config = {}
+lookup_cells = true
+    [step.lookup_config]
+    class = 'SQLiteWikiLookup'
+    sqlitedb = 'data/wdid_wpname.sqlitedb'
+    baseuri = 'http://www.wikidata.org/entity/'
+    fallback = {class = 'MediaWikiAPI'}
+
+[[step]]
+step = "integrate"
+pfd_threshold = 0.95
+searcher_config = {name = "wikidata-hdt"}

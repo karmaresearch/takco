@@ -1,0 +1,32 @@
+{% macro set_kb(current_kbid, all_kbids) %}
+<form action="/setcookies" method="POST">
+    KG:
+    <select name=kbid onchange="form.submit()" style="width:15em" >
+        <!-- current_kbid : {{current_kbid}} -->
+        <option {{'selected' if (not current_kbid) or (current_kbid not in all_kbids) else ''}}>Select KB ...</option>
+        {% for u in all_kbids %}
+            <option value="{{u}}" {{'selected' if u==current_kbid else ''}}>{{u}}</option>
+        {% endfor %}
+    </select>
+    <input type="submit" value="" style="visibility:hidden; position:absolute;" />
+</form>
+{% endmacro %}
+
+{% macro set_table(dataset, current_tableid, all_tableids) %}
+<form action="/table" method=GET action=table>
+    Table:
+    <input type="hidden" name="dataset" value="{{dataset}}" />
+    <select style="width:10em" name="table" onchange="form.submit()">
+        <option {{'selected' if (not current_tableid) else ''}}>Select table ...</option>
+        {% for t in all_tableids %}
+            <option value="{{t}}" {{'selected' if t==current_tableid else ''}}>({{loop.index}}) {{t}}</option>
+        {% endfor %}
+    </select>
+</form>
+{% endmacro %}
+
+{% macro bignum(n) %}
+{%- if n > 10**6 -%}{{ "%.1f"%(n/10**6) }}m{%- elif n > 10**3 -%}{{ "%.1f"%(n/10**3) }}k{%- else -%}{{ n }}{%- endif -%}
+{% endmacro %}
+
+{% block page %}{% endblock %}

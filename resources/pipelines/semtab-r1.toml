@@ -1,0 +1,33 @@
+name = 'semtab-r1'
+datadir = 'data'
+
+[executor]
+name="dask"
+n_workers=8
+threads_per_worker=2
+memory_target_fraction = 0.85
+
+
+[[step]]
+step = "dataset"
+params = {class = "Semtab", name = "semtab-r1"}
+#sample = 1000
+
+[[step]]
+step = "link"
+usecols = "entcols"
+lookup_config = {}
+
+    [step.linker_config]
+    class = "Salient"
+    searcher = {name = "wikidata-20200709-direct-prefLabel-en-db"}
+    #limit = 10
+    #only_majority = "@type"
+    
+        [step.linker_config.replace_class]
+        "http://www.wikidata.org/entity/Q164509" = "http://www.wikidata.org/entity/Q5"
+    
+        #[step.linker_config.exclude_about]
+        #"http://www.wikidata.org/prop/direct/P31" = [
+        #    "http://www.wikidata.org/entity/Q4167410"
+        #]

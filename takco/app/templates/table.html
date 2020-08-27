@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {{dataset}}: {{tablename}}
+{% endblock %}
+
+{% block abs %}
+<div id="kblinkbox"></div>
+{% endblock %}
+
+{% block header %}
+<nav>
+    <a href="/">🌮 takco</a>
+
+    Dataset: <a href="{{ url_for('dataset', dataset=dataset) }}">{{dataset}}</a>
+
+    <span>    
+        <a href="{{ url_for('table', dataset=dataset, table=prev_table) }}">👈</a>
+        {% from 'base.html' import set_table %}
+        {{ set_table(dataset, tablename, tablenames) }}
+        <a href="{{ url_for('table', dataset=dataset, table=next_table) }}">👉</a>
+    </span>
+
+    {% from 'base.html' import set_kb %}
+    {{ set_kb(kbid, kbs) }}
+    
+</nav>
+{% endblock %}
+
+{% block content %}
+
+<div id="legend">
+    <b>Legend</b><br>
+    <span class="unannotated">unannotated</span><br>
+    <span class="noent">annotated entity not in KG</span><br>
+    <span class="noclass">entity class novel</span><br>
+    <span class="noprop">entity property novel</span><br>
+    <span class="nomatch">property value novel</span><br>
+    <span class="match">[matched value in KG]</span><br>
+</div>
+
+
+
+<script id="tmpl-kblinkbox" type="x-tmpl-mustache">
+{% raw %}
+    <h3>{{uri}}</h3>
+    <p>
+    {{#size}}Size: {{size}} triples{{/size}}
+    {{^size}}{{inlinks}} inlinks, {{outlinks}} outlinks.{{/size}}
+    </p>
+    {{#props}}
+        <strong>{{uri}}</strong><ul>{{#vals}}<li>{{.}}</li>{{/vals}}</ul>
+    {{/props}}
+{% endraw %}
+</script>
+<script>
+    const kbinfo = {{kbinfo | tojson}};
+    $(function(){
+        $('.kblink').on('mouseover', function(e){
+            var pos = $(this).offset()
+            var info = kbinfo[$(this).attr('data-id')]
+            kblinkbox = $('#kblinkbox')
+                .html(Mustache.render($('#tmpl-kblinkbox').html(), info))
+                .css({position:'absolute', top: pos.top + $(this).height() + 10, left:pos.left})
+                .show()
+            $(this).on('mouseout', function(){
+                $('#kblinkbox').hide();
+            })
+        })
+    })
+</script>
+
+<h2>Novelty of table annotations</h2>
+{% if novelty.values()|select|first %}
+    <div style="display:flex">
+        {% for typ,typname in {'lbl':'Label', 'cls':'Class', 'prop':'Property'}.items() %}
+            {% set n = novelty.get(typ, 0) %}
+            {% set nomatch = novelty.get(typ+'_nomatch', 0) %}
+            {% set total = novelty.get(typ+'_total', 0) %}
+            {% set redundant = novelty.get(typ+'_redundant', 0) %}
+            <div style="width:200px; text-align:center; margin:0 1em">
+                <b>{{typname}}</b><br>
+                <script>
+                    $(function(){ 
+                        pie('.{{typ}}-novelty-pie', {{n}}, {{nomatch}}, {{redundant}}, 50) 
+                    })
+                </script>
+
+                <div class="{{typ}}-novelty-pie" style="margin:.5em"></div>
+                <small>
+                {{bignum(n)}} / {{bignum(total)}} = 
+                {{'%d' % (100 * n / total) if total else 0}}% 
+                att. novel<br>
+                {{bignum(nomatch)}} / {{bignum(total)}} = 
+                {{'%d' % (100 * nomatch / total) if total else 0}}%
+                val. novel
+                </small>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<table class="dataframe">
+    
+    {# CLASSES #}
+    <tr>
+        <th>:</th>
+        {% for ci in range(table.rows[0] | length) %}
+            <th>
+                {% for cls in table.classes[ci|string] %}
+                    {% set noclass = (cls not in kbinfo) or not kbinfo[cls].inlinks %}
+                    <span class="{{'noent' if noclass else ''}}">
+                        {% set cname = cls.split('/')[-1] %}
+                        <a href="{{cls}}" data-id="{{cls}}" class="kblink" title="{{cls}}">{{cname}}</a>
+                    </span>
+                {% endfor %}
+            </th>
+        {% endfor %}
+    </tr>
+    
+    {# PROPERTIES #}
+    {% for fromci in range(table.rows[0] | length) %}
+        {% set fromci = (fromci | string) %}
+        {% if fromci in table.properties %}
+            {% set fromprops = table.properties[fromci] %}
+            <tr>
+                <th style="font-size:small">{{fromci}}</th>
+                {% for toci in range(table.rows[0] | length) %}
+                    {% set props = fromprops[toci|string] %}
+                    {% set noprops = not (props | lookup(kbinfo) | any) %}
+                    <th class="{{'noent' if noprops else ''}}">
+                        {% for prop in props %}
+                            {% set pname = prop.split('/')[-1] %}
+                            <a href="{{prop}}" data-id="{{prop}}" class="kblink" title="{{prop}}">{{pname}}</a>
+                        {% endfor %}
+                    </th>
+                {% endfor %}
+            </tr>
+        {% endif %}
+    {% endfor %}
+    
+    {# COLUMN NUMBERS #}
+    <tr>
+        <th></th>
+        {% for ci in range(table.rows[0] | length) %}
+            <th style="font-size:small">{{ci}}</th>
+        {% endfor %}
+    </tr>
+    
+    {# COLUMN HEADERS #}
+    {% for hrow in table.headers %}
+        <tr>
+            <th></th>
+            {% for c in hrow %}
+                <th>{{c}}</th>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    
+    {# TABLE ROWS #}
+    
+    {% for ri in range(table.rows | length) %}
+        {% set row = table.rows[ri] %}
+        {% set rowannotated = (ri|string) in annotated_rows %}
+        <tr class="{{'unannotated' if not rowannotated else ''}}">
+            <td></td>
+            {% for ci in range(row | length) %}
+                {% set classes = [] %}
+                {% set celltext = row[ci] %}
+                <!-- {{ classes.append('key') if ci == table.keycol else 'nokey' }} -->
+                {% set ci = (ci | string) %}
+                {% set ri = (ri | string) %}
+                    
+                {% set ents = table.entities.get(ci, {}).get(ri, {}) %}
+                {% set ent = (ents | list | select | first | string) %}
+                <!-- {{ classes.append('noent') if ents and rowannotated and ((ent not in kbinfo) or (not kbinfo[ent].inlinks + kbinfo[ent].outlinks)) else 'ent' }} -->
+                
+                {% if kblinks %}
+                    <!-- {{ classes.append('noclass') if ent and table.classes[ci] and not kblinks.entity_matchclass[ent] else 'class' }} -->
+
+                    {% for fromci, fromprops in table.properties.items() %}
+                        {% set froments = table.entities.get(fromci, {}).get(ri, {}) %}
+                        {% set froment = (froments | list | select | first | string) %}
+                        {% set props = fromprops.get(ci, {}) %}
+                        {% if (not noent) and props and celltext and rowannotated %}
+                            <!-- {{ classes.append('noprop') if not (props | lookup(kblinks.entity_prop_exists.get(froment, {})) | any) else 'prop' }} -->
+                            <!-- {{ classes.append('nomatch') if not kblinks.rownr_colnr_matches.get(ri, {}).get(ci, {}) else 'match' }} -->
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+
+                <td class="{{ ' '.join(classes) }}">
+                    {% if ent %}
+                        <a href="{{ent}}" data-id="{{ent}}" class="kblink">{{celltext}}</a>
+                    {% else %}
+                        {{celltext}}
+                    {% endif %}
+                    {% if match and (1 > match.score) %}
+                        <span class="match">[{{match.lit}}]</span>
+                    {% endif %}
+                </td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

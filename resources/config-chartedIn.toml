@@ -1,0 +1,62 @@
+datadir = "output/chartedIn/"
+workdir = "output/chartedIn/"
+resourcedir = "resources"
+cache = false
+
+executor = "tqdm"
+#[executor]
+#name="dask"
+#n_workers=8
+#threads_per_worker=2
+#memory_target_fraction = 0.85
+
+[[kbs]]
+name = "wikidata2019-P31inf-wikibase-simple-qualifiers"
+class = "RDFSearcher"
+typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
+qualifierIDProperty = "http://www.wikidata.org/prop/direct/id"
+#wikiProp = "http://www.wikidata.org/entity/wikipediaId"
+
+    [kbs.store]
+    class = "Trident"
+    configuration = "../kb/wikidata/wikidata2019-P31inf-wikibase-simple-qualifiers/"
+    ent_baseuri = "http://www.wikidata.org/entity/"
+    prop_baseuri = "http://www.wikidata.org/prop/direct/"
+    ns = {skos = "http://www.w3.org/2004/02/skos/core#"}
+
+[[kbs]]
+name  = "wikidata-sparql"
+class = "RDFSearcher"
+typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
+    [kbs.store]
+    class = "SparqlStore"
+    configuration = "https://query.wikidata.org/sparql"
+
+[[kbs]]
+name  = "wikidata-hdt"
+class = "RDFSearcher"
+encoding = "wikidata"
+typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
+    [kbs.store]
+    class = "HDTStore"
+    path = "/export/scratch1/home/kruit/scratch/downloads/wikidata/wikidata20200309.hdt"
+    
+[[assets]]
+name = "0-extract"
+class = "Annotation"
+
+[[assets]]
+name = "1-reshape"
+class = "Annotation"
+
+[[assets]]
+name = "2-cluster"
+class = "Annotation"
+
+[[assets]]
+name = "3-link"
+class = "Annotation"
+
+[[assets]]
+name = "4-integrate"
+class = "Annotation"

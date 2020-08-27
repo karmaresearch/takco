@@ -1,0 +1,30 @@
+<script type="text/javascript"
+    src="https://cdn.jsdelivr.net/npm/brython@3.8.9/brython.min.js">
+</script>
+<script type="text/javascript"
+    src="https://cdn.jsdelivr.net/npm/brython@3.8.9/brython_stdlib.js">
+</script>
+
+<body onload="brython()">
+    <script type="text/python">
+            from browser import alert, document, html, aio
+            from browser import console as log
+            from javascript import JSON
+            
+            from takco.link.mwapi import MediaWikiAPI
+            
+            async def get_json(url, params={}):
+                    params['origin'] = '*'
+                    r = await aio.get(url, data=params)
+                    r = JSON.parse(r.data)
+                    return r
+            
+            async def main():
+                mw = MediaWikiAPI(get_json=get_json, log=log)
+                print(mw)
+                print( await mw.lookup_title('amsterdam') )
+
+            aio.run(main())
+            
+            </script>
+</body>

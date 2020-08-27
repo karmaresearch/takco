@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+
+{% block header %}
+    <nav>
+        <a href="/">🌮 takco</a>
+        
+        Dataset: <a href="{{ url_for('dataset', dataset=dataset) }}">{% block title %}{{dataset}}{% endblock %}</a>
+        
+        {{ set_kb(kbid, kbs) }}
+    </nav>
+{% endblock %}
+
+{% block content %}
+<style>
+    small {
+        font-size: 75%
+    }
+    .num {
+        padding-left: 8px;
+        text-align: right;
+    }
+</style
+{% set novelty_types = {'lbl':'Label', 'cls':'Class', 'prop':'Property'} %}
+<p>
+    <h2>Novelty of dataset annotations</h2>
+    {% if novelty %}
+    <!-- {{novelty | tojson | safe }} -->
+    <div style="display:flex">
+        {% for typ,typname in novelty_types.items() %}
+            {% set n = novelty.get(typ, 0) %}
+            {% set nomatch = novelty.get(typ+'_nomatch', 0) %}
+            {% set total = novelty.get(typ+'_total', 0) %}
+            {% set redundant = novelty.get(typ+'_redundant', 0) %}
+            <div style="width:175px; text-align:center; margin:0 16px">
+                <b>{{typname}}</b><br>
+                <script>
+                    $(function(){ 
+                        pie('.{{typ}}-novelty-pie', {{n}}, {{nomatch}}, {{redundant}}, 50) 
+                    })
+                </script>
+
+                <div class="{{typ}}-novelty-pie" style="margin:.5em"></div>
+                <small>
+                {{bignum(n)}} / {{bignum(total)}} = 
+                {{'%d' % (100 * n / total) if total else 0}}% 
+                att. novel<br>
+                {{bignum(nomatch)}} / {{bignum(total)}} = 
+                {{'%d' % (100 * nomatch / total) if total else 0}}%
+                val. novel
+                </small>
+            </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</p>
+
+<table class="sortable overview" style="width:621px">
+    <thead>
+        <tr>
+            <th></th>
+            <th></th>
+            <th></th>
+            <th></th>
+            <th colspan=8>Novelty (Attribute / Value)</th>
+        </tr>
+        <tr>
+            <th></th>
+            <th></th>
+            <th></th>
+            <th></th>
+            {% for typ,typname in novelty_types.items() %}
+                <th colspan=3>{{typname}}</th>
+            {% endfor %}
+        </tr>
+        <tr>
+            <th>Table <a class="sort_btn"/></th>
+            <th>Rows <a class="sort_btn"/></th>
+            <th>Cols <a class="sort_btn"/></th>
+            <th>Class <a class="sort_btn"/></th>
+            
+            {% for typ,typname in novelty_types.items() %}
+                <th class="num">A<a class="sort_btn"/></th>
+                <th class="num">V<a class="sort_btn"/></th>
+                <th></th>
+            {% endfor %}
+    </thead>
+    <tbody>
+{% for name, table in tables.items() %}
+    <tr>
+        <td data-value="{{table.name}}">
+            <a href="{{ url_for('table', dataset=dataset, table=table.name) }}">{{table.name}}</a>
+        </td>
+        <td data-value="{{table.numRows}}">{{table.numRows}}</td>
+        <td data-value="{{table.numCols}}">{{table.numCols}}</td>
+        <td data-value="{{' '.join(table.classes)}}">
+            {% if table.classes %}
+                {% for classes in table.classes.values() %}
+                    {% for cls in classes %}
+                        {{ cls.split('/')[-1] }}<br />
+                    {% endfor %}
+                {% endfor %}
+            {% else %}
+                <i style="color:lightgray">no annotations</i>
+            {% endif %}
+        </td>
+        {% set n = table_novelty.get(name, {}) %}
+        {% for typ,typname in novelty_types.items() %}
+            {% set v = n.get(typ, 0) %}
+            {% set pct = n.get(typ + '_pct', 0) %}
+            {% set val_pct = n.get(typ + '_val_pct', 0) %}
+            {% set nomatch = n.get(typ + '_nomatch', 0) %}
+            {% set redundant = n.get(typ + '_redundant', 0) %}
+            {% if pct %}
+                <td data-value="{{pct}}" class="num">
+                    {{ '.%.0d'%(100*pct) if pct < 1 else 1 }}
+                </td>
+                <td data-value="{{val_pct}}" class="num">
+                    {{ '.%.0d'%(100*val_pct) if val_pct < 1 else 1 }}
+                </td>
+                <td>
+                    <script>
+                        $(function(){ 
+                            pie('#{{typ}}-pie-{{name}}', 
+                            {{v}}, {{nomatch}}, {{redundant}}, 15) 
+                        })
+                    </script>
+                    <span id="{{typ}}-pie-{{name}}"></span>
+                </td>
+            {% else %}
+                <td></td><td></td><td></td>
+            {% endif %}
+        {% endfor %}
+    </tr>
+{% endfor %}
+        </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends 'macros.html' %}
+{% block page %}
+<!doctype html>
+<html>
+    <head>
+        <title>takco // {% block title %}{% endblock %}</title>
+
+        <link rel="stylesheet" href="//getskeleton.com/dist/css/skeleton.css">
+        <link rel="stylesheet" href="/_static/style.css">
+
+        <!-- TODO: cache myself -->
+        <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+        <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+        <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/3.1.0/mustache.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-sparklines/2.1.2/jquery.sparkline.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/tinysort/3.2.5/tinysort.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/tinysort/3.2.5/jquery.tinysort.min.js"></script>
+
+        <script id="tmpl-pie" type="x-tmpl-mustache">
+        {% raw %}
+            <div class="{{name}}" style="margin:.5em"></div>
+            <small>
+                {{n}} / {{total}} = 
+                {{'%d' % (100 * n / total) if total else 0}}% novel.
+            </small>
+        {% endraw %}
+        </script>
+        <script>
+            function pie(el, novel, nomatch, redundant, size) {
+
+                var myvalues = [ novel, nomatch, redundant ]
+                var levels = {}
+                levels[novel] = 'Attribute Novel'
+                levels[nomatch] = 'Value Novel'
+                levels[redundant] = 'Redundant'
+                var spark = $(el).sparkline(myvalues, {
+                    type: 'pie', width:size, height:size,
+                    sliceColors: ['#8c8', '#4cf', '#ddd'],
+                    tooltipFormat: $.spformat('{{"{{value:levels}}: {{value}}"}}', 'tooltip'),
+                    tooltipValueLookups: {
+                        levels: levels
+                    },
+                } )
+                console.log($('canvas', spark).css('vertical-align', 'middle'))
+
+            }
+
+            $(function(){
+                $('.sortable th .sort_btn').each(function(){
+                    const btn = $(this).attr({'href':'#'}).html('↕︎')
+                    const colnr = btn.parent().index()
+                    const tbody = $('tbody', btn.parent().parent().parent().parent())
+                    const selector = 'td:nth-child('+(colnr+1)+')';
+                    const all_btns = $('th .sort_btn', btn.parent().parent())
+
+                    btn.click(function(e){ 
+                        e.preventDefault()
+                        if (btn.html() == '▲') {
+                            btn.html('▼')
+                            tinysort($('tr', tbody),{selector:selector, data:'value', order:'desc'})
+                        } else if (btn.html() == '▼') {
+                            btn.html('▲')
+                            tinysort($('tr', tbody),{selector:selector, data:'value', order:'asc'})
+                        } else {
+                            all_btns.html('↕︎')
+                            btn.html('▼')
+                            tinysort($('tr', tbody),{selector:selector, data:'value', order:'desc'})
+                        }
+                    })
+                })
+            })
+        </script>
+    </head>
+    <body>
+        {% block abs %}{% endblock %}
+        <section class="container">
+            <header class="header">
+                {% block header %}{% endblock %}
+            </header>
+            <section class="content">
+                {% block content %}{% endblock %}
+            </section>
+        </section>
+    </body>
+</html>
+{% endblock %}
