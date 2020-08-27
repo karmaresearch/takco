@@ -5,16 +5,26 @@ import logging as log
 from .base import Linker, Searcher, SearchResult
 from .rdf import GraphDB
 
+URI = str
+
 
 class First(Linker):
-    """Returns the first match for linking, under possible constraints"""
+    """Returns the first match for entity linking, under possible constraints
+    
+    Args:
+        searcher: The Searcher to find KB entities
+        limit: Number of candidates to search for
+        only_majority: Only use entities that have the majority value for this property
+        exclude_about: Exclude entities that have these property-values
+    
+    """
 
     def __init__(
         self,
         searcher: Searcher,
         limit: int = 3,
-        only_majority: str = None,
-        exclude_about: Dict[str, str] = None,
+        only_majority: URI = None,
+        exclude_about: Dict[URI, URI] = None,
     ):
         self.searcher = searcher
         self.limit = limit
@@ -82,27 +92,50 @@ class First(Linker):
 
 
 class Salient(Linker):
-    """Filters on the most salient class and prop per column
+    """Filters on the most salient class and property per column.
     
-    Salience is defined as follows:
+    When ``expand`` is set, expands the candidate entity set with values of salient
+    properties, if they match according to 
+    :meth:`~takco.link.base.Searcher.label_match`. Salience is defined as follows:
     
     .. math::
     
-        \\frac{\\text{number of matches}}{\\text{count of predicate}}
+        \\frac{\\text{number of matches}}{\\text{count}}
+        
+    Args:
+        searcher: The Searcher to find KB entities
+        limit: Number of candidates to search for
+        replace_class: Map from bad class URIs to good ones
+        class_cover: Minimum class cover fraction
+        prop_cover: Minimum property cover fraction
+        expand: Whether to expand candidates with values of salient properties
+        graph: Graph to use when expanding, if ``searcher`` is not a Graph
+        max_backlink: When expanding, only use properties that have fewer backlinks
     
     """
 
-    def __init__(self, searcher: Searcher, limit=10, replace_class=None, 
-                 class_cover: float = .5, prop_cover: float = .5, 
-                 expand: bool = False, graph: GraphDB = None, max_backlink: int = 100):
+    def __init__(
+        self,
+        searcher: Searcher,
+        limit: int = 10,
+        replace_class: Dict[URI, URI] = None,
+        class_cover: float = 0.5,
+        prop_cover: float = 0.5,
+        expand: bool = False,
+        graph: GraphDB = None,
+        max_backlink: int = 100,
+    ):
         self.searcher = searcher
         self.limit = limit
         self.replace_class = replace_class or {}
         self.class_cover = class_cover
         self.prop_cover = prop_cover
-        
+
         self.expand = expand
-        self.graph = graph
+        if not graph and isinstance(searcher, GraphDB):
+            self.graph = searcher
+        else:
+            self.graph = graph
         self.max_backlink = max_backlink
 
     async def _async_link(
@@ -123,7 +156,7 @@ class Salient(Linker):
             add_about=True,
         )
         # TODO: lookup facts about existing entities
-                
+
         ci_ri_results = {}
         for (ri, ci), results in rowcol_results.items():
             results = sorted(results, key=len)[::-1][: self.limit]
@@ -161,7 +194,7 @@ class Salient(Linker):
                                         prop_count[p] += mscore
                 if prop_count:
                     log.debug(f"Prop count for col {fromci}->{toci}: {prop_count}")
-                
+
                 ntotal = len(ri_toresults)
                 prop_salience = {
                     p: n / self.searcher.count((None, p, None))
@@ -170,10 +203,10 @@ class Salient(Linker):
                 }
                 if prop_salience:
                     log.debug(f"Salience for col {fromci}->{toci}: {prop_salience}")
-                    
+
                 for p, s in Counter(prop_salience).most_common(1):
                     fromci_toci_props[str(fromci)][str(toci)][p] = s
-                    
+
                     # Add matching values from salient properties to candidates
                     if not self.expand:
                         continue
@@ -189,26 +222,29 @@ class Salient(Linker):
                                         rs.append(SearchResult(str(o), {}, m.score))
                             rs = sorted(rs, key=lambda m: -m.score)
                             ci_ri_results.setdefault(toci, {})[ri] = rs
-                        
+
                         # add backward links if there's a graph
                         if self.graph is not None:
                             from rdflib import URIRef
-                            
+
                             if not ci_ri_results.get(fromci, {}).get(ri):
                                 rs = []
                                 celltext = row[fromci]
                                 for tr in ci_ri_results.get(toci, {}).get(ri, {}):
                                     o = URIRef(tr.uri)
-                                    if self.graph.count([None,p,o]) > self.max_backlink:
+                                    if (
+                                        self.graph.count([None, p, o])
+                                        > self.max_backlink
+                                    ):
                                         continue
-                                    for s,_,_ in self.graph.triples([None,p,o]):
+                                    for s, _, _ in self.graph.triples([None, p, o]):
                                         matches = self.searcher.label_match(s, celltext)
                                         async for m in matches:
                                             log.debug(f"Matched back {s} to {celltext}")
                                             rs.append(SearchResult(str(s), {}, m.score))
                                 rs = sorted(rs, key=lambda m: -m.score)
                                 ci_ri_results.setdefault(fromci, {})[ri] = rs
-        
+
         # Select only candidate entities that are salient properties
         for ci, ri_results in ci_ri_results.items():
             for ri, results in ri_results.items():
@@ -269,4 +305,3 @@ class Salient(Linker):
             "properties": fromci_toci_props,
             "classes": ci_classes,
         }
- 

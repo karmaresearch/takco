@@ -16,4 +16,3 @@ Submodules
    takco.cluster.matchers.embedding
    takco.cluster.matchers.lsh
    takco.cluster.matchers.matcher
-   takco.cluster.matchers.old

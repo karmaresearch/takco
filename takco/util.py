@@ -16,18 +16,14 @@ class Config(dict):
 
         if isinstance(val, dict):
             if context and ("name" in val) and (val["name"] in context):
-                if "class" in val:
-                    self["class"] = val["class"]
-                else:
-                    self["name"] = val["name"]
-                self.update(context[val["name"]])
-            else:
-                self.update(
-                    {
-                        k: Config(v, **context) if isinstance(v, dict) else v
-                        for k, v in val.items()
-                    }
-                )
+                self["name"] = val["name"]
+                self.update(context[val.pop("name")])
+            self.update(
+                {
+                    k: Config(v, **context) if isinstance(v, dict) else v
+                    for k, v in val.items()
+                }
+            )
         elif isinstance(val, str) and val in context:
             self["name"] = val
             self.update(context[val])

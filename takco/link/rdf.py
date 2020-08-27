@@ -64,6 +64,7 @@ class RDFSearcher(Searcher, GraphDB):
         self,
         store=None,
         language="en",
+        stringmatch="jaccard",
         encoding=None,
         labelProperties=[],
         typeProperties=[],
@@ -81,6 +82,7 @@ class RDFSearcher(Searcher, GraphDB):
             URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"),
         ]
         self.encoding = encoding
+        self.stringmatch = stringmatch
 
         self.qualifierIDProperty = None
         if qualifierIDProperty:
@@ -141,7 +143,7 @@ class RDFSearcher(Searcher, GraphDB):
         dtype = literal.datatype if hasattr(literal, "datatype") else None
         literal, surface = str(literal).strip(), str(surface).strip()
 
-        # TODO: distance functions
+        # TODO: literal distance function module
         score = 0
         if dtype:
 
@@ -170,9 +172,17 @@ class RDFSearcher(Searcher, GraphDB):
 
         elif surface and literal:
             # Strings may match approximately
-            s, l = set(surface.lower().split()), set(literal.lower().split())
-            if s and l:
-                score = len(s & l) / len(s | l)
+            if self.stringmatch == "jaccard":
+                s, l = set(surface.lower().split()), set(literal.lower().split())
+                if s and l:
+                    score = len(s & l) / len(s | l)
+            elif self.stringmatch == "levenshtein":
+                import Levenshtein
+
+                s, l = surface.lower(), literal.lower()
+                if s and l:
+                    m = min(len(s), len(l))
+                    score = max(0, (m - Levenshtein.distance(s, l)) / m)
 
         if score:
             yield LiteralMatchResult(score, literal, dtype)

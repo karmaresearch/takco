@@ -143,62 +143,68 @@ class T2D(Dataset):
     def get_annotated_tables(self):
         return {table["name"]: table for table in self.tables}
 
-TYPE_URI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
+
+TYPE_URI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+
 
 def yield_triples_from_tablefile(fname, typename, add_labels=True):
     import pandas as pd
-    
-    s_type = 'http://dbpedia.org/ontology/' + typename
-    t = pd.read_csv(fname, index_col=0, header=[0,1,2,3], dtype='str')
-    for s,row in t.iterrows():
-        yield ('<%s>' % s, '<%s>' % TYPE_URI, '<%s>' % s_type)
-        
+
+    s_type = "http://dbpedia.org/ontology/" + typename
+    t = pd.read_csv(fname, index_col=0, header=[0, 1, 2, 3], dtype="str")
+    for s, row in t.iterrows():
+        yield ("<%s>" % s, "<%s>" % TYPE_URI, "<%s>" % s_type)
+
         for (pred_label, pred, typ_label, typ), vals in row.iteritems():
-            if (not pd.isna(vals)) and (not pred_label.endswith('_label')) and vals:
-                if vals[0] == '{' and vals[-1] == '}':
-                    vals = vals[1:-1].split('|')
+            if (not pd.isna(vals)) and (not pred_label.endswith("_label")) and vals:
+                if vals[0] == "{" and vals[-1] == "}":
+                    vals = vals[1:-1].split("|")
                 else:
                     vals = [vals]
                 for val in vals:
-                    if typ_label in ['XMLSchema#string', 'rdf-schema#Literal']:
-                        o = '"%s"' % val.replace('"','\\"')
-                    elif 'XMLSchema' in typ_label:
+                    if typ_label in ["XMLSchema#string", "rdf-schema#Literal"]:
+                        o = '"%s"' % val.replace('"', '\\"')
+                    elif "XMLSchema" in typ_label:
                         o = '"%s"^^<%s>' % (val, typ)
-                    elif val.startswith('http'):
-                        o = '<%s>' % val
+                    elif val.startswith("http"):
+                        o = "<%s>" % val
                     else:
-                        o = '"%s"' % val.replace('"','\\"')
+                        o = '"%s"' % val.replace('"', '\\"')
 
-                    yield ('<%s>' % s, '<%s>' % pred, o)
+                    yield ("<%s>" % s, "<%s>" % pred, o)
 
-LABEL_URI = 'http://www.w3.org/2000/01/rdf-schema#label'
+
+LABEL_URI = "http://www.w3.org/2000/01/rdf-schema#label"
+
+
 def labels_from_dbpediauri(db):
     plabel = db.lookup_id(f"<{LABEL_URI}>")
-    
+
     for i in range(db.n_terms()):
         uri = db.lookup_str(i)[1:-1]
-        if uri.startswith('http://dbpedia.org/resource/') and not '__' in uri:
-            uripart = uri.replace('http://dbpedia.org/resource/', '').replace('_', ' ')
+        if uri.startswith("http://dbpedia.org/resource/") and not "__" in uri:
+            uripart = uri.replace("http://dbpedia.org/resource/", "").replace("_", " ")
             uripart = urllib.parse.unquote(urllib.parse.unquote(uripart))
-            l = '"%s"' % uripart.strip().replace('"','\\"')
+            l = '"%s"' % uripart.strip().replace('"', '\\"')
             li = db.lookup_id(l)
             if not li or not db.exists(i, plabel, li):
-                yield ('<%s>'%uri, '<%s>'%LABEL_URI,  l)
+                yield ("<%s>" % uri, "<%s>" % LABEL_URI, l)
 
-            if uripart[-1] == ')' and '(' in uripart:
-                part1, x = uripart.rsplit('(', 1)
-                l = '"%s"' % part1.strip().replace('"','\\"')
+            if uripart[-1] == ")" and "(" in uripart:
+                part1, x = uripart.rsplit("(", 1)
+                l = '"%s"' % part1.strip().replace('"', '\\"')
                 li = db.lookup_id(l)
                 if not li or not db.exists(i, plabel, li):
-                    yield ('<%s>'%uri, '<%s>'%LABEL_URI, l)
+                    yield ("<%s>" % uri, "<%s>" % LABEL_URI, l)
 
-            if ', ' in uripart:
-                part1, x = uripart.rsplit(', ', 1)
-                l = '"%s"' % part1.strip().replace('"','\\"')
+            if ", " in uripart:
+                part1, x = uripart.rsplit(", ", 1)
+                l = '"%s"' % part1.strip().replace('"', '\\"')
                 li = db.lookup_id(l)
                 if not li or not db.exists(i, plabel, li):
-                    yield ('<%s>'%uri, '<%s>'%LABEL_URI, l)
-                    
+                    yield ("<%s>" % uri, "<%s>" % LABEL_URI, l)
+
+
 if __name__ == "__main__":
     import defopt, json
 
@@ -206,7 +212,7 @@ if __name__ == "__main__":
 
     def tables(path: Path, version: int = 2):
         print(json.dumps(T2D(path, version=version).tables))
-        
+
     def dbpedia_subset(fname: Path):
         """Process Dbpedia subset
         
@@ -216,22 +222,24 @@ if __name__ == "__main__":
         
         """
         import tarfile
+
         tar = tarfile.open(fname, "r:gz")
         for tarinfo in tar:
-            if tarinfo.name.endswith('.csv'):
-                typename = tarinfo.name.replace('.csv', '')
+            if tarinfo.name.endswith(".csv"):
+                typename = tarinfo.name.replace(".csv", "")
                 fname = tar.extractfile(tarinfo)
-                for i,(s,p,o) in enumerate(yield_triples_from_tablefile(fname, typename)):
+                for i, (s, p, o) in enumerate(
+                    yield_triples_from_tablefile(fname, typename)
+                ):
                     print(f"{s} {p} {o} .")
-    
+
     def extra_labels(tridentdbdir: Path):
         """Add labels from Dbpedia URIs """
         import trident
         import json
-        
+
         db = trident.Db(str(tridentdbdir))
-        for s,p,o in labels_from_dbpediauri(db):
+        for s, p, o in labels_from_dbpediauri(db):
             print(f"{s} {p} {o} .")
-        
 
     defopt.run([tables, dbpedia_subset, extra_labels], strict_kwonly=False)

@@ -78,9 +78,10 @@ def link(
 
         # Restrict columns to link (e.g. 'keycol', or 'entcols')
         def nonnum(col):
-            isnum = lambda x: x.translate(str.maketrans('','','-.,%')).isnumeric()
-            return sum(int(isnum(c)) for c in col) / len(col) < .5
-        table['non_numeric_cols'] = [i for i,c in enumerate(zip(*rows)) if nonnum(c)]
+            isnum = lambda x: x.translate(str.maketrans("", "", "-.,%")).isnumeric()
+            return sum(int(isnum(c)) for c in col) / len(col) < 0.5
+
+        table["non_numeric_cols"] = [i for i, c in enumerate(zip(*rows)) if nonnum(c)]
         table_usecols = table.get(str(usecols), [])
         if type(table_usecols) != list:
             table_usecols = [table_usecols]
