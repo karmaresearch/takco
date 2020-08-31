@@ -10,7 +10,6 @@ from typing import (
     Iterator,
 )
 import enum
-import asyncio
 
 URI = str
 Literal = str
@@ -75,7 +74,7 @@ class SearchResult(dict):
 class Searcher:
     """For searching and matching for Knowledge Base entities."""
 
-    async def get_about(self, uri: URI) -> Optional[SearchResult]:
+    def get_about(self, uri: URI) -> Optional[SearchResult]:
         """Get facts about an entity.
         
         Args:
@@ -83,7 +82,7 @@ class Searcher:
         """
         return None
 
-    async def search_entities(
+    def search_entities(
         self, query: str, limit: int = 1, add_about: bool = False
     ) -> Iterator[SearchResult]:
         """Search for entities using a label query.
@@ -93,11 +92,11 @@ class Searcher:
             limit: Maximum number of results to return
             add_about: Include facts about the result entity
         """
-        return ()
+        return
 
-    async def label_match(self, uri: URI, surface: str) -> Iterator[LiteralMatchResult]:
+    def label_match(self, uri: URI, surface: str) -> Iterator[LiteralMatchResult]:
         """Match a cell value to a KB entity"""
-        return ()
+        return
 
     def literal_match(
         self, literal: Literal, surface: str
@@ -109,7 +108,7 @@ class Searcher:
 
 
 class WikiLookup:
-    async def lookup_wikititle(self, title: str) -> str:
+    def lookup_wikititle(self, title: str) -> str:
         """Lookup Wikipedia title in KB
         
         Args:
@@ -117,7 +116,7 @@ class WikiLookup:
         """
         return
 
-    async def _lookup_cells(self, hrefs, **kwargs):
+    def lookup_cells(self, hrefs, **kwargs):
         href_rowcols = {}
         for ri, row in enumerate(hrefs):
             for ci, hs in enumerate(row):
@@ -125,25 +124,13 @@ class WikiLookup:
                     if href:
                         href_rowcols.setdefault(href, set()).add((ri, ci))
 
-        searches = list(href_rowcols)
-        allresults = []
-        chunksize = 100
-        for i in range(0, len(href_rowcols), chunksize):
-            futures = [
-                self.lookup_wikititle(href, **kwargs)
-                for href in searches[i : i + chunksize]
-            ]
-            allresults += await asyncio.gather(*futures)
-
         ci_ri_ents = {}
-        for href, uri in zip(searches, allresults):
+        for href, rowcols in href_rowcols.items():
+            uri = self.lookup_wikititle(href, **kwargs)
             if uri:
-                for ri, ci in href_rowcols.get(href, []):
+                for ri,ci in rowcols:
                     ci_ri_ents.setdefault(str(ci), {}).setdefault(str(ri), {})[uri] = 1
         return ci_ri_ents
-
-    def lookup_cells(self, hrefs: List[List[Container[str]]], **kwargs) -> Annotation:
-        return asyncio.run(self._lookup_cells(hrefs, **kwargs))
 
 
 class Database:
@@ -166,26 +153,26 @@ class Database:
         Args:
             triplepattern: A 3-tuple of None or URI
         """
-        return 0
+        return
 
     def __len__(self):
         return self.count([None, None, None])
 
-    def triples(self, triplepattern: TriplePattern):
+    def triples(self, triplepattern: TriplePattern) -> Iterator[Triple]:
         """Yield triples that match a pattern
         
         Args:
             triplepattern: A 3-tuple of None or URI
         """
-        return ()
+        return
 
-    def pages_about(self, triplepattern=None) -> Dict[URI, List[str]]:
+    def pages_about(self, triplepattern=None) -> Iterator[Tuple[URI, str]]:
         """Yield URLs of webpages about subjects of a triple pattern
         
         Args:
             triplepattern: A 3-tuple of None or URI
         """
-        return {}
+        return
 
 
 class Linker:
@@ -199,9 +186,10 @@ class Linker:
         self.searcher = searcher
         self.limit = limit
 
-    async def _rowcol_results(
+    def _rowcol_results(
         self, rows, usecols=None, skiprows=None, existing_entities=None, **kwargs
     ) -> Dict[Tuple[int, int], Container[SearchResult]]:
+        
         existing_entities = existing_entities or {}
         cell_rowcols = {}
         for ri, row in enumerate(rows):
@@ -211,27 +199,18 @@ class Linker:
                         if not existing_entities.get(ci, {}).get(ri, {}):
                             cell_rowcols.setdefault(cell, set()).add((ri, ci))
 
-        searches = list(cell_rowcols)
-        allresults = []
-        chunksize = 100
-        for i in range(0, len(cell_rowcols), chunksize):
-            futures = [
-                self.searcher.search_entities(cell, **kwargs)
-                for cell in searches[i : i + chunksize]
-            ]
-            allresults += await asyncio.gather(*futures)
-
         rowcol_results = {}
-        for cell, results in zip(searches, allresults):
-            for rowcol in cell_rowcols.get(cell, []):
+        for cell, rowcols in cell_rowcols.items():
+            results = self.searcher.search_entities(cell, **kwargs)
+            for rowcol in rowcols:
                 rowcol_results[rowcol] = results
         return rowcol_results
 
-    async def _async_link(self, rows, usecols=None, skiprows=None, existing=None):
+    def link(self, rows, usecols=None, skiprows=None, existing=None):
         existing = existing or {}
 
         existing_entities = (existing or {}).get("entities", {})
-        rowcol_results = await self._rowcol_results(
+        rowcol_results = self._rowcol_results(
             rows,
             usecols=usecols,
             skiprows=skiprows,
@@ -244,22 +223,3 @@ class Linker:
             entities.setdefault(str(ci), {})[str(ri)] = {r.uri: 1 for r in results}
 
         return {"entities": entities}
-
-    def link(
-        self,
-        rows: List[List[str]],
-        usecols: Container[int] = None,
-        skiprows: Container[int] = None,
-        existing: Annotation = None,
-    ) -> Annotation:
-        """Link rows of cells to a Knowledge Base
-        
-        Args:
-            rows: Table rows
-            usecols: Columns to use
-            skiprows: Rows to skip
-        """
-        task = self._async_link(
-            rows, usecols=usecols, skiprows=skiprows, existing=existing
-        )
-        return asyncio.run(task)

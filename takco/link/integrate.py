@@ -16,13 +16,17 @@ class NaryIntegrator:
         colmatch_count = Counter()
         colmatch_qcolprops = defaultdict(Counter)
         for celltexts, entsets in zip(rows, row_entsets):
+            log.debug(f"{(celltexts, entsets)}")
+            
             for (c1, c2), (s, p, o), qs in self.db.get_rowfacts(celltexts, entsets):
                 if c1 == c2:
                     continue
                 colmatch_count[(c1, c2, p)] += 1
                 for qcol, (q, qprop, qo), m in qs:
                     colmatch_qcolprops[(c1, c2, p)][(qcol, qprop)] += 1
-
+        
+        log.debug(f"colmatch_count = {colmatch_count}, colmatch_qcolprops = {colmatch_qcolprops}")
+        
         def by_qualifier_count(cm):
             return len(colmatch_qcolprops.get(cm, [])), colmatch_count[cm]
 

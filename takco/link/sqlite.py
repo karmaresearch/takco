@@ -13,7 +13,7 @@ class SQLiteWikiLookup(WikiLookup):
         self.baseuri = baseuri
         self.fallback = fallback
 
-    async def lookup_wikititle(self, title: str) -> str:
+    def lookup_wikititle(self, title: str) -> str:
         """Gets the URI for a DBpedia entity based on wikipedia title."""
         title = title.replace(" ", "_")
         with sqlite3.connect(self.sqlitedb) as con:
@@ -26,7 +26,7 @@ class SQLiteWikiLookup(WikiLookup):
                 return self.baseuri + str(uri)
 
             if self.fallback:
-                uri = await self.fallback.lookup_wikititle(title)
+                uri = self.fallback.lookup_wikititle(title)
                 if str(uri) != "-1":
                     uri = None
                 q = "insert or replace into WikiLookup(title, uri) values (?,?)"
@@ -60,7 +60,7 @@ class SQLiteSearcher(Searcher):
         self.files = files
         self.baseuri = baseuri
 
-    async def search_entities(self, query: str, limit=1, add_about=False):
+    def search_entities(self, query: str, limit=1, add_about=False):
 
         # TODO moar parallel
 
@@ -174,10 +174,9 @@ if __name__ == "__main__":
 
     def search(sqlitedir: Path, query: str, limit: int = 1):
         """Search a set of sqlite label DBs for a query string """
-        import asyncio
 
         s = SQLiteSearcher(files=sqlitedir.glob("*.sqlitedb"))
-        return json.dumps(asyncio.run(s.search_entities(query, limit=limit)))
+        return json.dumps( s.search_entities(query, limit=limit) )
 
     r = defopt.run(
         [create, search], strict_kwonly=False, parsers={typing.Dict: json.loads}

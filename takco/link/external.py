@@ -7,48 +7,26 @@ from datetime import datetime
 
 from .base import Searcher, SearchResult, Database, WikiLookup
 
-try:
-    import logging as log
-    import aiohttp
-    import asyncio
-    import typing
+import logging as log
+import typing
+import requests
 
-    async def get_json(url, params=None):
-        headers = {"Accept": "application/json"}
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url, params=params) as resp:
-                return await resp.json()
+def get_json(url, params=None):
+    headers = {"Accept": "application/json"}
+    resp = requests.get(url, headers=headers, params=params)
+    if resp.ok:
+        return resp.json()
 
-    async def get_redirects(url):
-        async with aiohttp.ClientSession() as session:
-            async with session.request("HEAD", url) as resp:
-                return resp.url
+def get_redirects(url):
+    resp = requests.get(url, allow_redirects=True)
+    return resp.url
 
-    from rdflib import Literal, URIRef
-    from rdflib.namespace import XSD, RDF
-    from rdflib.store import Store
+from rdflib import Literal, URIRef
+from rdflib.namespace import XSD, RDF
+from rdflib.store import Store
 
-    XSD_date = XSD.date
-    RDF_type = RDF.type
-    run = asyncio.run
-
-except ImportError:
-    # allow use by brython and docs
-    get_json = None
-    log = None
-
-    class Literal(dict):
-        pass
-
-    class URIRef(dict):
-        pass
-
-    class Store:
-        pass
-
-    XSD_date = "http://www.w3.org/2001/XMLSchema#date"
-    RDF_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-    run = lambda x: x
+XSD_date = XSD.date
+RDF_type = RDF.type
 
 
 class SparqlStore(Store):
@@ -63,26 +41,23 @@ class SparqlStore(Store):
         self.endpoint = endpoint
         self.pagequery = self.DEFAULT_PAGEQUERY
 
-    async def _triple_query(self, query, triplepattern):
+    def _triple_query(self, query, triplepattern):
         s, p, o = triplepattern
         kv = {"s": s, "p": p, "o": o}
         bind = "".join(f"BIND ({ URIRef(v).n3() } as ?{k})" for k, v in kv.items() if v)
         q = query % bind
-        results = await get_json(self.endpoint, params={"format": "json", "query": q})
+        results = get_json(self.endpoint, params={"format": "json", "query": q})
         return (results or {}).get("results", {}).get("bindings", [])
 
-    async def _count(self, triplepattern) -> int:
+    def count(self, triplepattern) -> int:
         q = "select (count(*) as ?c) where { ?s ?p ?o . %s }"
-        for binding in await self._triple_query(q, triplepattern):
+        for binding in self._triple_query(q, triplepattern):
             return int(binding.get("c", {}).get("value", 0))
-
-    def count(self, triplepattern):
-        return run(self._count(triplepattern))
 
     def __len__(self):
         return self.count([None, None, None])
 
-    async def _pages_about(
+    def pages_about(
         self,
         triplepattern=(None, None, None),
         pageprefix="https://en.wikipedia.org/wiki/",
@@ -97,19 +72,12 @@ class SparqlStore(Store):
             }}
         """
         s_pages = {}
-        for binding in await self._triple_query(q, triplepattern):
+        for binding in self._triple_query(q, triplepattern):
             s = binding.get("s", {}).get("value")
             page = binding.get("page", {}).get("value")
             if page:
                 s_pages.setdefault(s, set()).add(page)
         return s_pages
-
-    def pages_about(
-        self, triplepattern=None, pageprefix="https://en.wikipedia.org/wiki/"
-    ):
-        return run(
-            self._pages_about(triplepattern=triplepattern, pageprefix=pageprefix)
-        )
 
     def _make_node(self, d):
         if d:
@@ -120,16 +88,13 @@ class SparqlStore(Store):
                 lang = d.get("xml:lang")
                 return Literal(d["value"], lang=lang, datatype=datatype)
 
-    async def _triples(self, triplepattern):
+    def triples(self, triplepattern):
         q = "select ?s ?p ?o where { ?s ?p ?o . %s }"
-        for binding in await self._triple_query(q, triplepattern):
+        for binding in self._triple_query(q, triplepattern):
             yield tuple(self._make_node(binding[n]) for n in "spo"), None
 
-    async def _collect_triples(self, triplepattern):
-        return [t async for t in self._triples(triplepattern)]
-
-    def triples(self, triplepattern, context=None):
-        return run(self._collect_triples(triplepattern))
+    def _collect_triples(self, triplepattern):
+        return [t for t in self._triples(triplepattern)]
 
 
 class MediaWikiAPI(Searcher, WikiLookup):
@@ -162,12 +127,12 @@ class MediaWikiAPI(Searcher, WikiLookup):
                 if "mainsnak" in c:
                     yield c["mainsnak"]
 
-    async def _query(self, **params):
+    def _query(self, **params):
         params["format"] = "json"
         self.log.debug(f"Requesting {self.__class__.__name__} with {params}")
-        return await self.get_json(self.url, params=params)
+        return self.get_json(self.url, params=params)
 
-    async def lookup_wikititle(
+    def lookup_wikititle(
         self, title: str, site: str = "enwiki", normalize: bool = True,
     ):
         """Gets the URI of a Wikibase entity based on wikipedia title.
@@ -180,7 +145,7 @@ class MediaWikiAPI(Searcher, WikiLookup):
         'http://www.wikidata.org/entity/Q727'
             
         """
-        results = await self._query(
+        results = self._query(
             action="wbgetentities",
             sites=site,
             titles=title,
@@ -237,14 +202,14 @@ class MediaWikiAPI(Searcher, WikiLookup):
             else:
                 return Literal(str(snak["datavalue"]["value"]))
 
-    async def get_claims(self, *ids: str, mainsnak: bool = True):
+    def get_claims(self, *ids: str, mainsnak: bool = True):
         """Gets the claims for multiple Wikibase entities.
         
         Args:
             ids: The IDs of the entities to get the data from 
         """
         if ids:
-            results = await self._query(
+            results = self._query(
                 action="wbgetentities", ids="|".join(ids), props="claims",
             )
             if results:
@@ -262,7 +227,7 @@ class MediaWikiAPI(Searcher, WikiLookup):
                     ent_claims[k] = p_vclaims
                 return ent_claims
 
-    async def search_entities(
+    def search_entities(
         self,
         search: str,
         limit: int = 1,
@@ -283,7 +248,7 @@ class MediaWikiAPI(Searcher, WikiLookup):
         """
         if not search:
             return {}
-        results = await self._query(
+        results = self._query(
             action="wbsearchentities",
             search=search,
             limit=limit,
@@ -294,7 +259,7 @@ class MediaWikiAPI(Searcher, WikiLookup):
 
             if add_about:
                 ids = set(s["id"] for s in results)
-                ent_claims = await self.get_claims(*ids, mainsnak=mainsnak)
+                ent_claims = self.get_claims(*ids, mainsnak=mainsnak)
                 for s in results:
                     s.update(ent_claims.get(s["id"], {}))
                     s[RDF_type] = s.get(self.typeuri, [])
@@ -319,17 +284,17 @@ class DBpediaLookup(Searcher, WikiLookup):
         self.get_json = get_json
         self.log = log
 
-    async def _query(self, **params):
+    def _query(self, **params):
         self.log.debug(f"Requesting {self.__class__.__name__} with {params}")
-        return await self.get_json(self.url, params=params)
+        return self.get_json(self.url, params=params)
 
-    async def lookup_wikititle(self, title: str) -> str:
+    def lookup_wikititle(self, title: str) -> str:
         """Gets the URI for a DBpedia entity based on wikipedia title."""
         title = title.replace(" ", "_")
-        redir = await get_redirects(f"http://dbpedia.org/page/{title}")
+        redir = get_redirects(f"http://dbpedia.org/page/{title}")
         return str(redir).replace("/page/", "/resource/")
 
-    async def search_entities(
+    def search_entities(
         self, search: str, limit: int = 1, **kwargs,
     ) -> typing.List[SearchResult]:
         """Searches for entities using the Keyword Search API.
@@ -339,7 +304,7 @@ class DBpediaLookup(Searcher, WikiLookup):
         """
         if not search:
             return {}
-        results = await self._query(
+        results = self._query(
             QueryString=search,
             MaxHits=limit,
             #   language=self.language,
@@ -354,13 +319,13 @@ class DBpediaLookup(Searcher, WikiLookup):
 
 
 if __name__ == "__main__":
-    import defopt, typing, json, asyncio, enum
+    import defopt, typing, json, enum
 
     class Searchers(enum.Enum):
         mw = MediaWikiAPI
         db = DBpediaLookup
 
-    async def search(
+    def search(
         kind: Searchers, query: str, limit: int = 1, add_about: bool = False,
     ):
         """Search for entities
@@ -370,12 +335,12 @@ if __name__ == "__main__":
             query: Query string
             limit: Limit results
         """
-        result = await kind.value().search_entities(
+        result = kind.value().search_entities(
             query, limit=limit, add_about=add_about
         )
         return result
 
     funcs = [search]
 
-    r = asyncio.run(defopt.run(funcs, strict_kwonly=False))
+    r = defopt.run(funcs, strict_kwonly=False)
     print(json.dumps(r))

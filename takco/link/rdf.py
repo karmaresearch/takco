@@ -92,13 +92,13 @@ class RDFSearcher(Searcher, GraphDB):
 
         GraphDB.__init__(self, store=store)
 
-    async def get_about(self, uri):
+    def get_about(self, uri):
         about = {}
         for _, p, o in self.triples([URIRef(uri), None, None]):
             about.setdefault(p, []).append(o)
         return SearchResult(uri, about)
 
-    async def search_entities(self, query: str, limit=1, add_about=False):
+    def search_entities(self, query: str, limit=1, add_about=False):
         if self.encoding and (query != query.encode("ascii", errors="ignore").decode()):
             if self.encoding == "wikidata":
                 import json
@@ -130,7 +130,7 @@ class RDFSearcher(Searcher, GraphDB):
             SearchResult(str(e), self.about(e) if add_about else {}) for e in results
         ]
 
-    async def label_match(self, uri, surface):
+    def label_match(self, uri, surface):
         if isinstance(uri, URIRef):
             s = uri
             for lp in self.labelProperties:

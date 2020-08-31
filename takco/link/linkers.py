@@ -1,5 +1,4 @@
 from typing import Container, List, Dict
-import asyncio
 import logging as log
 
 from .base import Linker, Searcher, SearchResult
@@ -32,7 +31,7 @@ class First(Linker):
         self.exclude_about = exclude_about
         self.add_about = bool(only_majority or exclude_about)
 
-    async def _async_link(
+    def link(
         self,
         rows: List[List[str]],
         usecols: Container[int] = None,
@@ -43,7 +42,7 @@ class First(Linker):
         from rdflib import URIRef
 
         existing_entities = (existing or {}).get("entities", {})
-        rowcol_results = await self._rowcol_results(
+        rowcol_results = self._rowcol_results(
             rows,
             limit=self.limit,
             usecols=usecols,
@@ -138,7 +137,7 @@ class Salient(Linker):
             self.graph = graph
         self.max_backlink = max_backlink
 
-    async def _async_link(
+    def link(
         self,
         rows: List[List[str]],
         usecols: Container[int] = None,
@@ -147,7 +146,7 @@ class Salient(Linker):
     ) -> Dict[str, Dict[str, Dict[str, float]]]:
 
         existing_entities = (existing or {}).get("entities", {})
-        rowcol_results = await self._rowcol_results(
+        rowcol_results = self._rowcol_results(
             rows,
             limit=self.limit,
             usecols=usecols,
@@ -217,7 +216,7 @@ class Salient(Linker):
                             for fr in fromri_results.get(ri, {}):
                                 for o in fr.get(p, []):
                                     matches = self.searcher.label_match(o, celltext)
-                                    async for m in matches:
+                                    for m in matches:
                                         log.debug(f"Matched {o} to {celltext}")
                                         rs.append(SearchResult(str(o), {}, m.score))
                             rs = sorted(rs, key=lambda m: -m.score)
@@ -239,7 +238,7 @@ class Salient(Linker):
                                         continue
                                     for s, _, _ in self.graph.triples([None, p, o]):
                                         matches = self.searcher.label_match(s, celltext)
-                                        async for m in matches:
+                                        for m in matches:
                                             log.debug(f"Matched back {s} to {celltext}")
                                             rs.append(SearchResult(str(s), {}, m.score))
                                 rs = sorted(rs, key=lambda m: -m.score)
