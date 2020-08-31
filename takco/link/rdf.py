@@ -4,6 +4,7 @@ from rdflib import URIRef, Literal
 from typing import List, Dict, Tuple, Collection, Iterator
 
 import datetime
+import re
 
 from .base import (
     Searcher,
@@ -59,6 +60,8 @@ class RDFSearcher(Searcher, GraphDB):
         qualifierIDProperty: Property URI for (``<qualifier> <id> <entity>``) triples
         statementURIprefix: URI prefix for (``<entity> prefix:foo <qualifier>``) triples    
     """
+
+    YEAR = re.compile("^(\d{4})(?:[-–—]\d{2,4})?$")
 
     def __init__(
         self,
@@ -149,10 +152,16 @@ class RDFSearcher(Searcher, GraphDB):
 
             # Typed literals should match well
             try:
-                s = datetime.datetime.fromisoformat(surface).timestamp()
                 l = datetime.datetime.fromisoformat(literal).timestamp()
+                yearmatch = self.YEAR.match(surface)
+                if yearmatch:
+                    s = datetime.datetime(int(yearmatch.groups()[0]), 1, 1).timestamp()
+                else:
+                    s = datetime.datetime.fromisoformat(surface).timestamp()
+
                 score = max(0, 1 - (abs(s - l) / max(abs(s), abs(l))))
-                if score > 0.99:
+
+                if score > 0.95:
                     yield LiteralMatchResult(score, literal, dtype)
                     return
             except Exception as e:
@@ -250,14 +259,17 @@ class RDFSearcher(Searcher, GraphDB):
                                     mainprop = p
                                     continue
 
-                                for ci, es in enumerate(entsets):
-                                    if o in es:
-                                        qm = QualifierMatchResult(ci, (q, p, o), None)
-                                        qmatches.append(qm)
-
-                                for ci, txt in enumerate(celltexts):
-                                    for lm in self.literal_match(o, txt):
-                                        qm = QualifierMatchResult(ci, (q, p, o), lm)
-                                        qmatches.append(qm)
+                                if hasattr(o, "datatype"):
+                                    for ci, txt in enumerate(celltexts):
+                                        for lm in self.literal_match(o, txt):
+                                            qm = QualifierMatchResult(ci, (q, p, o), lm)
+                                            qmatches.append(qm)
+                                else:
+                                    for ci, es in enumerate(entsets):
+                                        if o in es:
+                                            qm = QualifierMatchResult(
+                                                ci, (q, p, o), None
+                                            )
+                                            qmatches.append(qm)
 
                             yield MatchResult((ci1, ci2), (e1, mainprop, e2), qmatches)

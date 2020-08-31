@@ -69,7 +69,7 @@ class SimpleCellType(CellType):
         if nfloat > n / 2:
             return {cls.NUMBER: nfloat}
 
-        nlink = sum(1 for _, l in cell_ents if l)
+        nlink = sum(1 for _, l in cell_ents if l and not hasattr(l, "datatype"))
         if nlink > n / 2:
             return {cls.ENTITY: nlink}
 

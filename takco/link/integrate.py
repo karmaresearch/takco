@@ -14,36 +14,37 @@ class NaryIntegrator:
         nrows = len(rows)
 
         colmatch_count = Counter()
-        colmatch_qcolprops = defaultdict(Counter)
+        colmatch_qcolprop_count = defaultdict(Counter)
         for celltexts, entsets in zip(rows, row_entsets):
-            log.debug(f"{(celltexts, entsets)}")
-            
+
             for (c1, c2), (s, p, o), qs in self.db.get_rowfacts(celltexts, entsets):
                 if c1 == c2:
                     continue
                 colmatch_count[(c1, c2, p)] += 1
                 for qcol, (q, qprop, qo), m in qs:
-                    colmatch_qcolprops[(c1, c2, p)][(qcol, qprop)] += 1
-        
-        log.debug(f"colmatch_count = {colmatch_count}, colmatch_qcolprops = {colmatch_qcolprops}")
-        
+                    colmatch_qcolprop_count[(c1, c2, p)][(qcol, qprop)] += 1
+
+        log.debug(
+            f"colmatch_count = {colmatch_count}, colmatch_qcolprop_count = {colmatch_qcolprop_count}"
+        )
+
         def by_qualifier_count(cm):
-            return len(colmatch_qcolprops.get(cm, [])), colmatch_count[cm]
+            return len(colmatch_qcolprop_count.get(cm, [])), colmatch_count[cm]
 
         tocol_fromcolprop = {}
         for c1, c2, p in sorted(colmatch_count, key=by_qualifier_count):
-            qcolprops = colmatch_qcolprops[(c1, c2, p)]
+            qcolprop_count = colmatch_qcolprop_count[(c1, c2, p)]
             n = colmatch_count[(c1, c2, p)]
             tocol_fromcolprop[c2] = {c1: {p: n / nrows}}
 
             col_qprops = defaultdict(Counter)
-            for (col, prop), count in qcolprops:
+            for (col, prop), count in qcolprop_count.items():
                 col_qprops[col][prop] += count
 
             # Add qualifier props
             for ci, qprops in col_qprops.items():
                 for qp, qn in qprops.most_common(1):
-                    tocol_fromcolprop[ci] = {c1: {p: qn / nrows}}
+                    tocol_fromcolprop[ci] = {c1: {qp: qn / nrows}}
 
         # Add most frequent other relations
         for (c1, c2, p), n in colmatch_count.most_common():

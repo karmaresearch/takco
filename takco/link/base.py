@@ -128,7 +128,7 @@ class WikiLookup:
         for href, rowcols in href_rowcols.items():
             uri = self.lookup_wikititle(href, **kwargs)
             if uri:
-                for ri,ci in rowcols:
+                for ri, ci in rowcols:
                     ci_ri_ents.setdefault(str(ci), {}).setdefault(str(ri), {})[uri] = 1
         return ci_ri_ents
 
@@ -189,7 +189,7 @@ class Linker:
     def _rowcol_results(
         self, rows, usecols=None, skiprows=None, existing_entities=None, **kwargs
     ) -> Dict[Tuple[int, int], Container[SearchResult]]:
-        
+
         existing_entities = existing_entities or {}
         cell_rowcols = {}
         for ri, row in enumerate(rows):

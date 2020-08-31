@@ -176,7 +176,7 @@ if __name__ == "__main__":
         """Search a set of sqlite label DBs for a query string """
 
         s = SQLiteSearcher(files=sqlitedir.glob("*.sqlitedb"))
-        return json.dumps( s.search_entities(query, limit=limit) )
+        return json.dumps(s.search_entities(query, limit=limit))
 
     r = defopt.run(
         [create, search], strict_kwonly=False, parsers={typing.Dict: json.loads}

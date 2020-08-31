@@ -11,15 +11,18 @@ import logging as log
 import typing
 import requests
 
+
 def get_json(url, params=None):
     headers = {"Accept": "application/json"}
     resp = requests.get(url, headers=headers, params=params)
     if resp.ok:
         return resp.json()
 
+
 def get_redirects(url):
     resp = requests.get(url, allow_redirects=True)
     return resp.url
+
 
 from rdflib import Literal, URIRef
 from rdflib.namespace import XSD, RDF
@@ -335,9 +338,7 @@ if __name__ == "__main__":
             query: Query string
             limit: Limit results
         """
-        result = kind.value().search_entities(
-            query, limit=limit, add_about=add_about
-        )
+        result = kind.value().search_entities(query, limit=limit, add_about=add_about)
         return result
 
     funcs = [search]

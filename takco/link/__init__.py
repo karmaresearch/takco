@@ -43,7 +43,10 @@ def lookup_hyperlinks(tables: List[dict], lookup_config: Dict, lookup_cells=Fals
         log.debug(f"Looking up hyperlinks of {table.get('_id')}")
         hrefs = [
             [
-                [l.get("target", {}).get("href") for l in c.get("surfaceLinks", [])]
+                [
+                    l.get("target", {}).get("href").rsplit("/", 1)[-1]
+                    for l in c.get("surfaceLinks", [])
+                ]
                 + ([c.get("text")] if lookup_cells and cell_ok(c) else [])
                 for c in row
             ]
@@ -111,7 +114,7 @@ def integrate(tables: List[dict], searcher_config: Dict, pfd_threshold=0.9):
     """
 
     searcher = searcher_config.init_class(**globals())
-    assert isinstance(searcher, Searcher)
+    assert isinstance(searcher, Searcher), f"{searcher} is not a Searcher"
     log.debug(f"Integrating with {searcher}")
 
     from collections import Counter

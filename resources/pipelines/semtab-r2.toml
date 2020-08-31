@@ -20,7 +20,11 @@ lookup_config = {}
 
     [step.linker_config]
     class = "Salient"
-    searcher = {name = "wikidata-20200713-direct-skos", stringmatch = 'levenshtein'}
+    searcher = {name = "wikidata-20200713-direct-skos", stringmatch = "levenshtein", datematch = "dateparser"}
+    prop_cover = 0.1
+    expand = true
+    max_backlink = 250
+    min_score = 0.75
     #limit = 10
     #only_majority = "@type"
     
