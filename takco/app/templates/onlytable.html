@@ -1,0 +1,110 @@
+{% set kbinfo = kbinfo | default({}, true) %}
+<table class="dataframe">
+    
+    {# COLUMN NUMBERS #}
+    <tr style="font-size:90%">
+        <th><abbr title="{{table.get('_id', '')}}">?</abbr></th>
+        {% for ci in range(table.rows[0] | length) %}
+            <th style="font-size:90%">{{ci}}</th>
+        {% endfor %}
+    </tr>
+    
+    {# CLASSES #}
+    {% if table.classes %}
+        <tr>
+            <th style="font-size:90%"><abbr title="Column Class">&#x2208;</abbr></th>
+            {% for ci in range(table.rows[0] | length) %}
+                <th>
+                    {% for cls in table.classes[ci|string] %}
+                        {% set noclass = (cls not in kbinfo) or not kbinfo[cls].inlinks %}
+                        <span class="{{'noent' if noclass else ''}}">
+                            {% set cname = cls.split('/')[-1].split('#')[-1] %}
+                            <a href="{{cls}}" data-id="{{cls}}" class="kblink" title="{{cls}}">{{cname}}</a>
+                        </span>
+                    {% endfor %}
+                </th>
+            {% endfor %}
+        </tr>
+    {% endif %}
+    
+    {# PROPERTIES #}
+    {% for fromci in range(table.rows[0] | length) %}
+        {% set fromci = (fromci | string) %}
+        {% if fromci in table.properties %}
+            {% set fromprops = table.properties[fromci] %}
+            <tr>
+                <th style="font-size:90%">
+                    <abbr title="Property from subject-column {{fromci}}">
+                        {{fromci}}
+                    </abbr>
+                </th>
+                {% for toci in range(table.rows[0] | length) %}
+                    {% set props = fromprops[toci|string] %}
+                    {% set noprops = not (props | lookup(kbinfo) | any) %}
+                    <th class="{{'noent' if noprops else ''}}">
+                        {% for prop in props %}
+                            {% set pname = prop.split('/')[-1].split('#')[-1] %}
+                            <a href="{{prop}}" data-id="{{prop}}" class="kblink" title="{{prop}}">{{pname}}</a>
+                        {% endfor %}
+                    </th>
+                {% endfor %}
+            </tr>
+        {% endif %}
+    {% endfor %}
+    
+    {# COLUMN HEADERS #}
+    {% for hrow in table.headers %}
+        <tr>
+            <th></th>
+            {% for c in hrow %}
+                <th>{{c}}</th>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    
+    {# TABLE ROWS #}
+    
+    {% for ri in range(table.rows | length) %}
+        {% set row = table.rows[ri] %}
+        {% set rowannotated = (ri|string) in annotated_rows %}
+        <tr class="{{'unannotated' if not rowannotated else ''}}">
+            <td></td>
+            {% for ci in range(row | length) %}
+                {% set classes = [] %}
+                {% set celltext = row[ci] %}
+                <!-- {{ classes.append('key') if ci == table.keycol else 'nokey' }} -->
+                {% set ci = (ci | string) %}
+                {% set ri = (ri | string) %}
+                    
+                {% set ents = table.entities.get(ci, {}).get(ri, {}) %}
+                {% set ent = (ents | list | select | first | string) %}
+                <!-- {{ classes.append('noent') if ents and rowannotated and ((ent not in kbinfo) or (not kbinfo[ent].inlinks + kbinfo[ent].outlinks)) else 'ent' }} -->
+                
+                {% if kblinks %}
+                    <!-- {{ classes.append('noclass') if ent and table.classes[ci] and not kblinks.entity_matchclass[ent] else 'class' }} -->
+
+                    {% for fromci, fromprops in table.properties.items() %}
+                        {% set froments = table.entities.get(fromci, {}).get(ri, {}) %}
+                        {% set froment = (froments | list | select | first | string) %}
+                        {% set props = fromprops.get(ci, {}) %}
+                        {% if (not noent) and props and celltext and rowannotated %}
+                            <!-- {{ classes.append('noprop') if not (props | lookup(kblinks.entity_prop_exists.get(froment, {})) | any) else 'prop' }} -->
+                            <!-- {{ classes.append('nomatch') if not kblinks.rownr_colnr_matches.get(ri, {}).get(ci, {}) else 'match' }} -->
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+
+                <td class="{{ ' '.join(classes) }}">
+                    {% if ent %}
+                        <a href="{{ent}}" data-id="{{ent}}" class="kblink" title="{{ent}}">{{celltext}}</a>
+                    {% else %}
+                        {{celltext}}
+                    {% endif %}
+                    {% if match and (1 > match.score) %}
+                        <span class="match">[{{match.lit}}]</span>
+                    {% endif %}
+                </td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+</table>

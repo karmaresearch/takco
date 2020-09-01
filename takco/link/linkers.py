@@ -187,7 +187,7 @@ class Salient(Linker):
                             if not cellresults:
                                 # Check for overlap with literals
                                 for o in os:
-                                    matches = self.searcher.literal_match(o, celltext)
+                                    matches = self.searcher.cellType.match(o, celltext)
                                     mscore = sum(1 for m in matches)
                                     if mscore:
                                         prop_count[p] += mscore

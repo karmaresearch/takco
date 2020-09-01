@@ -1,3 +1,5 @@
+import logging as log
+
 import time
 import re
 import datetime
@@ -8,26 +10,25 @@ import decimal
 import enum
 from typing import Dict, List, Tuple
 
-# import datefinder
+from rdflib import URIRef, Literal
+
+from .base import CellType, LiteralMatchResult
 
 URI = str
 CellValue = str
+
+YEAR_PATTERN = re.compile("^(\d{4})(?:[-–—]\d{2,4})?$")
 
 
 def is_literal_type(uri):
     return uri.startswith("http://www.w3.org/2001/XMLSchema#")
 
 
-class CellType(enum.Enum):
-    """Cell datatype enumeration"""
-
-    pass
-
-
 class SimpleCellType(CellType):
     NUMBER = "http://www.w3.org/2001/XMLSchema#decimal"
     ENTITY = "http://www.w3.org/2002/07/owl#Thing"
     TEXT = "http://www.w3.org/2001/XMLSchema#string"
+    DATETIME = "http://www.w3.org/2001/XMLSchema#dateTime"
 
     def nodes(self, cellvalue, links=[]):
         if self == self.NUMBER:
@@ -63,15 +64,90 @@ class SimpleCellType(CellType):
     def coltype(
         cls, cell_ents: List[Tuple[CellValue, List[URI]]]
     ) -> Dict[CellType, int]:
+        import dateparser
+
         n = len(cell_ents)
 
-        nfloat = sum(1 for s, _ in cell_ents if cls._try_cast_float(s) is not None)
-        if nfloat > n / 2:
-            return {cls.NUMBER: nfloat}
+        counts = collections.Counter()
+        for c, l in cell_ents:
+            if YEAR_PATTERN.match(c):
+                counts[cls.DATETIME] += 1
+            elif cls._try_cast_float(c):
+                counts[cls.NUMBER] += 1
+            elif l and not hasattr(l, "datatype"):
+                counts[cls.ENTITY] += 1
+            elif dateparser.parse(c):
+                counts[cls.DATETIME] += 1
+            else:
+                counts[cls.TEXT] += 1
 
-        nlink = sum(1 for _, l in cell_ents if l and not hasattr(l, "datatype"))
-        if nlink > n / 2:
-            return {cls.ENTITY: nlink}
+        for t in [cls.DATETIME, cls.NUMBER, cls.ENTITY, cls.TEXT]:
+            if counts[t] > n / 2:
+                return {t: counts[t]}
+        return {}
 
-        ntext = sum(1 for c, l in cell_ents if not l and cls._try_cast_float(c) is None)
-        return {cls.TEXT: ntext}
+    @classmethod
+    def match(cls, literal: URIRef, surface: str, stringmatch="jaccard"):
+        import dateparser
+
+        dtype = literal.datatype if hasattr(literal, "datatype") else None
+        literal, surface = str(literal).strip(), str(surface).strip()
+
+        score = 0
+        if dtype:
+            # Typed literals should match well
+
+            if str(dtype) == str(cls.DATETIME.value):
+                try:
+                    l = datetime.datetime.fromisoformat(literal).timestamp()
+
+                    yearmatch = YEAR_PATTERN.match(surface)
+                    if yearmatch:
+                        s = datetime.datetime(
+                            int(yearmatch.groups()[0]), 1, 1
+                        ).timestamp()
+                    else:
+                        try:
+                            s = datetime.datetime.fromisoformat(surface).timestamp()
+                        except:
+                            s = dateparser.parse(surface).timestamp()
+                    if s:
+                        score = max(0, 1 - (abs(s - l) / max(abs(s), abs(l))))
+
+                        if score > 0.95:
+                            yield LiteralMatchResult(score, literal, dtype)
+                            return
+                except Exception as e:
+                    pass
+            else:
+                try:
+                    s, l = (
+                        float(surface.replace(",", "")),
+                        float(literal.replace(",", "")),
+                    )
+                    score = max(0, 1 - (abs(s - l) / max(abs(s), abs(l))))
+                    if score > 0.95:
+                        yield LiteralMatchResult(score, literal, dtype)
+                        return
+                except Exception as e:
+                    pass
+
+            s, l = surface.lower(), literal.lower()
+            score = bool(s == l)
+
+        elif surface and literal:
+            # Strings may match approximately
+            if stringmatch == "jaccard":
+                s, l = set(surface.lower().split()), set(literal.lower().split())
+                if s and l:
+                    score = len(s & l) / len(s | l)
+            elif stringmatch == "levenshtein":
+                import Levenshtein
+
+                s, l = surface.lower(), literal.lower()
+                if s and l:
+                    m = min(len(s), len(l))
+                    score = max(0, (m - Levenshtein.distance(s, l)) / m)
+
+        if score:
+            yield LiteralMatchResult(score, literal, dtype)

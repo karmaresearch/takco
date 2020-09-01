@@ -94,7 +94,7 @@ class SparqlStore(Store):
                 lang = d.get("xml:lang")
                 return Literal(d["value"], lang=lang, datatype=datatype)
 
-    def triples(self, triplepattern):
+    def triples(self, triplepattern, context=None):
         q = "select ?s ?p ?o where { ?s ?p ?o . %s }"
         for binding in self._triple_query(q, triplepattern):
             yield tuple(self._make_node(binding[n]) for n in "spo"), None

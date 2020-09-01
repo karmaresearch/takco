@@ -71,6 +71,17 @@ class SearchResult(dict):
         return f"SearchResult('{self.uri}', {dict(self)}, score={self.score})"
 
 
+class CellType(enum.Enum):
+    """Cell datatype enumeration"""
+
+    @classmethod
+    def literal_match(literal: Literal, surface: str) -> Iterator[LiteralMatchResult]:
+        """Match a cell value to a KB literal"""
+        score = float(bool(str(literal) == surface))
+        if score:
+            yield LiteralMatchResult(score, literal, None)
+
+
 class Searcher:
     """For searching and matching for Knowledge Base entities."""
 
@@ -97,14 +108,6 @@ class Searcher:
     def label_match(self, uri: URI, surface: str) -> Iterator[LiteralMatchResult]:
         """Match a cell value to a KB entity"""
         return
-
-    def literal_match(
-        self, literal: Literal, surface: str
-    ) -> Iterator[LiteralMatchResult]:
-        """Match a cell value to a KB literal"""
-        score = float(bool(str(literal) == surface))
-        if score:
-            yield LiteralMatchResult(score, literal, None)
 
 
 class WikiLookup:

@@ -1,6 +1,7 @@
 import sys
 from typing import List, Dict, Union
 import logging as log
+import copy
 
 from .base import *
 from .external import *
@@ -129,6 +130,8 @@ def integrate(tables: List[dict], searcher_config: Dict, pfd_threshold=0.9):
             ]
 
     for table in tables:
+        table = copy.deepcopy(table)
+
         log.debug(
             "Integrating table %s (%d rows)",
             table.get("_id"),

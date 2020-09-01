@@ -116,12 +116,11 @@ def get_table_kblinks(kb, table):
             for e in row_es.get(str(rownr), []):
                 colnr_matches = {}
                 for toci, cell in enumerate(row):
-                    for p in (
-                        table["properties"].get(str(fromci), {}).get(str(toci), [])
-                    ):
-                        toents = (
-                            table["entities"].get(str(toci), {}).get(str(rownr), {})
-                        )
+                    fromci, toci, rownr = str(fromci), str(toci), str(rownr)
+                    for p in table["properties"].get(fromci, {}).get(toci, []):
+
+                        # Check if the predictions for this cell result match old facts
+                        toents = table["entities"].get(toci, {}).get(rownr, {})
                         if toents:
                             for o in toents:
                                 t = (URIRef(e), URIRef(p), URIRef(o))
@@ -129,13 +128,22 @@ def get_table_kblinks(kb, table):
                                     colnr_matches[str(toci)] = {
                                         "score": 1,
                                     }
+                                    break
                         else:
-                            score, literal, dtype = kb.match(URIRef(e), URIRef(p), cell)
-                            if score:
+                            best_match = max(
+                                (
+                                    match
+                                    for _, _, o in kb.triples((e, p, None))
+                                    for match in kb.label_match(o, surface)
+                                ),
+                                key=lambda m: m.score,
+                                default=None,
+                            )
+                            if best_match:
                                 colnr_matches[str(toci)] = {
-                                    "score": score,
-                                    "lit": literal,
-                                    "dtype": dtype,
+                                    "score": best_match.score,
+                                    "lit": best_match.literal,
+                                    "dtype": best_match.datatype,
                                 }
                 kblinks["rownr_colnr_matches"][str(rownr)] = colnr_matches
 

@@ -277,7 +277,11 @@ class TableSet(HashBag):
 
     def integrate(
         tables: TableSet,
-        searcher_config: Config = {"class": "MediaWikiAPI"},
+        searcher_config: Config = {
+            "class": "RDFSearcher",
+            "statementURIprefix": "http://www.wikidata.org/entity/statement/",
+            "store": {"class": "SparqlStore"},
+        },
         kbs: typing.List[Config] = (),
         pfd_threshold: float = 0.9,
     ):

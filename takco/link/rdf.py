@@ -11,10 +11,13 @@ from .base import (
     Database,
     SearchResult,
     Triple,
+    Node,
     QualifierMatchResult,
     MatchResult,
     LiteralMatchResult,
+    CellType,
 )
+from .datatype import SimpleCellType
 
 
 class GraphDB(Database, rdflib.Graph):
@@ -61,13 +64,12 @@ class RDFSearcher(Searcher, GraphDB):
         statementURIprefix: URI prefix for (``<entity> prefix:foo <qualifier>``) triples    
     """
 
-    YEAR = re.compile("^(\d{4})(?:[-–—]\d{2,4})?$")
-
     def __init__(
         self,
         store=None,
         language="en",
         stringmatch="jaccard",
+        cellType: CellType = SimpleCellType,
         encoding=None,
         labelProperties=[],
         typeProperties=[],
@@ -84,8 +86,10 @@ class RDFSearcher(Searcher, GraphDB):
         self.typeProperties = [URIRef(p) for p in typeProperties] + [
             URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"),
         ]
+
         self.encoding = encoding
         self.stringmatch = stringmatch
+        self.cellType = cellType
 
         self.qualifierIDProperty = None
         if qualifierIDProperty:
@@ -138,81 +142,11 @@ class RDFSearcher(Searcher, GraphDB):
             s = uri
             for lp in self.labelProperties:
                 for _, _, o in self.triples([s, lp, None]):
-                    for match in self.literal_match(o, surface):
+                    for match in self.cellType.match(o, surface, self.stringmatch):
                         yield match
-
-    def literal_match(self, literal, surface):
-
-        dtype = literal.datatype if hasattr(literal, "datatype") else None
-        literal, surface = str(literal).strip(), str(surface).strip()
-
-        # TODO: literal distance function module
-        score = 0
-        if dtype:
-
-            # Typed literals should match well
-            try:
-                l = datetime.datetime.fromisoformat(literal).timestamp()
-                yearmatch = self.YEAR.match(surface)
-                if yearmatch:
-                    s = datetime.datetime(int(yearmatch.groups()[0]), 1, 1).timestamp()
-                else:
-                    s = datetime.datetime.fromisoformat(surface).timestamp()
-
-                score = max(0, 1 - (abs(s - l) / max(abs(s), abs(l))))
-
-                if score > 0.95:
-                    yield LiteralMatchResult(score, literal, dtype)
-                    return
-            except Exception as e:
-                pass
-
-            try:
-                s, l = float(surface.replace(",", "")), float(literal.replace(",", ""))
-                score = max(0, 1 - (abs(s - l) / max(abs(s), abs(l))))
-                if score > 0.95:
-                    yield LiteralMatchResult(score, literal, dtype)
-                    return
-            except Exception as e:
-                pass
-
-            s, l = surface.lower(), literal.lower()
-            score = bool(s == l)
-
-        elif surface and literal:
-            # Strings may match approximately
-            if self.stringmatch == "jaccard":
-                s, l = set(surface.lower().split()), set(literal.lower().split())
-                if s and l:
-                    score = len(s & l) / len(s | l)
-            elif self.stringmatch == "levenshtein":
-                import Levenshtein
-
-                s, l = surface.lower(), literal.lower()
-                if s and l:
-                    m = min(len(s), len(l))
-                    score = max(0, (m - Levenshtein.distance(s, l)) / m)
-
-        if score:
-            yield LiteralMatchResult(score, literal, dtype)
-
-    def match(self, e, p, surface):
-        matches = []
-        for _, _, o in self.triples((e, p, None)):
-
-            if isinstance(o, URIRef):
-                for lp in self.labelProperties:
-                    for _, _, label in self.triples((o, lp, None)):
-                        for s, label, dt in self.literal_match(label, surface):
-                            matches.append((s, label, o))
-            else:
-                for s, _, dt in self.literal_match(o, surface):
-                    matches.append((s, o, dt))
-
-        if matches:
-            return max(matches, key=lambda x: x[0])
-
-        return 0, None, None
+        else:
+            for match in self.cellType.match(uri, surface, self.stringmatch):
+                yield match
 
     def _yield_qualified_statements_about(self, e):
         if self.qualifierIDProperty:
@@ -229,7 +163,7 @@ class RDFSearcher(Searcher, GraphDB):
     def get_rowfacts(
         self, celltexts: List[str], entsets: List[Collection[str]]
     ) -> Iterator[MatchResult]:
-        """Get matched facts for a row
+        """Get matched (n-ary) facts for a row
         
         Args:
             celltexts: Cell text
@@ -261,7 +195,7 @@ class RDFSearcher(Searcher, GraphDB):
 
                                 if hasattr(o, "datatype"):
                                     for ci, txt in enumerate(celltexts):
-                                        for lm in self.literal_match(o, txt):
+                                        for lm in self.cellType.match(o, txt):
                                             qm = QualifierMatchResult(ci, (q, p, o), lm)
                                             qmatches.append(qm)
                                 else:
