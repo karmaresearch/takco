@@ -263,3 +263,54 @@ try:
 except Exception as e:
     log.debug(f"Could not load Dask")
     log.debug(e)
+
+
+from collections.abc import Iterable
+import json
+import copy
+
+
+def preview(tables, nrows=5, ntables=10):
+    if isinstance(tables, dict):
+        tables = [tables]
+
+    from jinja2 import Environment, PackageLoader
+
+    env = Environment(loader=PackageLoader("takco", "app"),)
+    env.filters["any"] = any
+    env.filters["all"] = all
+    env.filters["lookup"] = lambda ks, d: [d.get(k) for k in ks]
+
+    template = env.get_or_select_template("templates/onlytable.html")
+
+    content = ""
+    for i, table in enumerate(tables):
+        table = copy.deepcopy(table)
+
+        rows = [[c.get("text") for c in r] for r in table.get("tableData", [])][:nrows]
+        table.setdefault("rows", rows)
+        headers = [[c.get("text") for c in r] for r in table.get("tableHeaders", [])]
+        table.setdefault("headers", headers)
+
+        table.setdefault("entities", {})
+        table.setdefault("classes", {})
+        table.setdefault("properties", {})
+
+        t = template.render(table=json.loads(json.dumps(table)))
+        more_rows = max(0, len(table.get("tableData", [])) - nrows)
+        if more_rows:
+            t += f"<p>({more_rows} more rows)</p>"
+
+        content += f"""
+        <span style='align-self: flex-start; margin: 1em; '>
+        {t}
+        </span>
+        """
+        if ntables and i + 1 >= ntables:
+            break
+
+    return f"""
+    <div style="width: 100%; overflow-x: scroll; white-space: nowrap; display:flex;">
+    {content}
+    </div>
+    """

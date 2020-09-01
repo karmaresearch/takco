@@ -9,10 +9,11 @@ from .base import Searcher, SearchResult, Database, WikiLookup
 
 import logging as log
 import typing
-import requests
 
 
 def get_json(url, params=None):
+    import requests
+
     headers = {"Accept": "application/json"}
     resp = requests.get(url, headers=headers, params=params)
     if resp.ok:
@@ -20,6 +21,8 @@ def get_json(url, params=None):
 
 
 def get_redirects(url):
+    import requests
+
     resp = requests.get(url, allow_redirects=True)
     return resp.url
 
