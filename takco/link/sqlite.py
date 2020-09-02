@@ -69,7 +69,8 @@ class SQLiteSearcher(Searcher):
     """
 
     def __init__(
-        self, files, graph=None, exact=True, lower=True, baseuri=None, fallback=None
+        self, files, graph=None, exact=True, lower=True, parts=True,
+        baseuri=None, fallback=None,
     ):
         self.graph = graph
         if "*" in files:
@@ -79,6 +80,7 @@ class SQLiteSearcher(Searcher):
         self.fallback = fallback
         self.exact = exact
         self.lower = lower
+        self.parts = parts
 
         sizes = []
         for fname in self.files:
@@ -92,38 +94,48 @@ class SQLiteSearcher(Searcher):
 
         if self.lower:
             query = query.lower()
-
+            
+        queries = [query]
+        if self.parts:
+            for char in '([,:':
+                queries += query.split(char)
+            queries = set(queries)
+        
         all_results = []
-        for fname in self.files:
-            with sqlite3.connect(fname) as con:
-                cur = con.cursor()
-                params = {"query": query, "limit": limit}
-                q = self._EXACTQUERY if self.exact else self._LIKEQUERY
+        for query in queries:
+            query = query.strip()
+            
+            for fname in self.files:
+                with sqlite3.connect(fname) as con:
+                    cur = con.cursor()
+                    params = {"query": query, "limit": limit}
+                    q = self._EXACTQUERY if self.exact else self._LIKEQUERY
 
-                results = cur.execute(q, params).fetchall()
-                for uri, txt, score in results:
-                    if self.baseuri:
-                        uri = self.baseuri + uri
-                    sr = SearchResult(uri, score=score)
-                    all_results.append(sr)
+                    results = cur.execute(q, params).fetchall()
+                    for uri, txt, score in results:
+                        if self.baseuri:
+                            uri = self.baseuri + uri
+                        sr = SearchResult(uri, score=score)
+                        all_results.append(sr)
 
         n = len(all_results)
         log.debug(f"{self.__class__.__name__} got {n} results for {query}")
-
-        q = "insert or replace into label(uri, text, score) values (?,?,?)"
-        if self.fallback and (not all_results or str(all_results[0].uri) == "-1"):
-            all_results = list(self.fallback.search_entities(query, limit=limit))
-            if all_results:
-                for fname in self.files:
-                    with sqlite3.connect(fname) as con:
-                        for sr in all_results:
-                            uri = sr.uri.replace(self.baseuri, "") if uri else "-1"
-                            con.execute(q, [uri, query.lower(), sr.score])
-            else:
-                for fname in self.files:
-                    with sqlite3.connect(fname) as con:
-                        for sr in all_results:
-                            con.execute(q, ["-1", query.lower(), 1])
+        
+        for query in queries:
+            q = "insert or replace into label(uri, text, score) values (?,?,?)"
+            if self.fallback and (not all_results or str(all_results[0].uri) == "-1"):
+                all_results += list(self.fallback.search_entities(query, limit=limit))
+                if all_results:
+                    for fname in self.files:
+                        with sqlite3.connect(fname) as con:
+                            for sr in all_results:
+                                uri = sr.uri.replace(self.baseuri, "") if uri else "-1"
+                                con.execute(q, [uri, query.lower(), sr.score])
+                else:
+                    for fname in self.files:
+                        with sqlite3.connect(fname) as con:
+                            for sr in all_results:
+                                con.execute(q, ["-1", query.lower(), 1])
 
         if add_about and self.graph:
             all_results = [

@@ -13,7 +13,9 @@ params = "t2d-v2"
 [[step]]
 step = "link"
 #usecols = "keycol"
-usecols = "heuristic_key"
+usecols = "non_numeric_cols"
+#usecols = "heuristic_key" # only works for literal props
+
 lookup_config = {}
     [step.linker_config]
     class = "Salient"

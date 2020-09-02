@@ -128,7 +128,7 @@ def setcookies():
 def home():
     datasets = get_datasets()
     stats = {}
-    for datasetname, tables in tablessets.items():
+    for datasetname, tables in datasets.items():
         stats[datasetname] = dict(
             numtables=len(tables),
             numrows=sum(1 for _, d in tables.items() if d["rows"] for _ in d["rows"]),
@@ -137,7 +137,7 @@ def home():
             ),
             numents=sum(
                 1
-                for d in tables
+                for _, d in tables.items()
                 if d["entities"]
                 for res in d["entities"].values()
                 for es in res.values()
@@ -146,7 +146,7 @@ def home():
             numclass=sum(1 for _, d in tables.items() if d["classes"]),
             numprops=sum(
                 1
-                for _, d in data.items()
+                for _, d in tables.items()
                 if d["properties"]
                 for cps in d["properties"].values()
                 for _ in cps.values()
