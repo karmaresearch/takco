@@ -95,6 +95,9 @@ def run(
 
         name = "takco-run-" + str(datetime.datetime.now().isoformat())
 
+    if "workdir" in pipeline:
+        workdir = pipeline["workdir"]
+
     if not workdir:
         workdir = Path(pipeline.get("path", ".")).parent.resolve() / Path(name)
     workdir = Path(workdir)
@@ -102,19 +105,20 @@ def run(
         workdir.mkdir(exist_ok=True, parents=True)
 
     config = dict(
-        kbdir=kbdir,
         datadir=datadir,
         resourcedir=resourcedir,
+        workdir=workdir,
         assets=assets or {},
         kbs=kbs or {},
+        cache=cache,
         executor=executor,
     )
     for k, v in config.items():
         if k in pipeline:
-            config[k] = pipeline[k]
+            config[k] = v or pipeline[k]
 
     def wrap_step(stepfunc, stepargs, stepdir):
-        if cache:
+        if config.get("cache"):
             import json, shutil
 
             shutil.rmtree(stepdir, ignore_errors=True)
@@ -140,7 +144,7 @@ def run(
                 stepfunc = getattr(TableSet, steptype)
                 if stepfunc:
                     sig = signature(stepfunc)
-                    local_config = dict(tables=tables, workdir=workdir, **config)
+                    local_config = dict(tables=tables, **config)
                     for k, v in local_config.items():
                         if (k in sig.parameters) and (k not in stepargs):
                             stepargs[k] = v
@@ -206,7 +210,7 @@ def main():
 
     funcs = (
         run,
-        wiki,
+        appcache,
         TableSet.dataset,
         TableSet.extract,
         TableSet.reshape,
@@ -214,6 +218,7 @@ def main():
         TableSet.integrate,
         TableSet.link,
         TableSet.score,
+        TableSet.triples,
     )
     parser = defopt._create_parser(
         funcs,
@@ -232,7 +237,7 @@ def main():
             for _, subparser in action.choices.items():
                 subparser.add_argument(
                     "-C",
-                    "--config",
+                    "--conf",
                     action=SetConfig,
                     metavar="X",
                     help="Use global configuration (see docs)",
@@ -264,9 +269,10 @@ def main():
                     result._dump(sys.stdout, force=True)
             elif isinstance(result, (types.GeneratorType, map, filter)):
                 for r in result:
-                    print(r)
+                    print(json.dumps(r))
             else:
-                print(r)
+                print(json.dumps(result))
+
         except IOError:
             log.debug(f"IOError")
             try:

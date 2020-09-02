@@ -21,7 +21,7 @@ class First(Linker):
     def __init__(
         self,
         searcher: Searcher,
-        limit: int = 3,
+        limit: int = 1,
         only_majority: URI = None,
         exclude_about: Dict[URI, URI] = None,
     ):
@@ -83,9 +83,11 @@ class First(Linker):
 
         entities = existing_entities
         for (ri, ci), results in rowcol_results.items():
-            if results:
-                r = next(iter(results))  # First
-                entities.setdefault(str(ci), {})[str(ri)] = {r.uri: 1}
+            for j, r in enumerate(results):
+                if j >= self.limit:
+                    break
+                ents = entities.setdefault(str(ci), {}).setdefault(str(ri), {})
+                ents[r.uri] = r.score
 
         return {"entities": entities}
 
@@ -187,7 +189,7 @@ class Salient(Linker):
                             if not cellresults:
                                 # Check for overlap with literals
                                 for o in os:
-                                    matches = self.searcher.cellType.match(o, celltext)
+                                    matches = self.graph.cellType.match(o, celltext)
                                     mscore = sum(1 for m in matches)
                                     if mscore:
                                         prop_count[p] += mscore
@@ -196,7 +198,7 @@ class Salient(Linker):
 
                 ntotal = len(ri_toresults)
                 prop_salience = {
-                    p: n / self.searcher.count((None, p, None))
+                    p: n / self.graph.count((None, p, None))
                     for p, n in prop_count.items()
                     if n >= ntotal * self.prop_cover
                 }
@@ -215,7 +217,7 @@ class Salient(Linker):
                             celltext = row[toci]
                             for fr in fromri_results.get(ri, {}):
                                 for o in fr.get(p, []):
-                                    matches = self.searcher.label_match(o, celltext)
+                                    matches = self.graph.label_match(o, celltext)
                                     for m in matches:
                                         log.debug(f"Matched {o} to {celltext}")
                                         rs.append(SearchResult(str(o), {}, m.score))
@@ -237,7 +239,7 @@ class Salient(Linker):
                                     ):
                                         continue
                                     for s, _, _ in self.graph.triples([None, p, o]):
-                                        matches = self.searcher.label_match(s, celltext)
+                                        matches = self.graph.label_match(s, celltext)
                                         for m in matches:
                                             log.debug(f"Matched back {s} to {celltext}")
                                             rs.append(SearchResult(str(s), {}, m.score))
@@ -280,11 +282,11 @@ class Salient(Linker):
 
             cls_count = Counter()
             for uri, r in ent_result.items():
-                for t in self.searcher.typeProperties:
+                for t in self.graph.typeProperties:
                     for cls in r.get(t, []):
                         cls_count[cls] += 1
             cls_salience = {
-                cls: n / self.searcher.count((None, None, cls))
+                cls: n / self.graph.count((None, None, cls))
                 for cls, n in cls_count.items()
                 if n >= ntotal * self.class_cover
             }

@@ -1,6 +1,9 @@
 name = 't2d-v2-baseline'
 datadir = 'data'
 executor = 'tqdm'
+workdir = "output/t2d-v2-baseline/"
+cache = false
+
 
 [[step]]
 step = "dataset"
@@ -10,16 +13,26 @@ params = "t2d-v2"
 [[step]]
 step = "link"
 #usecols = "keycol"
-usecols = "non_numeric_cols"
+usecols = "heuristic_key"
 lookup_config = {}
     [step.linker_config]
     class = "Salient"
-    searcher = {name = "dbpedia_t2ksubset"}
     graph = {name = "dbpedia_t2ksubset"}
     prop_cover = 0.2
     class_cover = 0.2
     #only_majority = "@type"
+        [step.linker_config.searcher]
+        class = "SQLiteSearcher"
+        files = "data/dbpedia-t2ksubset-label-sqlitedbs-2/*"
+        baseuri = "http://dbpedia.org/resource/"
+        graph = {name = "dbpedia_t2ksubset"}
     
+    #[step.linker_config]
+    #class = "First"
+    #    [step.linker_config.searcher]
+    #    class = "SQLiteSearcher"
+    #    files = "data/dbpedia-t2ksubset-label-sqlitedbs-2/*"
+    #    baseuri = "http://dbpedia.org/resource/"
 
 [[step]]
 step = "score"

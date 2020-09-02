@@ -40,8 +40,10 @@ def wiki(
     urlprefix: str = "https://en.wikipedia.org/wiki/",
     localurlprefix: str = None,
     sample: int = None,
+    justurls: bool = False,
     encoding: str = None,
     executor: str = None,
+    config: Config = None,
 ):
     """
     Download Wikipedia articles
@@ -69,9 +71,53 @@ def wiki(
                 pageurl = pageurl.replace(urlprefix, localurlprefix)
             ent_abouturl.append((e, pageurl))
     ent_abouturl = ent_abouturl[:sample]
+    if justurls:
+        return ({"entity": e, "page": url} for e, url in ent_abouturl)
 
     log.info(f"Downloading {len(ent_abouturl)} URLs with executor {executor}")
     return executor(ent_abouturl)._pipe(_download, encoding=encoding)
+
+
+def warc(
+    globstrings: typing.List[str] = (), datadir: Path = None, executor: str = None
+):
+    """Load HTML pages from WARC files
+    
+    Args:
+        globstrings: Glob strings for WARC gz files
+        datadir: Data directory
+    
+    """
+    executor = (executor or HashBag) if type(executor) != str else globals()[executor]
+    datadir = Path(datadir) if datadir else Path(".")
+
+    fnames = [fname for g in globstrings for fname in datadir.glob(g)]
+    return executor(fnames)._pipe(get_warc_pages)
+
+
+def appcache(
+    assets: typing.List[Config] = (),
+    kbs: typing.List[Config] = (),
+    datadir: Path = None,
+    resourcedir: Path = None,
+    links_for_kb: typing.List[str] = (),
+):
+    """ Build app cache
+    
+    Args:
+        datadir: Data directory
+        resourcedir: Resource directory
+        assets: Asset specifications
+        kbs: Knowledge Base specifications
+        links_for_kb: Names of KBs for which to cache links and novelty stats
+    
+    """
+    import tqdm
+    from .app import make_datasets
+
+    return make_datasets(
+        assets, kbs, resourcedir, datadir, links_for_kb=links_for_kb, wrap=tqdm.tqdm
+    )
 
 
 class TableSet(HashBag):
@@ -109,6 +155,7 @@ class TableSet(HashBag):
         assets: typing.List[Config] = (),
         sample: int = None,
         executor: str = None,
+        config: Config = None,
     ):
         """Load tables from a dataset
         
@@ -124,6 +171,10 @@ class TableSet(HashBag):
         executor = (
             (executor or HashBag) if type(executor) != str else globals()[executor]
         )
+        datadir = datadir or config.get("datadir")
+        resourcedir = resourcedir or config.get("resourcedir")
+        assets = assets or config.get("assets")
+
         assets = {a.get("name", a.get("class")): Config(a) for a in assets}
         import itertools
         from . import evaluate
@@ -135,7 +186,10 @@ class TableSet(HashBag):
 
     @classmethod
     def extract(
-        cls, source: typing.Union[Config, HashBag], executor: str = None,
+        cls,
+        source: typing.Union[Config, HashBag],
+        executor: str = None,
+        config: Config = None,
     ):
         """Collect tables from HTML files
         
@@ -144,7 +198,6 @@ class TableSet(HashBag):
         Args:
             source: Source of HTML files
             workdir: Working directory for caching
-            kbdir: Directory of Trident KB
         """
         if isinstance(source, dict):
             for k, v in source.items():
@@ -164,10 +217,10 @@ class TableSet(HashBag):
     def reshape(
         tables: TableSet,
         workdir: Path = None,
-        kbdir: Path = None,
         heuristics: typing.List[Config] = ({"class": "NumSuffix"},),
         load_user: str = None,
         split_compound_columns: bool = False,
+        config: Config = None,
     ):
         """Reshape tables
         
@@ -175,7 +228,6 @@ class TableSet(HashBag):
 
         Args:
             workdir: Working Directory
-            kbdir: Directory of Trident KB
 
             heuristics: Use a subset of available heuristics
             load_user: Load into db as user
@@ -216,6 +268,7 @@ class TableSet(HashBag):
         agg_func: str = "mean",
         agg_threshold: float = 0,
         edge_exp: float = 1,
+        config: Config = None,
     ):
         """Cluster tables
         
@@ -223,7 +276,6 @@ class TableSet(HashBag):
 
         Args:
             tables: Tables
-            
             workdir: Working Directory
 
             addcontext: Add these context types
@@ -284,6 +336,7 @@ class TableSet(HashBag):
         },
         kbs: typing.List[Config] = (),
         pfd_threshold: float = 0.9,
+        config: Config = None,
     ):
         """Integrate tables with a KB
         
@@ -291,8 +344,6 @@ class TableSet(HashBag):
         
         Args:
             tables: Tables to integrate
-            workdir: Working directory
-            kbdir: Knowledge Base directory
             pfd_threshold:
         """
         kbs = {k.get("name", k.get("class")): Config(k) for k in kbs}
@@ -307,14 +358,15 @@ class TableSet(HashBag):
 
     def link(
         tables: TableSet,
+        lookup_config: Config = {"class": "MediaWikiAPI"},
+        lookup_cells: bool = False,
         linker_config: Config = {
             "class": "First",
             "searcher": {"class": "MediaWikiAPI"},
         },
-        lookup_config: Config = {"class": "MediaWikiAPI"},
-        lookup_cells: bool = False,
         kbs: typing.List[Config] = (),
         usecols: str = [],
+        config: Config = None,
     ):
         """Link table entities to KB
         
@@ -352,6 +404,7 @@ class TableSet(HashBag):
         resourcedir: Path = None,
         report: typing.Dict = None,
         keycol_only: bool = False,
+        config: Config = None,
     ):
         """Calculate evaluation scores
         
@@ -414,10 +467,19 @@ class TableSet(HashBag):
         scores = {}
         for task in tasks:
             gold, pred = all_gold.get(task, {}), all_pred.get(task, {})
-            log.info(f"Collected {len(gold)} gold and {len(pred)} pred for task {task}")
+            if pred:
+                log.info(
+                    f"Collected {len(gold)} gold and {len(pred)} pred for task {task}"
+                )
 
-            task_scores = evaluate.score.classification(gold, pred)
-            task_scores["predictions"] = len(pred)
-            scores[task] = task_scores
+                task_scores = evaluate.score.classification(gold, pred)
+                task_scores["predictions"] = len(pred)
+                scores[task] = task_scores
 
         return tables.__class__([{"score": scores}])
+
+    def triples(tables: TableSet):
+        """Make triples for predictions"""
+        from . import evaluate
+
+        return tables._pipe(evaluate.triples)

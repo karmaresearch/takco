@@ -5,6 +5,13 @@ import shutil
 
 from .matcher import Matcher
 
+try:
+    import faiss
+    import pandas as pd
+    import numpy as np
+except:
+    log.error(f"Cannot import fais/pandas/numpy")
+
 
 class EmbeddingMatcher(Matcher):
     """Blocking matcher using table cells from header or body"""
@@ -21,10 +28,6 @@ class EmbeddingMatcher(Matcher):
         **kwargs,
     ):
         """Matcher based on embeddings and FAISS"""
-
-        import faiss
-        import pandas as pd
-        import numpy as np
 
         mdir = Path(fdir) / Path("EmbeddingMatcher")
         if create:

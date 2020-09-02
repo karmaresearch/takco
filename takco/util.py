@@ -265,6 +265,26 @@ except Exception as e:
     log.debug(e)
 
 
+def get_warc_pages(fnames):
+    from warcio.archiveiterator import ArchiveIterator
+
+    for fname in fnames:
+        with open(fname, "rb") as stream:
+            for record in ArchiveIterator(stream):
+                if record.rec_type == "response":
+                    url = record.rec_headers.get_header("WARC-Target-URI")
+                    e = None
+                    if "?about=" in url:
+                        url, e = url.rsplit("?about=", 1)
+
+                    text = record.content_stream().read().decode()
+                    yield {
+                        "url": url,
+                        "about": e,
+                        "html": text,
+                    }
+
+
 from collections.abc import Iterable
 import json
 import copy
@@ -275,6 +295,7 @@ def preview(tables, nrows=5, ntables=10):
         tables = [tables]
 
     from jinja2 import Environment, PackageLoader
+    from IPython.display import HTML
 
     env = Environment(loader=PackageLoader("takco", "app"),)
     env.filters["any"] = any
@@ -309,8 +330,10 @@ def preview(tables, nrows=5, ntables=10):
         if ntables and i + 1 >= ntables:
             break
 
-    return f"""
+    return HTML(
+        f"""
     <div style="width: 100%; overflow-x: scroll; white-space: nowrap; display:flex;">
     {content}
     </div>
     """
+    )

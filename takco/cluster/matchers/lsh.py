@@ -10,6 +10,12 @@ import toml
 
 from .matcher import Matcher
 
+try:
+    import datasketch
+    import numpy as np
+except:
+    log.error(f"Cannot import datasketch/numpy")
+
 
 class LSHMatcher(Matcher):
     def __init__(
@@ -25,8 +31,6 @@ class LSHMatcher(Matcher):
         **kwargs,
     ):
         """MinHash-based jaccard similarity with LSH blocking"""
-        import datasketch
-        import numpy as np
 
         mdir = Path(fdir) / Path("LSHMatcher")
         if create:

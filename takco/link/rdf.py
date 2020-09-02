@@ -27,6 +27,12 @@ class GraphDB(Database, rdflib.Graph):
     def triples(self, triplepattern, **kwargs):
         return rdflib.Graph.triples(self, triplepattern, **kwargs)
 
+    def about(self, uri):
+        about = {}
+        for _, p, o in self.triples([URIRef(uri), None, None]):
+            about.setdefault(p, []).append(o)
+        return about
+
     def count(self, triplepattern):
         if hasattr(self.store, "count"):
             return self.store.count(triplepattern)
@@ -98,12 +104,6 @@ class RDFSearcher(Searcher, GraphDB):
         self.statementURIprefix = statementURIprefix
 
         GraphDB.__init__(self, store=store)
-
-    def get_about(self, uri):
-        about = {}
-        for _, p, o in self.triples([URIRef(uri), None, None]):
-            about.setdefault(p, []).append(o)
-        return SearchResult(uri, about)
 
     def search_entities(self, query: str, limit=1, add_about=False):
         if self.encoding and (query != query.encode("ascii", errors="ignore").decode()):

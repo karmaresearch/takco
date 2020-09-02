@@ -57,6 +57,7 @@
     const kbinfo = {{kbinfo | tojson}};
     $(function(){
         $('.kblink').on('mouseover', function(e){
+            $(this).removeAttr('title');
             var pos = $(this).offset()
             var info = kbinfo[$(this).attr('data-id')]
             kblinkbox = $('#kblinkbox')

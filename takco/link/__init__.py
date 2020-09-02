@@ -86,6 +86,16 @@ def link(
             return sum(int(isnum(c)) for c in col) / len(col) < 0.5
 
         table["non_numeric_cols"] = [i for i, c in enumerate(zip(*rows)) if nonnum(c)]
+
+        def heur(col):
+            isnum = lambda x: x.translate(str.maketrans("", "", "-.,%")).isnumeric()
+            numscore = sum(int(isnum(c)) for c in col) / len(col)
+            uniqscore = len(set(col)) / len(col)
+            return (numscore < 0.5) and (uniqscore > 0.9)
+
+        heuristic_keys = [i for i, c in enumerate(zip(*rows)) if heur(c)]
+        table["heuristic_key"] = heuristic_keys[0] if heuristic_keys else []
+
         table_usecols = table.get(str(usecols), [])
         if type(table_usecols) != list:
             table_usecols = [table_usecols]

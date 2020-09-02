@@ -1,6 +1,6 @@
 datadir = "data"
 resourcedir = "resources"
-cache = false
+cache = true
 #executor = "dask"
 
 [[kbs]]
@@ -26,17 +26,17 @@ name = "dbpedialookup"
 class = "DBpediaLookup"
     
 
-[[assets]]
-name = "t2d-v1"
-class = "T2D"
-download = [
-    "http://webdatacommons.org/webtables/tables_instance.tar.gz",
-    "http://webdatacommons.org/webtables/entities_instance.tar.gz",
-    "http://webdatacommons.org/webtables/classes_instance.csv",
-    "http://webdatacommons.org/webtables/attributes_instance.tar.gz",
-]
-version = 1
-fixuri = "t2d_fix.csv"
+#[[assets]]
+#name = "t2d-v1"
+#class = "T2D"
+#download = [
+#    "http://webdatacommons.org/webtables/tables_instance.tar.gz",
+#    "http://webdatacommons.org/webtables/entities_instance.tar.gz",
+#    "http://webdatacommons.org/webtables/classes_instance.csv",
+#    "http://webdatacommons.org/webtables/attributes_instance.tar.gz",
+#]
+#version = 1
+#fixuri = "t2d_fix.csv"
 
 [[assets]]
 name = "t2d-v2"
@@ -52,3 +52,4 @@ name = "t2d-v2-predictions"
 class = "Annotation"
 path = "output/t2d-v2-baseline/"
 fname = "1-link"
+gold = "t2d-v2"

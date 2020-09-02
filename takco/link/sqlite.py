@@ -1,4 +1,5 @@
 from pathlib import Path
+import glob
 
 import rdflib
 import logging as log
@@ -8,6 +9,15 @@ from .base import Searcher, SearchResult, WikiLookup
 
 
 class SQLiteWikiLookup(WikiLookup):
+    _INITDB = """
+        CREATE TABLE WikiLookup(
+            title TEXT,
+            uri TEXT
+        );
+        CREATE INDEX IF NOT EXISTS WikiLookup_uri ON WikiLookup(uri);
+        CREATE INDEX IF NOT EXISTS WikiLookup_title ON WikiLookup(title);
+    """
+
     def __init__(self, sqlitedb: Path, baseuri="", fallback: WikiLookup = None):
         self.sqlitedb = sqlitedb
         self.baseuri = baseuri
@@ -51,30 +61,75 @@ class SQLiteSearcher(Searcher):
         "http://www.w3.org/2004/02/skos/core#prefLabel": 1,
         "http://www.w3.org/2004/02/skos/core#altLabel": 0.5,
     }
-    _QUERY = """
+    _LIKEQUERY = """
         SELECT uri, txt, score FROM label WHERE txt LIKE :query LIMIT :limit
     """
+    _EXACTQUERY = """
+        SELECT uri, txt, score FROM label WHERE txt == :query LIMIT :limit
+    """
 
-    def __init__(self, graph=None, files=[], baseuri=None):
+    def __init__(
+        self, files, graph=None, exact=True, lower=True, baseuri=None, fallback=None
+    ):
         self.graph = graph
+        if "*" in files:
+            files = glob.glob(files)
         self.files = files
         self.baseuri = baseuri
+        self.fallback = fallback
+        self.exact = exact
+        self.lower = lower
+
+        sizes = []
+        for fname in self.files:
+            with sqlite3.connect(fname) as con:
+                sizes.append(con.execute("SELECT COUNT(*) FROM label").fetchone())
+        log.debug(f"Using SQlite DBs with sizes {sizes}")
 
     def search_entities(self, query: str, limit=1, add_about=False):
+        if not query:
+            return []
 
-        # TODO moar parallel
+        if self.lower:
+            query = query.lower()
 
         all_results = []
         for fname in self.files:
             with sqlite3.connect(fname) as con:
                 cur = con.cursor()
                 params = {"query": query, "limit": limit}
-                results = cur.execute(self._QUERY, params).fetchall()
+                q = self._EXACTQUERY if self.exact else self._LIKEQUERY
+
+                results = cur.execute(q, params).fetchall()
                 for uri, txt, score in results:
-                    if baseuri:
-                        uri = baseuri + uri
+                    if self.baseuri:
+                        uri = self.baseuri + uri
                     sr = SearchResult(uri, score=score)
                     all_results.append(sr)
+
+        n = len(all_results)
+        log.debug(f"{self.__class__.__name__} got {n} results for {query}")
+
+        q = "insert or replace into label(uri, text, score) values (?,?,?)"
+        if self.fallback and (not all_results or str(all_results[0].uri) == "-1"):
+            all_results = list(self.fallback.search_entities(query, limit=limit))
+            if all_results:
+                for fname in self.files:
+                    with sqlite3.connect(fname) as con:
+                        for sr in all_results:
+                            uri = sr.uri.replace(self.baseuri, "") if uri else "-1"
+                            con.execute(q, [uri, query.lower(), sr.score])
+            else:
+                for fname in self.files:
+                    with sqlite3.connect(fname) as con:
+                        for sr in all_results:
+                            con.execute(q, ["-1", query.lower(), 1])
+
+        if add_about and self.graph:
+            all_results = [
+                SearchResult(sr.uri, self.graph.about(sr.uri), sr.score)
+                for sr in all_results
+            ]
 
         return all_results[:limit]
 
@@ -86,7 +141,7 @@ if __name__ == "__main__":
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def createdb(
-        f,
+        triplefile,
         outdir,
         baseuri=None,
         langmatch="en",
@@ -102,15 +157,15 @@ if __name__ == "__main__":
         LINE = f'<{b}(?P<s>[^>]*)> <(?P<p>[^>]*)> "(?P<v>.*)"{l} .$'
         LINE = re.compile(LINE)
 
-        log.debug(f"Creating a db for {f} in {outdir}")
-        fname = Path(outdir) / Path(Path(f).name.split(".")[0] + ".sqlitedb")
+        log.debug(f"Creating a db for {triplefile} in {outdir}")
+        fname = Path(outdir) / Path(Path(triplefile).name.split(".")[0] + ".sqlitedb")
         with sqlite3.connect(fname) as con:
             cur = con.cursor()
             cur.executescript(SQLiteSearcher._INITDB)
             con.commit()
 
             tuples = []
-            for li, line in enumerate(f.open()):
+            for li, line in enumerate(triplefile.open()):
                 if tuples and not (li % chunk):
                     cur.executemany("INSERT INTO label VALUES (?,?,?)", tuples)
                     tuples = []
@@ -122,7 +177,7 @@ if __name__ == "__main__":
                         s, p, val = m["s"], m["p"], m["v"]
                         score = scoredict.get(p, 0)
                         if score and s:
-                            val = val.encode().decode("unicode-escape")
+                            val = val.encode().decode("unicode-escape").lower()
                             tuples.append((s, val, score))
                         else:
                             log.debug(f"Bad triple: {(s, p, o)}")
@@ -150,6 +205,8 @@ if __name__ == "__main__":
         """Create SQLite DBs from triples"""
 
         Path(outdir).mkdir(exist_ok=True, parents=True)
+
+        scoredict["http://www.w3.org/2000/01/rdf-schema#label"] = 1
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             kwargs = dict(

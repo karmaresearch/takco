@@ -7,6 +7,15 @@ from . import findpivot
 from typing import Dict, List, Iterator, Any, Tuple
 
 from collections import Counter
+import json
+
+
+def loads(s):
+    try:
+        return json.loads(s)
+    except Exception as e:
+        log.error(f"Cannot decode {s}")
+        raise e
 
 
 def unpivot(
@@ -19,7 +28,7 @@ def unpivot(
     emptycell=None,
     rightcolheader="Value",
     merge_header_func=lambda x: x[0],
-    wrap_funcs=(str, eval),
+    wrap_funcs=(json.dumps, json.loads),
 ) -> Tuple[List[List[Any]], List[List[Any]]]:
     """Unpivot a table.
     
@@ -72,7 +81,7 @@ def unpivot(
         df = df.to_frame((str(rightcolheader),)).reset_index()
 
     head = df.columns.to_frame().applymap(dec).T.values
-    body = df.fillna(str(emptycell)).applymap(dec).values
+    body = df.fillna(enc(emptycell)).applymap(dec).values
     return [list(row) for row in head], [list(row) for row in body]
 
 

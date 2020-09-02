@@ -123,7 +123,7 @@ class T2D(Dataset):
                     "headers": table_rows.get(name, [])[: numheaderrows.get(name)],
                     "rows": table_rows.get(name, [])[numheaderrows.get(name) :],
                     "entities": table_entities.get(name, {}),
-                    "classes": table_class.get(name),
+                    "classes": table_class.get(name, {}),
                     "properties": table_properties.get(name, {}),
                     "keycol": table_keycol.get(name),
                 }

@@ -2,12 +2,14 @@ name = 'chartedIn'
 
 [[step]]
 step = "extract"
-
-    [step.source.wiki]
-    pred = "http://www.wikidata.org/prop/direct/P2291"
-    localurlprefix = "http://localhost:8989/wikipedia_en_all_nopic_2019-12/A/"
-    encoding = "utf-8"
-    sample = 50
+    [step.source.warc]
+    globstrings = ["data/wikipedia-2019-12-P2291/*-00000.warc.gz"]
+    
+    #[step.source.wiki]
+    #pred = "http://www.wikidata.org/prop/direct/P2291"
+    #localurlprefix = "http://localhost:8989/wikipedia_en_all_nopic_2019-12/A/"
+    #encoding = "utf-8"
+    #sample=10
     
 [[step]]
 step = "reshape"
@@ -45,7 +47,7 @@ edge_exp = 2
     name  = 'bodyvec'
     class = 'EmbeddingMatcher'
     source = 'body'
-    wordvec_fname = "./data_old/glove.6B/glove.6B.50d.txt"
+    wordvec_fname = "./data/glove.6B/glove.6B.50d.txt"
     exp = 10
 
 [[step]]

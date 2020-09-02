@@ -32,6 +32,12 @@ For larger workloads, setup a locally hosted mirror of Wikipedia.
 2. Download a `Wikipedia zim dump <https://dumps.wikimedia.org/other/kiwix/zim/wikipedia/>`_.
 3. Host it with ``./kiwix-serve --port=8989 your_wiki_dump.zim``
 
+To download many pages to WARC format, you can use wget in parallel:
+::
+    
+    parallel -j4 --pipe-part -a urls.txt \
+      'wget -i - --warc-file=warcs/{#} --warc-max-size=1G --warc-cdx=on -O/dev/null -q'
+    
 
 On a machine with many cores, it is often useful to use the `Dask <http://dask.org>`_
 execution engine, which provides a dashboard for running tasks.

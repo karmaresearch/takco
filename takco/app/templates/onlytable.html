@@ -78,7 +78,18 @@
                     
                 {% set ents = table.entities.get(ci, {}).get(ri, {}) %}
                 {% set ent = (ents | list | select | first | string) %}
-                <!-- {{ classes.append('noent') if ents and rowannotated and ((ent not in kbinfo) or (not kbinfo[ent].inlinks + kbinfo[ent].outlinks)) else 'ent' }} -->
+                <!-- "noent" means that the annotated entity is not in the KG -->
+                <!-- {{ (classes.append('noent') if (
+                            ents and rowannotated and (
+                                (ent not in kbinfo) or (not kbinfo[ent].inlinks + kbinfo[ent].outlinks)
+                            )
+                        ) else 'ent') }} -->
+            
+                {% set goldents = table.gold.entities.get(ci, {}).get(ri, {}) if 'gold' in table else {} %}
+                {% set goldent = (goldents | list | select | first | string) %}
+                <!-- goldent: {{goldent}}; correct: {{ent == goldent}} -->
+                {% set iscorrect = ents and rowannotated and goldent and (ent == goldent) %}
+                <!-- {{classes.append('incorrect') if not iscorrect else 'correct'}} -->
                 
                 {% if kblinks %}
                     <!-- {{ classes.append('noclass') if ent and table.classes[ci] and not kblinks.entity_matchclass[ent] else 'class' }} -->
@@ -96,9 +107,22 @@
 
                 <td class="{{ ' '.join(classes) }}">
                     {% if ent %}
-                        <a href="{{ent}}" data-id="{{ent}}" class="kblink" title="{{ent}}">{{celltext}}</a>
+                        {% if ('gold' in table) and not iscorrect %}
+                            {{celltext}}
+                            <nobr>
+                                <a href="{{ent}}" data-id="{{ent}}" class="kblink btn" title="{{ent}}">❌</a>
+                                {% if goldent %}
+                                    <a href="{{goldent}}" data-id="{{goldent}}" class="kblink btn" title="{{goldent}}">💡</a>
+                                {% endif %}
+                            </nobr>
+                        {% else %}
+                            <a href="{{ent}}" data-id="{{ent}}" class="kblink" title="{{ent}}">{{celltext}}</a>
+                        {% endif %}
                     {% else %}
                         {{celltext}}
+                        {% if goldent %}
+                            <a href="{{goldent}}" data-id="{{goldent}}" class="kblink btn" title="{{goldent}}">💡</a>
+                        {% endif %}
                     {% endif %}
                     {% if match and (1 > match.score) %}
                         <span class="match">[{{match.lit}}]</span>

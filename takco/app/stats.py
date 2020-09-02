@@ -1,5 +1,7 @@
+import logging as log
 import rdflib
 from rdflib import URIRef, Literal
+import time
 
 
 def get_kbgold(kb, table):
@@ -10,6 +12,7 @@ def get_kbgold(kb, table):
 
 
 def get_kbinfo(kb, table):
+    start = time.time()
     kbinfo = {}
     props = [
         p for cps in table["properties"].values() for ps in cps.values() for p in ps
@@ -38,9 +41,11 @@ def get_kbinfo(kb, table):
                 kbinfo[str(e)]["inlinks"] = kb.count((None, None, URIRef(e)))
                 kbinfo[str(e)]["outlinks"] = kb.count((URIRef(e), None, None))
 
-    for e in set(
-        e for row_es in table["entities"].values() for es in row_es.values() for e in es
-    ):
+    def all_ents(table):
+        ents = table.get("entities", {})
+        return set(e for row_es in ents.values() for es in row_es.values() for e in es)
+
+    for e in all_ents(table) | all_ents(table.get("gold", {})):
         all_p = set(kb.labelProperties) | set(kb.typeProperties) | set(props)
         kbinfo[str(e)] = {
             "uri": e,
@@ -67,10 +72,13 @@ def get_kbinfo(kb, table):
             )
             if vals:
                 kbinfo[str(e)]["props"].append({"uri": p, "vals": list(vals)})
+
+    log.debug(f"KBinfo took {time.time() - start:.1f} seconds")
     return kbinfo
 
 
 def get_table_kblinks(kb, table):
+    start = time.time()
     kblinks = {}
     kblinks["entity_hasclass"] = {}
     kblinks["entity_matchclass"] = {}
@@ -133,8 +141,10 @@ def get_table_kblinks(kb, table):
                             best_match = max(
                                 (
                                     match
-                                    for _, _, o in kb.triples((e, p, None))
-                                    for match in kb.label_match(o, surface)
+                                    for _, _, o in kb.triples(
+                                        (URIRef(e), URIRef(p), None)
+                                    )
+                                    for match in kb.label_match(o, cell)
                                 ),
                                 key=lambda m: m.score,
                                 default=None,
@@ -147,6 +157,7 @@ def get_table_kblinks(kb, table):
                                 }
                 kblinks["rownr_colnr_matches"][str(rownr)] = colnr_matches
 
+    log.debug(f"KBlinks took {time.time() - start:.1f} seconds")
     return kblinks
 
 
@@ -172,6 +183,8 @@ def novelty_add_pct(novelty):
 
 
 def get_novelty(kb, table, kblinks):
+    start = time.time()
+
     lbl_ci = None  # TODO: multiple label columns?
     for cps in table["properties"].values():
         for colnr, ps in cps.items():
@@ -233,4 +246,5 @@ def get_novelty(kb, table, kblinks):
     )
     novelty_add_pct(novelty)
 
+    log.debug(f"Novelty took {time.time() - start:.1f} seconds")
     return novelty

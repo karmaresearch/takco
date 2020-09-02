@@ -208,7 +208,7 @@ table.dataframe td, table.dataframe  th {
     font-size:10pt;
 }
 
-.sort_btn {
+.btn, .sort_btn {
     text-decoration: none;
 }
 
