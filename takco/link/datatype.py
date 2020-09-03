@@ -20,6 +20,15 @@ CellValue = str
 YEAR_PATTERN = re.compile("^(\d{4})(?:[-–—]\d{2,4})?$")
 
 
+def dateparse(x):
+    import dateparser
+
+    try:
+        return dateparser.parse(x)
+    except:
+        return None
+
+
 def is_literal_type(uri):
     return uri.startswith("http://www.w3.org/2001/XMLSchema#")
 
@@ -64,10 +73,8 @@ class SimpleCellType(CellType):
     def coltype(
         cls, cell_ents: List[Tuple[CellValue, List[URI]]]
     ) -> Dict[CellType, int]:
-        import dateparser
 
         n = len(cell_ents)
-
         counts = collections.Counter()
         for c, l in cell_ents:
             if YEAR_PATTERN.match(c):
@@ -76,7 +83,7 @@ class SimpleCellType(CellType):
                 counts[cls.NUMBER] += 1
             elif l and not hasattr(l, "datatype"):
                 counts[cls.ENTITY] += 1
-            elif dateparser.parse(c):
+            elif dateparse(c):
                 counts[cls.DATETIME] += 1
             else:
                 counts[cls.TEXT] += 1
@@ -88,7 +95,6 @@ class SimpleCellType(CellType):
 
     @classmethod
     def match(cls, literal: URIRef, surface: str, stringmatch="jaccard"):
-        import dateparser
 
         dtype = literal.datatype if hasattr(literal, "datatype") else None
         literal, surface = str(literal).strip(), str(surface).strip()
@@ -110,7 +116,7 @@ class SimpleCellType(CellType):
                         try:
                             s = datetime.datetime.fromisoformat(surface).timestamp()
                         except:
-                            s = dateparser.parse(surface).timestamp()
+                            s = dateparse(surface).timestamp()
                     if s:
                         score = max(0, 1 - (abs(s - l) / max(abs(s), abs(l))))
 

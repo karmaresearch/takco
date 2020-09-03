@@ -44,13 +44,14 @@ class LSHMatcher(Matcher):
         self.num_perm = num_perm
         self.threshold = threshold
         self.config(Path(mdir) / Path("config.toml"))
+
         self.redis_dir = Path(self.redis_dir)
+        self.redis_cli = str((self.redis_dir / Path("redis-cli")).resolve())
+
+        log.info(f"redis cli: {self.redis_cli}")
 
         # Start redis if not running
-        ping = subprocess.run(
-            [(self.redis_dir / Path("redis-cli")), "-p", str(port), "ping"],
-            capture_output=True,
-        )
+        ping = self.cli("ping")
         if ping.returncode != 0:
             subprocess.run(
                 [
@@ -63,15 +64,11 @@ class LSHMatcher(Matcher):
                     Path(mdir) / Path(f"{self.port}.pid"),
                     "--dbfilename",
                     "dump.rdb",
-                ],
-                capture_output=True,
+                ]
             )
         while ping.returncode != 0:
             time.sleep(1)
-            ping = subprocess.run(
-                [self.redis_dir / Path("redis-cli"), "-p", str(self.port), "ping"],
-                capture_output=True,
-            )
+            ping = self.cli("ping")
             log.info(f"Ping redis: {'offline' if ping.returncode else 'online'}")
 
         self.lshindex = datasketch.MinHashLSH(
@@ -101,6 +98,11 @@ class LSHMatcher(Matcher):
 
         self.digests = []
         super().__init__(fdir)
+
+    def cli(self, command):
+        return subprocess.run(
+            [self.redis_cli, "-p", str(self.port), command], capture_output=True,
+        )
 
     def add(self, table):
         if self.session is None:
@@ -150,10 +152,7 @@ class LSHMatcher(Matcher):
         )
         np.save(self.column_ids_fname, np.array(list(self.ci_digest.keys())))
 
-        r = subprocess.run(
-            [self.redis_dir / Path("redis-cli"), "-p", str(self.port), "save"],
-            capture_output=True,
-        )
+        r = self.cli("save")
         log.info(f"Saved redis with code {r.returncode}")
 
     def block(self, ti: int):
@@ -173,8 +172,5 @@ class LSHMatcher(Matcher):
                     yield np.mean((mh1 == mh2)), ci1, ci2
 
     def close(self):
-        r = subprocess.run(
-            [self.redis_dir / Path("redis-cli"), "-p", str(self.port), "shutdown"],
-            capture_output=True,
-        )
+        r = self.cli("shutdown")
         log.info(f"Shutdown redis with code {r.returncode}")

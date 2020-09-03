@@ -43,8 +43,6 @@ class EmbeddingMatcher(Matcher):
         self.wordvec_fname = Path(self.wordvec_fname)
 
         self.faissindex_fname = Path(mdir) / Path("index.faiss")
-        if self.faissindex_fname.exists():
-            self.faissindex = faiss.read_index(str(self.faissindex_fname))
 
         self.means_fname = Path(mdir) / Path("means.npy")
         if self.means_fname.exists():
@@ -135,6 +133,8 @@ class EmbeddingMatcher(Matcher):
         faiss.write_index(index, str(self.faissindex_fname))
 
     def prepare_block(self, tis):
+        faissindex = faiss.read_index(str(self.faissindex_fname))
+
         ci_ti = {ci: ti for ti in tis for ci in self.get_columns(ti)}
         qi_mean, ci_qi = [], {}
         for ci in ci_ti:
@@ -149,7 +149,7 @@ class EmbeddingMatcher(Matcher):
             xq /= np.sqrt((xq ** 2).sum(axis=1))[:, None]  # L2 normalize
             xq = xq.astype("float32")
             log.debug(f"Querying faiss index with query matrix of shape {xq.shape}")
-            D, I = self.faissindex.search(xq, self.topn)
+            D, I = faissindex.search(xq, self.topn)
 
             for ci1, qi in ci_qi.items():
                 indexes, similarities = I[qi], (0.5 + (D[qi] / 2)) ** self.exp

@@ -245,8 +245,6 @@ class TableSet(HashBag):
         headerId_pivot = {p["headerId"]: p for p in pivots}
         log.info(f"Found {len(headerId_pivot)} pivots")
 
-        log.info(f"Reshaping with heuristics {heuristics}")
-
         tables = tables._pipe(
             reshape.unpivot_tables,
             headerId_pivot,
@@ -285,7 +283,7 @@ class TableSet(HashBag):
             agg_threshold: Matcher aggregation threshold
             edge_exp : Exponent of edge weight for Louvain modularity
         """
-        matchers = {m.get("name", m.get("class")): Config(m) for m in matchers}
+        matcher_kwargs = {m.get("name", m.get("class")): Config(m) for m in matchers}
 
         import tqdm
         import sqlite3
@@ -312,34 +310,35 @@ class TableSet(HashBag):
 
             # Collect index
             tables.persist()
-            alltables = list(tables)
+
             index = pd.concat(tables._pipe(cluster.make_column_index_df))
             Path(workdir or ".").mkdir(exist_ok=True, parents=True)
             fpath = Path(workdir) / Path("indices.sqlite")
-            log.info(f"Opening sqlitedb {fpath}")
+            if fpath.exists():
+                fpath.unlink()
+            log.info(f"Writing {len(index)} index rows to {fpath}")
             with sqlite3.connect(fpath) as con:
                 index.to_sql("indices", con, index_label="i", if_exists="replace")
                 con.execute("create index colOffset on indices(columnIndexOffset)")
 
-            dirpath = workdir
-            matcher_kwargs = matchers
-
             # TODO: parallelize map_partition
-            log.info(f"Using matchers {matcher_kwargs}")
-            matchers = clustering.matcher_add_tables(tables, dirpath, matcher_kwargs)
-            for m in matchers:
+            log.info(f"Using matchers {matchers}")
+            matchers = tables._pipe(
+                clustering.matcher_add_tables, workdir, matcher_kwargs
+            )
+            for m in set(matchers):
                 m.index()
 
             # Get blocked column match scores
-            # TODO: parallelize map_partition
+            log.info(f"Computing column similarities...")
             table_indices = tables.__class__(set(t["tableIndex"] for t in tables))
             simdfs = table_indices._pipe(
-                cluster.make_blocked_matches_df, dirpath, matcher_kwargs
+                cluster.make_blocked_matches_df, workdir, matcher_kwargs
             )
             sims = pd.concat(list(simdfs))
             log.info(f"Computed {len(sims)} column similarities")
 
-            sims.to_csv(Path(dirpath) / Path("sims.csv"))
+            sims.to_csv(Path(workdir) / Path("sims.csv"))
 
             log.info(
                 f"Aggregating matcher results using `{agg_func} > {agg_threshold}` "
@@ -350,7 +349,7 @@ class TableSet(HashBag):
             # Compute soft column alignment jaccard
             import warnings
 
-            con = sqlite3.connect(Path(dirpath) / Path("indices.sqlite"))
+            con = sqlite3.connect(Path(workdir) / Path("indices.sqlite"))
             n = pd.read_sql("select i,numCols from indices", con).set_index("i")[
                 "numCols"
             ]
@@ -387,7 +386,7 @@ class TableSet(HashBag):
             iparts = enumerate(tqdm.tqdm(louvain_partition, desc="Clustering columns"))
             ti_pi, pi_ncols, ci_pci = {}, {}, {}
             chunks = cluster.cluster_partition_columns(
-                iparts, clus, aggsim, agg_func, dirpath, matcher_kwargs
+                iparts, clus, aggsim, agg_func, agg_threshold, workdir, matcher_kwargs
             )
             for chunk_ti_pi, chunk_pi_ncols, chunk_ci_pci in chunks:
                 ti_pi.update(chunk_ti_pi)

@@ -8,6 +8,7 @@ from typing import Dict, List, Iterator, Any, Tuple
 
 from collections import Counter
 import json
+import copy
 
 L_COLHEADER = "_Variable"
 R_COLHEADER = "_Value"
@@ -49,7 +50,8 @@ def unpivot(
 
     if all(all(all(type(c) == str for c in r) for r in p) for p in (header, body)):
         wrap_funcs = (lambda x: x, lambda x: x)
-    enc, dec = wrap_funcs
+    enc, dec_ = wrap_funcs
+    dec = lambda x: dec_(x) if x else copy.deepcopy(emptycell)  # must be a better way..
 
     allrows = [[enc(c) for c in row] for row in header + body]
 
@@ -120,9 +122,6 @@ def yield_pivots(headerobjs, use_heuristics: Dict = None):
                     log.debug(f"Failed to unpivot header {headertext} due to {e}")
 
 
-#                     raise e
-
-
 def unpivot_tables(
     tables: Iterator[Dict],
     headerId_pivot: Dict[str, Dict],
@@ -135,6 +134,7 @@ def unpivot_tables(
     }
 
     for table in tables:
+        table = copy.deepcopy(table)
 
         headerText = [
             [c.get("text", "") for c in hrow] for hrow in table["tableHeaders"]
@@ -151,8 +151,8 @@ def unpivot_tables(
             leftcolheader = L_COLHEADER
             rightcolheader = R_COLHEADER
             if level >= len(headerText):
-                log.debug(f"Unpivot level is too big!")
-                continue
+                log.debug(f"Unpivot level is too big! ({level}, {headerText})")
+                return table
 
             # Allow heuristics to split the colheader
             heuristic = heuristics.get(pivot["heuristic"])
@@ -188,12 +188,12 @@ def unpivot_tables(
                 return
 
             leftcolheader = {
-                "text": leftcolheader,
-                "tdHtmlString": f"<th>{leftcolheader}</th>",
+                "text": L_COLHEADER,
+                "tdHtmlString": f"<th>{L_COLHEADER}</th>",
             }
             rightcolheader = {
-                "text": rightcolheader,
-                "tdHtmlString": f"<th>{rightcolheader}</th>",
+                "text": R_COLHEADER,
+                "tdHtmlString": f"<th>{R_COLHEADER}</th>",
             }
             emptycell = {"text": ""}
 

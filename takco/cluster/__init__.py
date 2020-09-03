@@ -92,7 +92,11 @@ def make_aggsim_df(similarity_dataframes):
     pass
 
 
-def cluster_partition_columns(iparts, clus, aggsim, agg_func, dirpath, matcher_kwargs):
+def cluster_partition_columns(
+    iparts, clus, aggsim, agg_func, agg_threshold, dirpath, matcher_kwargs
+):
+    import pandas as pd
+
     ti_pi = {}
     pi_ncols = {}
     ci_pci = {}

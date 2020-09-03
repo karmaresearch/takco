@@ -23,26 +23,18 @@ def get_headerId(header):
     return int(h[:16], 16) // 2  # integer between 0 and SQLite MAX_VAL
 
 
-def create_matchers(dirpath, matcher_kwargs):
+def load_matchers(dirpath, matcher_kwargs, create=False):
     for name, kwargs in matcher_kwargs.items():
-        kwargs = dict(kwargs)
-        matcher_class = all_matchers[kwargs.pop("class")]
-        log.info(f"Creating {matcher_class} in {dirpath}")
-        m = matcher_class(dirpath, **kwargs, create=True)
+        matcher_class = all_matchers[kwargs["class"]]
+        m = matcher_class(dirpath, create=create, **kwargs)
         m.name = name
         yield m
 
 
-def load_matchers(dirpath, matcher_kwargs):
-    for name, kwargs in matcher_kwargs.items():
-        matcher_class = all_matchers[kwargs["class"]]
-        yield matcher_class(dirpath)
-
-
 def matcher_add_tables(tables, dirpath, matcher_kwargs):
     # Create matchers
-    matchers = list(create_matchers(dirpath, matcher_kwargs))
-    log.info(f"Loading tables")
+    matchers = list(load_matchers(dirpath, matcher_kwargs, create=True))
+    log.info(f"Loading tables into matchers")
     for table in tables:
         for m in matchers:
             m.add(table)

@@ -111,7 +111,9 @@ class Trident(rdflib.store.Store):
             (vs, not vp, vo): lambda: ((rs, pi, ro) for rs, ro in db.os(pi)),
             (vs, vp, not vo): lambda: ((rs, rp, oi) for rp, rs in db.ps(oi)),
             (vs, not vp, not vo): lambda: ((rs, pi, oi) for rs in db.s(pi, oi)),
-            (not vs, vp, not vo): lambda: ((si, rp, oi) for rp in db.p(si, oi)),
+            (not vs, vp, not vo): lambda: (
+                (si, rp, oi) for rp, ro in db.po(si) if oi == ro
+            ),
             (not vs, not vp, vo): lambda: ((si, pi, ro) for ro in db.o(si, pi)),
             (not vs, not vp, not vo): lambda: (
                 x for x in [(si, pi, oi)] if db.exists(*x)

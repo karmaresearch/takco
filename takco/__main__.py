@@ -59,7 +59,7 @@ def run(
     assets: typing.Dict = None,
     kbs: typing.Dict = None,
     force: bool = False,
-    step_force: typing.List[int] = (),
+    step_force: int = None,
     cache: bool = False,
     executor: str = None,
 ):
@@ -74,7 +74,7 @@ def run(
         assets: Asset definitions
         kbs: Knowledge Base definitions
         force: Force execution of steps if cache files are already present
-        step_force: Force some steps by step name
+        step_force: Force this step number and later
         cache: Cache intermediate results
     """
     pipeline = Config(pipeline)
@@ -139,7 +139,7 @@ def run(
             stepdir = Path(workdir) / Path(stepname)
 
             nodir = (not stepdir.exists()) or (not any(stepdir.iterdir()))
-            if force or (si in step_force) or nodir:
+            if force or (si >= step_force) or nodir:
 
                 stepfunc = getattr(TableSet, steptype)
                 if stepfunc:

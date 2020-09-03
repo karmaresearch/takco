@@ -1,8 +1,9 @@
 from .dataset import *
 from .t2d import *
 from .semtab import *
+from .ibm import *
 
-__all__ = ["Dataset", "Annotation", "T2D", "Semtab", "load"]
+__all__ = ["Dataset", "Annotation", "T2D", "Semtab", "IBM", "load"]
 
 
 from pathlib import Path
@@ -39,16 +40,24 @@ def load(resourcedir: Path = None, datadir: Path = None, **params):
             if not fpath.exists():
                 log.info(f"Downloading {url} to {fpath}")
                 urlretrieve(url, fpath)
+
+                if len(urls) > 1:
+                    dpath = fpath.parent / Path(fpath.name.split(".")[0])
+                    dpath.mkdir(parents=True, exist_ok=True)
+                else:
+                    dpath = workdir
+
                 if fpath.name.endswith(".tar.gz"):
                     import tarfile
 
-                    if len(urls) > 1:
-                        dpath = fpath.parent / Path(fpath.name.split(".")[0])
-                        dpath.mkdir(parents=True, exist_ok=True)
-                    else:
-                        dpath = workdir
                     log.info(f"Unpacking {fpath} to {dpath}")
                     tarfile.open(fpath, "r:gz").extractall(dpath)
+                elif fpath.name.endswith(".zip"):
+                    import zipfile
+
+                    log.info(f"Unpacking {fpath} to {dpath}")
+                    with zipfile.ZipFile(fpath, "r") as zip_ref:
+                        zip_ref.extractall(dpath)
 
     for k, v in params.items():
         if (type(v) == str) and v.endswith("csv"):
