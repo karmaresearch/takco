@@ -54,7 +54,7 @@ class CellJaccMatcher(Matcher):
                 table["columnIndexOffset"] + table["numCols"],
             )
             for ci, cell in zip(ci_range, row):
-                txt = cell.get("text").lower()
+                txt = cell.get("text", "").lower()
                 txt = (
                     frozenset(Matcher.tokenize(txt))
                     if self.tokenize

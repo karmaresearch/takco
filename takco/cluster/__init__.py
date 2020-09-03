@@ -2,17 +2,15 @@ from typing import List
 
 from pathlib import Path
 import logging as log
-import warnings
 
 
 from .headerunions import combine_by_first_header
 from .context import tables_add_context_rows
-from .clustering import all_matchers
-
 from . import clustering
 
 
 def table_get_headerId(table):
+    """Get the hash for a table header (create it if it isn't set)"""
     if "headerId" not in table:
         tableHeaders = table["tableHeaders"]
         headerText = tuple(
@@ -58,6 +56,7 @@ def louvain(tablesim, edge_exp=1) -> List[List[int]]:
 
 
 def make_column_index_df(tables):
+    """Yield a dataframe for the tables' column indexes"""
     import pandas as pd
 
     df = pd.DataFrame(
@@ -74,88 +73,30 @@ def make_column_index_df(tables):
     yield df
 
 
-def cluster(
-    tables, dirpath, matcher_kwargs, agg_func=None, agg_threshold=0, edge_exp=1
-):
-    """Run clustering
-    
-    Args:
-        tables: Tables to cluster
-        
-    """
-    import tqdm
+def make_blocked_matches_df(table_indices, dirpath, matcher_kwargs):
+    """Yield a dataframe for similarities from blocked matches"""
     import pandas as pd
 
-    tables = list(tables)
-    assert len(tables)
+    matches = clustering.yield_blocked_matches(table_indices, dirpath, matcher_kwargs)
+    simdf = {mi: {} for mi, _ in enumerate(matcher_kwargs)}
+    for mi, indexes, score in matches:
+        simdf[mi][indexes] = score
+    simdf = pd.DataFrame.from_dict(simdf)
+    simdf.index.names = ["ti1", "ti2", "ci1", "ci2"]
+    simdf.columns = list(matcher_kwargs)
+    yield simdf
 
-    # TODO: parallelize map_partition
 
-    log.info(f"Using matchers {matcher_kwargs}")
+def make_aggsim_df(similarity_dataframes):
+    """Yield aggregated similarity dataframe"""
+    pass
 
-    matchers = clustering.matcher_add_tables(tables, dirpath, matcher_kwargs)
-    for m in matchers:
-        m.index()
-    matcher_names = list(matcher_kwargs)
 
-    # Get blocked column match scores
-    # TODO: parallelize map_partition
-    table_indices = set(t["tableIndex"] for t in tables)
-
-    log.info(f"Blocking and matching with {len(table_indices)} indexes")
-    sims = {}
-    for m, i, s in clustering.yield_blocked_matches(
-        table_indices, dirpath, matcher_kwargs
-    ):
-        sims.setdefault(m, {})[i] = s
-    sims = pd.DataFrame.from_dict(sims)
-    sims.index.names = ["ti1", "ti2", "ci1", "ci2"]
-    sims.columns = matcher_names
-    log.info(f"Computed {len(sims)} column similarities")
-
-    sims.to_csv(Path(dirpath) / Path("sims.csv"))
-
-    log.info(f"Aggregating matcher results using `{agg_func} > {agg_threshold}` ")
-    aggsim = clustering.aggregate_similarities(sims, agg_func)
-    aggsim = aggsim[aggsim > agg_threshold]
-
-    # Compute soft column alignment jaccard
-    import sqlite3
-
-    con = sqlite3.connect(Path(dirpath) / Path("indices.sqlite"))
-    n = pd.read_sql("select i,numCols from indices", con).set_index("i")["numCols"]
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=FutureWarning)
-        tqdm.tqdm.pandas(desc="Aggregating column scores")
-    aligned_total = aggsim.groupby(level=[0, 1]).progress_aggregate(
-        clustering.max_align, return_total=True
-    )
-    j = (
-        pd.DataFrame({"total": aligned_total})
-        .join(n.rename("n1"), on="ti1")
-        .join(n.rename("n2"), on="ti2")
-    )
-    tablesim = j["total"] / (j["n1"] + j["n2"] - j["total"])
-    # TODO: end of parallel loop
-
-    tablesim[tablesim < 0] = 0
-    louvain_partition = louvain(tablesim, edge_exp=edge_exp)
-    log.info(f"Found {len(louvain_partition)} clusters")
-
-    # Cluster columns
-    # TODO: paralellize?
-    from sklearn.cluster import AgglomerativeClustering
-
-    clus = AgglomerativeClustering(
-        affinity="precomputed",
-        linkage="complete",
-        n_clusters=None,
-        distance_threshold=1,
-    )
+def cluster_partition_columns(iparts, clus, aggsim, agg_func, dirpath, matcher_kwargs):
     ti_pi = {}
     pi_ncols = {}
     ci_pci = {}
-    for pi, part in enumerate(tqdm.tqdm(louvain_partition, desc="Clustering columns")):
+    for pi, part in iparts:
         for ti in part:
             ti_pi[ti] = pi
 
@@ -176,7 +117,7 @@ def cluster(
             tablepairs_matches = clustering.yield_tablepairs_matches(
                 unblocked_pairs, dirpath, matcher_kwargs
             )
-            ub_sims = {i: {} for i, _ in enumerate(matcher_names)}
+            ub_sims = {i: {} for i, _ in enumerate(matcher_kwargs)}
             for m, i, s in tablepairs_matches:
                 ub_sims.setdefault(m, {})[i] = s
 
@@ -184,7 +125,7 @@ def cluster(
                 log.debug(f"ub_sims {ub_sims}")
                 ub_sims = pd.DataFrame.from_dict(ub_sims)
                 ub_sims.index.names = ["ti1", "ti2", "ci1", "ci2"]
-                ub_sims.columns = matcher_names
+                ub_sims.columns = list(matcher_kwargs)
                 ub_aggsim = clustering.aggregate_similarities(ub_sims, agg_func)
                 ub_aggsim = ub_aggsim[ub_aggsim > agg_threshold]
                 colsim = pd.concat([colsim, ub_aggsim])
@@ -202,32 +143,4 @@ def cluster(
             log.debug(
                 f"Partition {pi} has {len(part)} tables and {ncols} column clusters"
             )
-
-    # TODO: serialize partitions & cluster alignments for UI
-
-    # TODO: parallelize map_partition
-    for table in tables:
-        table["part"] = ti_pi[table["tableIndex"]]
-        #         assert all( len(row)==table['numCols'] for row in table['tableData'] ) # fails
-        ci_range = range(
-            table["columnIndexOffset"], table["columnIndexOffset"] + table["numCols"]
-        )
-        pci_c = {ci_pci[ci]: c for c, ci in enumerate(ci_range) if ci in ci_pci}
-        table["partColAlign"] = {
-            pci: pci_c.get(pci, None) for pci in range(pi_ncols[table["part"]])
-        }
-        log.debug(
-            f"Table {table['tableIndex']} has pci_c {pci_c}, partColAlign {table['partColAlign']}"
-        )
-
-    # TODO: parallelize foldby
-    pi_mergetable = {}
-    for table in tables:
-        pi = table["part"]
-        pi_mergetable[pi] = (
-            clustering.merge_partition_tables(pi_mergetable[pi], table)
-            if (pi in pi_mergetable)
-            else table
-        )
-
-    yield from pi_mergetable.values()
+    yield ti_pi, pi_ncols, ci_pci

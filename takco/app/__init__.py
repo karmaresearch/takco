@@ -38,7 +38,8 @@ def make_datasets(assets, kbs, resourcedir, datadir, links_for_kb=(), wrap=None)
         def wrap(it, **kwargs):
             yield from it
 
-    kbs = {k.get("name", k.get("class")): k for k in kbs}
+    if not isinstance(kbs, dict):
+        kbs = {k.get("name", k.get("class")): k for k in kbs}
 
     datasets = {}
     dataset_gold = {}

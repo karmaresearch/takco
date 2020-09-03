@@ -3,6 +3,8 @@ import logging as log
 from collections import Counter
 import warnings
 import sqlite3
+import hashlib
+
 
 from . import matchers as matcher_classes
 import sys, inspect
@@ -12,8 +14,6 @@ all_matchers = {
     for name, cls in inspect.getmembers(sys.modules[matcher_classes.__name__])
     if inspect.isclass(cls)
 }
-
-import hashlib
 
 
 def get_headerId(header):
@@ -56,9 +56,7 @@ def yield_blocked_matches(table_indices, dirpath, matcher_kwargs):
     for matcher in matchers:
         matcher.prepare_block(table_indices)
 
-    import tqdm
-
-    for ti1 in tqdm.tqdm(table_indices, desc="Blocking and matching"):
+    for ti1 in table_indices:
         block = set()
         for matcher in matchers:
             block |= set(matcher.block(ti1))

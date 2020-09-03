@@ -266,6 +266,7 @@ except Exception as e:
 
 
 def get_warc_pages(fnames):
+    """Yield html pages from WARC files"""
     from warcio.archiveiterator import ArchiveIterator
 
     for fname in fnames:
@@ -291,6 +292,7 @@ import copy
 
 
 def preview(tables, nrows=5, ntables=10):
+    """Show table previews in Jupyter"""
     if isinstance(tables, dict):
         tables = [tables]
 
@@ -318,7 +320,7 @@ def preview(tables, nrows=5, ntables=10):
         table.setdefault("properties", {})
 
         t = template.render(table=json.loads(json.dumps(table)))
-        more_rows = max(0, len(table.get("tableData", [])) - nrows)
+        more_rows = max(0, len(table.get("tableData", [])) - nrows) if nrows else 0
         if more_rows:
             t += f"<p>({more_rows} more rows)</p>"
 

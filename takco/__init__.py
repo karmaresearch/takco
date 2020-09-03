@@ -287,12 +287,18 @@ class TableSet(HashBag):
         """
         matchers = {m.get("name", m.get("class")): Config(m) for m in matchers}
 
+        import tqdm
         import sqlite3
         import pandas as pd
         from . import cluster
+        from .cluster import clustering
+
+        import copy  # TODO: get rid of root cause instead of this stupid hack
+
+        tables = tables._pipe(lambda x: [copy.deepcopy(v) for v in x])
 
         if addcontext:
-            tables = tables._pipe(cluster.tables_add_context_rows)
+            tables = tables._pipe(cluster.tables_add_context_rows, fields=addcontext)
 
         if headerunions:
             tables = tables._fold(
@@ -308,22 +314,116 @@ class TableSet(HashBag):
             tables.persist()
             alltables = list(tables)
             index = pd.concat(tables._pipe(cluster.make_column_index_df))
-            Path(workdir).mkdir(exist_ok=True, parents=True)
+            Path(workdir or ".").mkdir(exist_ok=True, parents=True)
             fpath = Path(workdir) / Path("indices.sqlite")
             log.info(f"Opening sqlitedb {fpath}")
             with sqlite3.connect(fpath) as con:
                 index.to_sql("indices", con, index_label="i", if_exists="replace")
                 con.execute("create index colOffset on indices(columnIndexOffset)")
 
-            clusters = cluster.cluster(
-                tables=alltables,
-                dirpath=workdir,
-                matcher_kwargs=matchers,
-                agg_func=agg_func,
-                agg_threshold=agg_threshold,
-                edge_exp=edge_exp,
+            dirpath = workdir
+            matcher_kwargs = matchers
+
+            # TODO: parallelize map_partition
+            log.info(f"Using matchers {matcher_kwargs}")
+            matchers = clustering.matcher_add_tables(tables, dirpath, matcher_kwargs)
+            for m in matchers:
+                m.index()
+
+            # Get blocked column match scores
+            # TODO: parallelize map_partition
+            table_indices = tables.__class__(set(t["tableIndex"] for t in tables))
+            simdfs = table_indices._pipe(
+                cluster.make_blocked_matches_df, dirpath, matcher_kwargs
             )
-            tables = tables.__class__(list(clusters))
+            sims = pd.concat(list(simdfs))
+            log.info(f"Computed {len(sims)} column similarities")
+
+            sims.to_csv(Path(dirpath) / Path("sims.csv"))
+
+            log.info(
+                f"Aggregating matcher results using `{agg_func} > {agg_threshold}` "
+            )
+            aggsim = clustering.aggregate_similarities(sims, agg_func)
+            aggsim = aggsim[aggsim > agg_threshold]
+
+            # Compute soft column alignment jaccard
+            import warnings
+
+            con = sqlite3.connect(Path(dirpath) / Path("indices.sqlite"))
+            n = pd.read_sql("select i,numCols from indices", con).set_index("i")[
+                "numCols"
+            ]
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=FutureWarning)
+                tqdm.tqdm.pandas(desc="Aggregating column scores")
+            aligned_total = aggsim.groupby(level=[0, 1]).progress_aggregate(
+                clustering.max_align, return_total=True
+            )
+            j = (
+                pd.DataFrame({"total": aligned_total})
+                .join(n.rename("n1"), on="ti1")
+                .join(n.rename("n2"), on="ti2")
+            )
+            tablesim = j["total"] / (j["n1"] + j["n2"] - j["total"])
+
+            # TODO: end of parallel loop
+
+            tablesim[tablesim < 0] = 0
+            louvain_partition = cluster.louvain(tablesim, edge_exp=edge_exp)
+            log.info(f"Found {len(louvain_partition)} clusters")
+
+            ## Cluster columns
+            from sklearn.cluster import AgglomerativeClustering
+
+            clus = AgglomerativeClustering(
+                affinity="precomputed",
+                linkage="complete",
+                n_clusters=None,
+                distance_threshold=1,
+            )
+
+            # TODO: parallelize this with partition object
+            iparts = enumerate(tqdm.tqdm(louvain_partition, desc="Clustering columns"))
+            ti_pi, pi_ncols, ci_pci = {}, {}, {}
+            chunks = cluster.cluster_partition_columns(
+                iparts, clus, aggsim, agg_func, dirpath, matcher_kwargs
+            )
+            for chunk_ti_pi, chunk_pi_ncols, chunk_ci_pci in chunks:
+                ti_pi.update(chunk_ti_pi)
+                pi_ncols.update(chunk_pi_ncols)
+                ci_pci.update(chunk_ci_pci)
+
+            # TODO: serialize partitions & cluster alignments for UI
+
+            # TODO: parallelize map_partition
+            listtables = list(tables)
+            for table in listtables:
+                table["part"] = ti_pi[table["tableIndex"]]
+                #         assert all( len(row)==table['numCols'] for row in table['tableData'] ) # fails
+                ci_range = range(
+                    table["columnIndexOffset"],
+                    table["columnIndexOffset"] + table["numCols"],
+                )
+                pci_c = {ci_pci[ci]: c for c, ci in enumerate(ci_range) if ci in ci_pci}
+                table["partColAlign"] = {
+                    pci: pci_c.get(pci, None) for pci in range(pi_ncols[table["part"]])
+                }
+                log.debug(
+                    f"Table {table['tableIndex']} has pci_c {pci_c}, partColAlign {table['partColAlign']}"
+                )
+
+            # TODO: parallelize foldby
+            pi_mergetable = {}
+            for table in listtables:
+                pi = table["part"]
+                pi_mergetable[pi] = (
+                    clustering.merge_partition_tables(pi_mergetable[pi], table)
+                    if (pi in pi_mergetable)
+                    else table
+                )
+
+            tables = tables.__class__(list(pi_mergetable.values()))
 
         return tables
 
@@ -478,8 +578,8 @@ class TableSet(HashBag):
 
         return tables.__class__([{"score": scores}])
 
-    def triples(tables: TableSet):
+    def triples(tables: TableSet, include_type: bool = True):
         """Make triples for predictions"""
         from . import evaluate
 
-        return tables._pipe(evaluate.triples)
+        return tables._pipe(evaluate.triples, include_type=include_type)

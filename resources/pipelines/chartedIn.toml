@@ -2,14 +2,14 @@ name = 'chartedIn'
 
 [[step]]
 step = "extract"
-    [step.source.warc]
-    globstrings = ["data/wikipedia-2019-12-P2291/*-00000.warc.gz"]
+    #[step.source.warc]
+    #globstrings = ["data/wikipedia-2019-12-P2291/*-00000.warc.gz"]
     
-    #[step.source.wiki]
-    #pred = "http://www.wikidata.org/prop/direct/P2291"
-    #localurlprefix = "http://localhost:8989/wikipedia_en_all_nopic_2019-12/A/"
-    #encoding = "utf-8"
-    #sample=10
+    [step.source.wiki]
+    pred = "http://www.wikidata.org/prop/direct/P2291"
+    localurlprefix = "http://localhost:8989/wikipedia_en_all_nopic_2019-12/A/"
+    encoding = "utf-8"
+    sample=10
     
 [[step]]
 step = "reshape"

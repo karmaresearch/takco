@@ -9,13 +9,8 @@ from typing import Dict, List, Iterator, Any, Tuple
 from collections import Counter
 import json
 
-
-def loads(s):
-    try:
-        return json.loads(s)
-    except Exception as e:
-        log.error(f"Cannot decode {s}")
-        raise e
+L_COLHEADER = "_Variable"
+R_COLHEADER = "_Value"
 
 
 def unpivot(
@@ -24,9 +19,9 @@ def unpivot(
     level: int,
     colfrom: int,
     colto: int,
-    leftcolheader="Variable",
-    emptycell=None,
-    rightcolheader="Value",
+    leftcolheader=L_COLHEADER,
+    emptycell="",
+    rightcolheader=R_COLHEADER,
     merge_header_func=lambda x: x[0],
     wrap_funcs=(json.dumps, json.loads),
 ) -> Tuple[List[List[Any]], List[List[Any]]]:
@@ -71,14 +66,14 @@ def unpivot(
     if nhead > 1:
         # For tables with multiple header rows, the right columns get their own headers
         df = df.stack(level)
-        df.index.names = df.index.names[:-1] + [str(leftcolheader)]
+        df.index.names = df.index.names[:-1] + [enc(leftcolheader)]
         df = df.reset_index()
     else:
         # For tables with a single header row, the right column needs to be given
         df.columns = [c[0] for c in df.columns]
         df = df.stack()
-        df.index.names = df.index.names[:-1] + [(str(leftcolheader),)]
-        df = df.to_frame((str(rightcolheader),)).reset_index()
+        df.index.names = df.index.names[:-1] + [(enc(leftcolheader),)]
+        df = df.to_frame((enc(rightcolheader),)).reset_index()
 
     head = df.columns.to_frame().applymap(dec).T.values
     body = df.fillna(enc(emptycell)).applymap(dec).values
@@ -153,8 +148,8 @@ def unpivot_tables(
             log.debug(f"Unpivoting {table.get('_id')}")
 
             level, colfrom, colto = pivot["level"], pivot["colfrom"], pivot["colto"]
-            leftcolheader = "Variable"
-            rightcolheader = "Value"
+            leftcolheader = L_COLHEADER
+            rightcolheader = R_COLHEADER
             if level >= len(headerText):
                 log.debug(f"Unpivot level is too big!")
                 continue

@@ -181,10 +181,10 @@ def integrate(tables: List[dict], searcher_config: Dict, pfd_threshold=0.9):
         ]
         tocol_fromcolprop = integrator.integrate(rows, row_entsets)
         log.debug(f"Got tocol_fromcolprop {tocol_fromcolprop}")
-        fromcol_tocolprops = {}
+        properties = {}
         for tocol, fromcolprop in tocol_fromcolprop.items():
             for fromcol, prop in fromcolprop.items():
-                fromcol_tocolprops.setdefault(fromcol, {}).setdefault(tocol, prop)
-        table.update({"properties": fromcol_tocolprops})
+                properties.setdefault(str(fromcol), {}).setdefault(str(tocol), prop)
+        table.update({"properties": properties})
 
         yield table

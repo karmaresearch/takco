@@ -69,8 +69,14 @@ class SQLiteSearcher(Searcher):
     """
 
     def __init__(
-        self, files, graph=None, exact=True, lower=True, parts=True,
-        baseuri=None, fallback=None,
+        self,
+        files,
+        graph=None,
+        exact=True,
+        lower=True,
+        parts=True,
+        baseuri=None,
+        fallback=None,
     ):
         self.graph = graph
         if "*" in files:
@@ -94,17 +100,17 @@ class SQLiteSearcher(Searcher):
 
         if self.lower:
             query = query.lower()
-            
+
         queries = [query]
         if self.parts:
-            for char in '([,:':
+            for char in "([,:":
                 queries += query.split(char)
             queries = set(queries)
-        
+
         all_results = []
         for query in queries:
             query = query.strip()
-            
+
             for fname in self.files:
                 with sqlite3.connect(fname) as con:
                     cur = con.cursor()
@@ -120,7 +126,7 @@ class SQLiteSearcher(Searcher):
 
         n = len(all_results)
         log.debug(f"{self.__class__.__name__} got {n} results for {query}")
-        
+
         for query in queries:
             q = "insert or replace into label(uri, text, score) values (?,?,?)"
             if self.fallback and (not all_results or str(all_results[0].uri) == "-1"):

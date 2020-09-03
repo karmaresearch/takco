@@ -10,14 +10,15 @@ def get_headerId(header):
     return int(h[:16], 16) // 2  # integer between 0 and SQLite MAX_VAL
 
 
-def tables_add_context_rows(tables, fields=None):
+def tables_add_context_rows(tables, fields=()):
+    """Add context to table depending on table dict fields"""
     for table in tables:
         table = copy.deepcopy(table)
 
-        if (not fields) or ("pgTitle" in fields):
+        for field in fields:
             empty_header = {
-                "tdHtmlString": "<th>_Page</th>",
-                "text": "_Page",
+                "tdHtmlString": f"<th>_{field}</th>",
+                "text": f"_{field}",
                 "surfaceLinks": [],
             }
             table["tableHeaders"] = [
@@ -30,17 +31,17 @@ def tables_add_context_rows(tables, fields=None):
             )
             table["headerId"] = get_headerId(headerText)
 
-            pgId = table.get("pgId")
+            fieldtext = table.get(field, "")
             context_cells = [
                 {
-                    "text": table["pgTitle"],
-                    "tdHtmlString": f"<td><a href='/wiki/{table['pgTitle']}'>{table['pgTitle']}</a></td>",
+                    "text": fieldtext,
+                    "tdHtmlString": f"<td><a href='/wiki/{fieldtext}'>{fieldtext}</a></td>",
                     "surfaceLinks": [
                         {
                             "offset": 0,
-                            "endOffset": len(table["pgTitle"]),
+                            "endOffset": len(fieldtext),
                             "linkType": "INTERNAL",
-                            "target": {"id": pgId, "href": table["pgTitle"]},
+                            "target": {"href": fieldtext},
                         }
                     ],
                 }

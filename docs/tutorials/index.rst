@@ -11,3 +11,4 @@ from the Web!
    intro
    t2d
    chartedIn
+   clusters
