@@ -96,7 +96,8 @@
             {% if table.classes %}
                 {% for classes in table.classes.values() %}
                     {% for cls in classes %}
-                        {{ cls.split('/')[-1] }}<br />
+                        {% set cname = cls.split('/')[-1].split('#')[-1] %}
+                        <a href="{{cls}}">{{cname}}</a><br />
                     {% endfor %}
                 {% endfor %}
             {% else %}

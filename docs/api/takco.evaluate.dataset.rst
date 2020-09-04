@@ -13,6 +13,5 @@ Submodules
    :maxdepth: 4
 
    takco.evaluate.dataset.dataset
-   takco.evaluate.dataset.ibm
    takco.evaluate.dataset.semtab
    takco.evaluate.dataset.t2d

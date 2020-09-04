@@ -148,10 +148,10 @@ def process_rowspanning_body_cells(table):
         allspan.append(s)
 
     if (
-        table["numCols"] > 2
+        table["numCols"] >= 2
         and any(allspan)
         and (not all(allspan))
-        and (len(table["tableData"]) > 2)
+        and (len(table["tableData"]) >= 2)
     ):
         row_class = [(None if r else "N") for r in allspan]
 

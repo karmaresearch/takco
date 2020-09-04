@@ -82,6 +82,7 @@ def aggregate_similarities(sims, agg_func):
 
     funcs = {
         "max": lambda *args: np.nanmax(args, axis=0),
+        "min": lambda *args: np.nanmin(args, axis=0),
         "mean": lambda *args: np.nanmean(args, axis=0),
     }
     if agg_func in funcs:
@@ -110,13 +111,24 @@ except:
 
 
 def cluster_columns(colsim: DataFrame, clus: AgglomerativeClustering, pi=None):
+    """Cluster columns from different tables together within a cluster of tables
+    
+    Column similarities within one table are set to 0 to prevent different columns 
+    within one table from linking.
+    
+    Args:
+        colsim: Dataframe of column similarities
+        clus: Agglomerative clustering method
+        pi: Partition information (for debugging)
+    """
     # Don't allow different columns within one table to link
     colsim = colsim[(colsim["ti1"] != colsim["ti2"]) | (colsim["ci1"] == colsim["ci2"])]
     colsim = colsim.set_index(["ci1", "ci2"])[0]
     colsim = colsim[~colsim.index.duplicated()]
     d = 1 - colsim.unstack().sort_index(0).sort_index(1).fillna(0)
     if (d != d.T).any().any() or (d.shape[0] != d.shape[1]):
-        log.error(f"Distance matrix of partition {pi} is not symmetric!")
+        log.warn(f"Distance matrix of partition {pi} is not symmetric!")
+
     partcols = clus.fit_predict(d)
 
     # Sort cluster columns by frequency
@@ -136,7 +148,7 @@ def align_columns(rows, alignment, empty_cell):
         ]
 
 
-def get_top_headers(tableHeaders, merge_headers=None):
+def get_top_headers(tableHeaders, merge_headers=None, topn=None):
     if merge_headers is None:
         merge_headers = [[{}] * len(tableHeaders[0])] if tableHeaders else []
     top = []
@@ -149,13 +161,9 @@ def get_top_headers(tableHeaders, merge_headers=None):
             )
             if merge:
                 c += Counter(merge.get("freq", {}))
-            if c:
-                for txt, _ in c.most_common(1):
-                    top.append(
-                        {"text": txt, "tdHtmlString": f"<th>{txt}</th>", "freq": c}
-                    )
-            else:
-                top.append({"text": "", "tdHtmlString": f"<th></th>", "freq": c})
+
+            txt = "\t".join(txt for txt, _ in c.most_common(topn))
+            top.append({"text": txt, "tdHtmlString": f"<th>{txt}</th>", "freq": c})
         return [top]
     else:
         return []

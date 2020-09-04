@@ -257,6 +257,18 @@ class TableSet(HashBag):
 
         return tables
 
+    def get_tables_index(tables: TableSet):
+        """Make a dataframe of table and column indexes"""
+        import pandas as pd
+        from . import cluster
+
+        tables = tables._offset("tableIndex", "tableIndex", default=1)
+        tables = tables._offset("numCols", "columnIndexOffset")
+        tables.persist()
+
+        index = pd.concat(tables._pipe(cluster.make_column_index_df))
+        return tables, index
+
     def cluster(
         tables: TableSet,
         workdir: Path = None,
@@ -305,13 +317,9 @@ class TableSet(HashBag):
 
         if matchers:
 
-            tables = tables._offset("tableIndex", "tableIndex", default=1)
-            tables = tables._offset("numCols", "columnIndexOffset")
-
             # Collect index
-            tables.persist()
+            tables, index = TableSet.get_tables_index(tables)
 
-            index = pd.concat(tables._pipe(cluster.make_column_index_df))
             Path(workdir or ".").mkdir(exist_ok=True, parents=True)
             fpath = Path(workdir) / Path("indices.sqlite")
             if fpath.exists():
@@ -365,6 +373,8 @@ class TableSet(HashBag):
                 .join(n.rename("n2"), on="ti2")
             )
             tablesim = j["total"] / (j["n1"] + j["n2"] - j["total"])
+
+            tablesim.to_csv(Path(workdir) / Path("tablesim.csv"))
 
             # TODO: end of parallel loop
 

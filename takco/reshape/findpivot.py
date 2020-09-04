@@ -138,16 +138,20 @@ class NumSuffix(RegexFinder):
     """Find cells with a numeric suffix"""
 
     def __init__(self):
-        self.find_regex = re.compile(".*\d\W*$")
-        self.split_regex = re.compile("(?P<head>.*?)\W*(?P<cell>[–\d-]+)\W*$")
+        self.find_regex = re.compile(".*\d[\W\s]*$")
+        self.split_regex = re.compile(
+            "(?P<head>.*?)[\W\s]*(?P<cell>[-\d–—\s]+)[\W\s]*$"
+        )
 
 
 class NumPrefix(RegexFinder):
     """Find cells with a numeric prefix"""
 
     def __init__(self):
-        self.find_regex = re.compile("\W*\d")
-        self.split_regex = re.compile("(?P<cell>[–\d-]+)\W*(?P<head>.*?)\W*$")
+        self.find_regex = re.compile("[\W\s]*\d")
+        self.split_regex = re.compile(
+            "(?P<cell>[-\d–—\s]+)[\W\s]*(?P<head>.*?)[\W\s]*$"
+        )
 
 
 class SeqPrefix(PivotFinder):

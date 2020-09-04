@@ -1,7 +1,7 @@
 takco
 =====
 
-:mod:`tacko` is a modular system for extracting knowledge from tables. For example, you can use it
+tacko is a modular system for extracting knowledge from tables. For example, you can use it
 to extend `Wikidata <http://wikidata.org>`_ with information from Wikipedia tables.
 
 

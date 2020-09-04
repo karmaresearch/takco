@@ -1,9 +1,8 @@
 from .dataset import *
 from .t2d import *
 from .semtab import *
-from .ibm import *
 
-__all__ = ["Dataset", "Annotation", "T2D", "Semtab", "IBM", "load"]
+__all__ = ["Dataset", "Annotation", "T2D", "Semtab", "load"]
 
 
 from pathlib import Path
