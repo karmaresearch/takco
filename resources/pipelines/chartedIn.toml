@@ -25,15 +25,15 @@ headerunions = true
 #matchers = []
 #agg_func = 'max'
 agg_func = '@mean( headjacc, @max(bodylsh, bodyvec) )'
-agg_threshold = 0.98
+agg_threshold = 0.9
 edge_exp = 2
+store_align_meta = ["tableHeaders", "tableData"]
     
     [[step.matchers]]
     name  = 'headjacc'
     class = 'CellJaccMatcher'
     source = 'head'
     tokenize = true
-    cell_threshold = 0.5
 
     [[step.matchers]]
     name  = 'bodylsh'
@@ -48,7 +48,7 @@ edge_exp = 2
     class = 'EmbeddingMatcher'
     source = 'body'
     wordvec_fname = "./data/glove.6B/glove.6B.50d.txt"
-    exp = 10
+    exp = 8
 
 [[step]]
 step = "link"

@@ -81,11 +81,13 @@ def link(
             log.debug(f"No rows in table {table.get('_id')}")
 
         # Restrict columns to link (e.g. 'keycol', or 'entcols')
-        def nonnum(col):
-            isnum = lambda x: x.translate(str.maketrans("", "", "-.,%")).isnumeric()
-            return sum(int(isnum(c)) for c in col) / len(col) < 0.5
+        def isnum(col):
+            num = lambda x: x.translate(str.maketrans("", "", "-.,%")).isnumeric()
+            return sum(int(num(c)) for c in col) / len(col) > 0.5
 
-        table["non_numeric_cols"] = [i for i, c in enumerate(zip(*rows)) if nonnum(c)]
+        table["non_numeric_cols"] = [
+            i for i, c in enumerate(zip(*rows)) if not isnum(c)
+        ]
 
         def heur(col):
             isnum = lambda x: x.translate(str.maketrans("", "", "-.,%")).isnumeric()

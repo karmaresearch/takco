@@ -56,9 +56,10 @@ def yield_blocked_matches(table_indices, dirpath, matcher_kwargs):
         log.debug(f"Found {len(block)} blocked candidates for table {ti1}")
 
         for ti2 in block:
-            for mi, matcher in enumerate(matchers):
-                for s, ci1, ci2 in matcher.match(ti1, ti2):
-                    yield mi, (ti1, ti2, ci1, ci2), s
+            if ti1 != ti2:  # ignore same-table matches
+                for mi, matcher in enumerate(matchers):
+                    for s, ci1, ci2 in matcher.match(ti1, ti2):
+                        yield mi, (ti1, ti2, ci1, ci2), s
 
 
 def yield_tablepairs_matches(table_index_pairs, dirpath, matcher_kwargs):
@@ -169,11 +170,15 @@ def get_top_headers(tableHeaders, merge_headers=None, topn=None):
         return []
 
 
-def merge_partition_tables(mergetable, table):
+def merge_partition_tables(mergetable, table, store_align_meta=["tableHeaders"]):
+
     empty_cell = {"text": ""}
     pi = table["part"]
 
     if mergetable.get("type") != "partition":
+        # Create new mergetable
+
+        # partColAlign is a mapping from partition cols to local cols
         tableData = list(
             align_columns(
                 mergetable["tableData"], mergetable["partColAlign"], empty_cell
@@ -188,6 +193,18 @@ def merge_partition_tables(mergetable, table):
         headerText = tuple(
             tuple([cell.get("text", "").lower() for cell in r]) for r in tableHeaders
         )
+
+        partColAlign = {
+            "tableIndex": mergetable["tableIndex"],
+            "partcol_local": mergetable["partColAlign"],
+            "partcol_global": {
+                pci: mergetable["columnIndexOffset"] + c
+                for pci, c in mergetable["partColAlign"].items()
+                if c is not None
+            },
+        }
+        for field in store_align_meta:
+            partColAlign[field] = mergetable[field]
 
         mergetable = {
             "_id": f"{pi}-0",
@@ -205,18 +222,7 @@ def merge_partition_tables(mergetable, table):
             "tableHeaders": tableHeaders,
             "tableData": tableData,
             "pivots": mergetable.get("pivots", [mergetable.get("pivot")]),
-            "partColAligns": [
-                {
-                    "tableIndex": mergetable["tableIndex"],
-                    "tableHeaders": mergetable["tableHeaders"],
-                    "local": mergetable["partColAlign"],
-                    "global": {
-                        pc: mergetable["columnIndexOffset"] + c
-                        for pc, c in mergetable["partColAlign"].items()
-                        if c is not None
-                    },
-                }
-            ],
+            "partColAligns": [partColAlign],
         }
 
     tableHeaders = list(
@@ -232,6 +238,18 @@ def merge_partition_tables(mergetable, table):
     for row in align_columns(table["tableData"], table["partColAlign"], empty_cell):
         mergetable["tableData"].append(row)
 
+    partColAlign = {
+        "tableIndex": table["tableIndex"],
+        "partcol_local": table["partColAlign"],
+        "partcol_global": {
+            pci: table["columnIndexOffset"] + c
+            for pci, c in table["partColAlign"].items()
+            if c is not None
+        },
+    }
+    for field in store_align_meta:
+        partColAlign[field] = table[field]
+
     mergetable.update(
         {
             "tableHeaders": tableHeaders,
@@ -239,19 +257,7 @@ def merge_partition_tables(mergetable, table):
             "numDataRows": len(mergetable["tableData"]),
             "numTables": mergetable["numTables"] + table.get("numTables", 1),
             "pivots": mergetable["pivots"] + table.get("pivots", [table.get("pivot")]),
-            "partColAligns": mergetable["partColAligns"]
-            + [
-                {
-                    "tableIndex": table["tableIndex"],
-                    "tableHeaders": table["tableHeaders"],
-                    "local": table["partColAlign"],
-                    "global": {
-                        pc: table["columnIndexOffset"] + c
-                        for pc, c in table["partColAlign"].items()
-                        if c is not None
-                    },
-                }
-            ],
+            "partColAligns": mergetable["partColAligns"] + [partColAlign],
         }
     )
     return mergetable

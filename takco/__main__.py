@@ -74,7 +74,7 @@ def run(
         assets: Asset definitions
         kbs: Knowledge Base definitions
         force: Force execution of steps if cache files are already present
-        step_force: Force this step number and later
+        step_force: Force execution of steps starting at this number
         cache: Cache intermediate results
     """
     pipeline = Config(pipeline)
@@ -144,6 +144,7 @@ def run(
                 stepfunc = getattr(TableSet, steptype)
                 if stepfunc:
                     sig = signature(stepfunc)
+
                     local_config = dict(tables=tables, **config)
                     for k, v in local_config.items():
                         if (k in sig.parameters) and (k not in stepargs):
@@ -210,6 +211,7 @@ def main():
 
     funcs = (
         run,
+        wiki,
         appcache,
         TableSet.dataset,
         TableSet.extract,

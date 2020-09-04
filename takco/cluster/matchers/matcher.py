@@ -9,6 +9,8 @@ import toml
 class Matcher:
     @staticmethod
     def tokenize(text):
+        if text.startswith("_"):
+            return [text]
         return re.split(r"\W+", text.lower())
 
     def config(self, config_fname: Path):

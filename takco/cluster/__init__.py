@@ -97,9 +97,9 @@ def cluster_partition_columns(
 ):
     import pandas as pd
 
+    partition_has_unblocked_pairs = {}
+    unblocked_pairs = []
     ti_pi = {}
-    pi_ncols = {}
-    ci_pci = {}
     for pi, part in iparts:
         for ti in part:
             ti_pi[ti] = pi
@@ -109,30 +109,40 @@ def cluster_partition_columns(
         # Match unblocked table pairs
         blocked_pairs = colsim.groupby(level=[0, 1]).agg("any")
         blocked_pairs = blocked_pairs[blocked_pairs]
-        unblocked_pairs = [
+        partition_unblocked_pairs = [
             (ti1, ti2)
             for ti1 in part
             for ti2 in part
             if ti2 >= ti1
             and not any(i in blocked_pairs.index for i in [(ti1, ti2), (ti2, ti1)])
         ]
-        if len(unblocked_pairs):
+        if len(partition_unblocked_pairs):
             log.debug(f"Partition {pi}: {part} has unblocked pairs {unblocked_pairs}")
-            tablepairs_matches = clustering.yield_tablepairs_matches(
-                unblocked_pairs, dirpath, matcher_kwargs
-            )
-            ub_sims = {i: {} for i, _ in enumerate(matcher_kwargs)}
-            for m, i, s in tablepairs_matches:
-                ub_sims.setdefault(m, {})[i] = s
+            unblocked_pairs += partition_unblocked_pairs
+            partition_has_unblocked_pairs[pi] = True
 
-            if all(ub_sims.values()):
-                log.debug(f"ub_sims {ub_sims}")
-                ub_sims = pd.DataFrame.from_dict(ub_sims)
-                ub_sims.index.names = ["ti1", "ti2", "ci1", "ci2"]
-                ub_sims.columns = list(matcher_kwargs)
-                ub_aggsim = clustering.aggregate_similarities(ub_sims, agg_func)
-                ub_aggsim = ub_aggsim[ub_aggsim > agg_threshold]
-                colsim = pd.concat([colsim, ub_aggsim])
+    # Make a dataframe of extra similarities
+    tablepairs_matches = clustering.yield_tablepairs_matches(
+        unblocked_pairs, dirpath, matcher_kwargs
+    )
+    unblocked_sims = {i: {} for i, _ in enumerate(matcher_kwargs)}
+    for m, (ti1, ti2, ci1, ci2), s in tablepairs_matches:
+        pi = ti_pi[ti1]
+        unblocked_sims.setdefault(m, {})[(pi, ti1, ti2, ci1, ci2)] = s
+
+    if all(unblocked_sims.values()):
+        unblocked_sims = pd.DataFrame.from_dict(unblocked_sims)
+        unblocked_sims.index.names = ["pi", "ti1", "ti2", "ci1", "ci2"]
+        unblocked_sims.columns = list(matcher_kwargs)
+        unblocked_aggsim = clustering.aggregate_similarities(unblocked_sims, agg_func)
+        unblocked_aggsim = unblocked_aggsim[unblocked_aggsim > agg_threshold]
+
+    pi_ncols = {}
+    ci_pci = {}
+    for pi, part in iparts:
+        colsim = aggsim.loc[part, part, :, :]
+        if partition_has_unblocked_pairs.get(pi):
+            colsim = pd.concat([colsim, unblocked_aggsim.loc[pi]])
 
         if not len(colsim):
             # TODO: find out what's going on here.
@@ -147,4 +157,5 @@ def cluster_partition_columns(
             log.debug(
                 f"Partition {pi} has {len(part)} tables and {ncols} column clusters"
             )
+
     yield ti_pi, pi_ncols, ci_pci

@@ -278,6 +278,7 @@ class TableSet(HashBag):
         agg_func: str = "mean",
         agg_threshold: float = 0,
         edge_exp: float = 1,
+        store_align_meta: typing.List[str] = ["tableHeaders"],
         config: Config = None,
     ):
         """Cluster tables
@@ -339,11 +340,11 @@ class TableSet(HashBag):
 
             # Get blocked column match scores
             log.info(f"Computing column similarities...")
-            table_indices = tables.__class__(set(t["tableIndex"] for t in tables))
-            simdfs = table_indices._pipe(
+            table_indices = set(t["tableIndex"] for t in tables)
+            simdfs = tables.__class__(table_indices)._pipe(
                 cluster.make_blocked_matches_df, workdir, matcher_kwargs
             )
-            sims = pd.concat(list(simdfs))
+            sims = pd.concat(list(simdfs)).fillna(0)
             log.info(f"Computed {len(sims)} column similarities")
 
             sims.to_csv(Path(workdir) / Path("sims.csv"))
@@ -379,6 +380,8 @@ class TableSet(HashBag):
             # TODO: end of parallel loop
 
             tablesim[tablesim < 0] = 0
+            for ti in table_indices:
+                tablesim.loc[(ti, ti)] = 1  # assure all tables are clustered
             louvain_partition = cluster.louvain(tablesim, edge_exp=edge_exp)
             log.info(f"Found {len(louvain_partition)} clusters")
 
@@ -393,7 +396,7 @@ class TableSet(HashBag):
             )
 
             # TODO: parallelize this with partition object
-            iparts = enumerate(tqdm.tqdm(louvain_partition, desc="Clustering columns"))
+            iparts = list(enumerate(louvain_partition))
             ti_pi, pi_ncols, ci_pci = {}, {}, {}
             chunks = cluster.cluster_partition_columns(
                 iparts, clus, aggsim, agg_func, agg_threshold, workdir, matcher_kwargs
@@ -414,20 +417,22 @@ class TableSet(HashBag):
                     table["columnIndexOffset"],
                     table["columnIndexOffset"] + table["numCols"],
                 )
+
+                # TODO: add similarity scores
                 pci_c = {ci_pci[ci]: c for c, ci in enumerate(ci_range) if ci in ci_pci}
+                # partColAlign is a mapping from partition cols to local cols
                 table["partColAlign"] = {
                     pci: pci_c.get(pci, None) for pci in range(pi_ncols[table["part"]])
                 }
-                log.debug(
-                    f"Table {table['tableIndex']} has pci_c {pci_c}, partColAlign {table['partColAlign']}"
-                )
 
             # TODO: parallelize foldby
             pi_mergetable = {}
             for table in listtables:
                 pi = table["part"]
                 pi_mergetable[pi] = (
-                    clustering.merge_partition_tables(pi_mergetable[pi], table)
+                    clustering.merge_partition_tables(
+                        pi_mergetable[pi], table, store_align_meta=store_align_meta,
+                    )
                     if (pi in pi_mergetable)
                     else table
                 )

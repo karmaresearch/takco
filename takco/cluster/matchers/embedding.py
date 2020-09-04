@@ -50,19 +50,25 @@ class EmbeddingMatcher(Matcher):
 
         self.column_ids_fname = Path(mdir) / Path("column_ids.npy")
         if self.column_ids_fname.exists():
-            self.ci_vec = collections.OrderedDict(
-                (k, v) for v, k in enumerate(np.load(self.column_ids_fname))
+            self.ci_vi = collections.OrderedDict(
+                (ci, vi) for vi, ci in enumerate(np.load(self.column_ids_fname))
             )
         else:
-            self.ci_vec = collections.OrderedDict()
-        self.vec_ci = collections.OrderedDict((v, k) for k, v in self.ci_vec.items())
+            self.ci_vi = collections.OrderedDict()
+        self.vi_ci = collections.OrderedDict((v, k) for k, v in self.ci_vi.items())
 
-        log.info(f"Loading word vectors {self.wordvec_fname}")
-        vec = pd.read_csv(
-            self.wordvec_fname, delimiter=" ", quoting=3, header=None, index_col=0
-        )
-        self.word_i = {w: i for i, w in enumerate(vec.index)}
-        self.wordvecarray = np.array(vec)
+        self.wordvec_pickle_fname = Path(mdir) / Path("wordvecs.pickle")
+        if not self.wordvec_pickle_fname.exists():
+            log.info(f"Loading word vectors {self.wordvec_fname}")
+            wordvecs = pd.read_csv(
+                self.wordvec_fname, delimiter=" ", quoting=3, header=None, index_col=0
+            )
+            wordvecs.to_pickle(self.wordvec_pickle_fname)
+        else:
+            wordvecs = pd.read_pickle(self.wordvec_pickle_fname)
+
+        self.word_i = {w: i for i, w in enumerate(wordvecs.index)}
+        self.wordvecarray = np.array(wordvecs)
 
         self.vecs = []
         self.ti_block = {}
@@ -72,54 +78,62 @@ class EmbeddingMatcher(Matcher):
         # Extract tokens from columns and create embeddings
         rows = []
         if self.source != "head":
-            rows += list(
+            rows += [
                 tuple([cell.get("text", "").lower() for cell in r])
                 for r in table["tableData"]
-            )
+            ]
         if self.source != "body":
-            rows += list(
+            rows += [
                 tuple([cell.get("text", "").lower() for cell in r])
                 for r in table["tableHeaders"]
-            )
+            ]
         cols = list(zip(*rows))
+
+        if not table.get("numericColumns", []):
+
+            def isnum(col):
+                num = lambda x: x.translate(str.maketrans("", "", "-.,%")).isnumeric()
+                return sum(int(num(c)) for c in col) / len(col) > 0.5
+
+            table["numericColumns"] = [i for i, c in enumerate(zip(*rows)) if isnum(c)]
 
         ci_range = range(
             table["columnIndexOffset"], table["columnIndexOffset"] + table["numCols"]
         )
-        for col, (ci, cells) in enumerate(zip(ci_range, cols)):
-            if col not in table.get("numericColumns", []):
+        for colnum, (ci, cells) in enumerate(zip(ci_range, cols)):
+            if colnum not in table.get("numericColumns", []):
                 cells = set(c for c in cells if c)
                 if len(cells) > 0:
-                    cell_locs = [
-                        [
-                            self.word_i[w]
-                            for w in Matcher.tokenize(cell)
-                            if (len(w) > 1) and (w in self.word_i)
-                        ]
-                        for cell in cells
-                    ]
-                    if any(any(locs) for locs in cell_locs):
-                        cell_vecs = [
-                            self.wordvecarray[[l for l in locs]].sum(axis=0)
-                            for locs in cell_locs
-                        ]
-                        cell_vecs = np.vstack(cell_vecs)
-                        self.ci_vec[ci] = len(self.vecs)
-                        self.vecs.append(cell_vecs.mean(axis=0))
+                    cell_vec = self.get_vec(cells)
+                    if cell_vec is not None:
+                        self.ci_vi[ci] = len(self.vecs)
+                        self.vecs.append(cell_vec)
+
+    def get_vec(self, cells):
+        cell_locs = [
+            [
+                self.word_i[w]
+                for w in Matcher.tokenize(cell)
+                if (len(w) > 1) and (w in self.word_i)
+            ]
+            for cell in cells
+        ]
+        if any(any(locs) for locs in cell_locs):
+            cell_vecs = [
+                self.wordvecarray[[l for l in locs]].sum(axis=0) for locs in cell_locs
+            ]
+            return np.vstack(cell_vecs).mean(axis=0)
 
     def merge(self, matcher: Matcher):
         self.vecs += matcher.vecs
-        self.ci_vec.update(matcher.ci_vec)
+        self.ci_vi.update(matcher.ci_vi)
 
     def index(self):
         self.means = np.array(self.vecs).astype("float32")
         np.save(self.means_fname, self.means)
 
-        self.ci_vec = collections.OrderedDict(
-            zip(self.ci_vec.values(), range(len(self.vecs)))
-        )
-        np.save(self.column_ids_fname, np.array(list(self.ci_vec.keys())))
-        self.vec_ci = collections.OrderedDict((v, k) for k, v in self.ci_vec.items())
+        np.save(self.column_ids_fname, np.array(list(self.ci_vi.keys())))
+        self.vi_ci = collections.OrderedDict((vi, ci) for ci, vi in self.ci_vi.items())
 
         # Create FAISS index
         V = np.ascontiguousarray(self.means)
@@ -138,12 +152,12 @@ class EmbeddingMatcher(Matcher):
         ci_ti = {ci: ti for ti in tis for ci in self.get_columns(ti)}
         qi_mean, ci_qi = [], {}
         for ci in ci_ti:
-            if ci in self.ci_vec:
+            if ci in self.ci_vi:
                 ci_qi[ci] = len(qi_mean)
-                qi_mean.append(self.means[self.ci_vec[ci]])
+                qi_mean.append(self.means[self.ci_vi[ci]])
 
         if not len(qi_mean):
-            log.warning(f"No column embeddings found for any of {len(tis)} tables!")
+            log.debug(f"No column embeddings found for any of tables {tis}")
         else:
             xq = np.vstack(qi_mean)  # query vectors
             xq /= np.sqrt((xq ** 2).sum(axis=1))[:, None]  # L2 normalize
@@ -155,26 +169,24 @@ class EmbeddingMatcher(Matcher):
                 indexes, similarities = I[qi], (0.5 + (D[qi] / 2)) ** self.exp
                 ti1 = ci_ti[ci1]
                 for qi2 in set(indexes[(similarities > self.threshold)]) - set([ci1]):
-                    if qi2 in self.vec_ci:
-                        ti2 = self.get_table(self.vec_ci[qi2])
+                    if qi2 in self.vi_ci:
+                        ti2 = self.get_table(self.vi_ci[qi2])
                         if ti2 != ti1:
                             self.ti_block.setdefault(ti1, set()).add(ti2)
 
     def block(self, ti: int):
         return self.ti_block.get(ti, set())
 
+    def vecsim(self, a1, a2):
+        c = 0.5 + (
+            (a1.dot(a2) / (np.sqrt((a1 ** 2).sum()) * np.sqrt((a2 ** 2).sum()))) / 2
+        )
+        return np.round(c ** self.exp, 4)
+
     def match(self, ti1: int, ti2: int):
         for ci1 in self.get_columns(ti1):
             for ci2 in self.get_columns(ti2):
-                if (ci1 in self.ci_vec) and (ci2 in self.ci_vec):
-                    vi1, vi2 = self.ci_vec[ci1], self.ci_vec[ci2]
+                if (ci1 in self.ci_vi) and (ci2 in self.ci_vi):
+                    vi1, vi2 = self.ci_vi[ci1], self.ci_vi[ci2]
                     a1, a2 = self.means[vi1], self.means[vi2]
-                    c = 0.5 + (
-                        (
-                            a1.dot(a2)
-                            / (np.sqrt((a1 ** 2).sum()) * np.sqrt((a2 ** 2).sum()))
-                        )
-                        / 2
-                    )
-                    c = c ** self.exp
-                    yield c, ci1, ci2
+                    yield self.vecsim(a1, a2), ci1, ci2
