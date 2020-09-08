@@ -515,6 +515,7 @@ class TableSet(HashBag):
         labels: Config,
         assets: typing.List[Config] = (),
         datadir: Path = None,
+        workdir: Path = None,
         resourcedir: Path = None,
         report: typing.Dict = None,
         keycol_only: bool = False,
@@ -533,53 +534,53 @@ class TableSet(HashBag):
             report: Report config
             keycol_only: Only report results for key column
         """
+        assets = assets or config.get('assets', [])
+        datadir = datadir or config.get('datadir', [])
+        resourcedir = resourcedir or config.get('resourcedir', [])
+        
         assets = {a.get("name", a.get("class")): Config(a) for a in assets}
 
         from . import evaluate
 
-        flatten = {
-            "entities": evaluate.score.flatten_entity_annotations,
-            "properties": evaluate.score.flatten_property_annotations,
-            "classes": evaluate.score.flatten_class_annotations,
-        }
-        tasks = list(flatten)
-
         annot = Config(labels, **assets)
         dset = evaluate.dataset.load(resourcedir=resourcedir, datadir=datadir, **annot)
+        table_annot = dset.get_annotated_tables()
+        log.info(f"Loaded {len(table_annot)} annotated tables")
 
+        return tables._pipe(evaluate.table_score, table_annot, keycol_only=keycol_only)
+
+    def triples(tables: TableSet, include_type: bool = True):
+        """Make triples for predictions"""
+        from . import evaluate
+
+        return tables._pipe(evaluate.table_triples, include_type=include_type)
+
+    
+    def make_report(tables: TableSet, keycol_only: bool=False):
+        from . import evaluate
+        
         all_gold = {}
         all_pred = {}
-        table_annot = dset.get_annotated_tables()
-        for _id, goldtable in table_annot.items():
-            key = [_id]
-            for task in tasks:
-                gold = goldtable.get(task, {})
-                if gold:
-                    log.debug(f"Scoring {task} of {_id}")
-                    all_gold.setdefault(task, {}).update(
-                        dict(flatten[task](gold, key=key))
-                    )
-
         for table in tables:
-            _id = table["_id"]
-            key = [_id]
-            goldtable = table_annot.get(_id, {})
-            for task in tasks:
-                gold = goldtable.get(task, {})
-                pred = table.get(task, {})
-                if keycol_only and pred.get(str(table.get("keycol"))):
-                    keycol = str(table.get("keycol"))
-                    pred = {keycol: pred.get(keycol)}
-
+            key = [ table.get('_id') ]
+            for task, flatten in evaluate.task_flatten.items():
+                gold = table.get('gold', {}).get(task, {})
                 if gold:
-                    all_pred.setdefault(task, {}).update(
-                        dict(flatten[task](pred, key=key))
-                    )
-                else:
-                    log.debug(f"No {task} annotations for {_id}")
-
+                    
+                    pred = table.get(task, {})
+                    if keycol_only and pred.get(str(table.get("keycol"))):
+                        keycol = str(table.get("keycol"))
+                        pred = {keycol: pred.get(keycol)}
+                    
+                    golds = dict( flatten(gold, key=key) )
+                    preds = dict( flatten(pred, key=key) )
+                    all_gold.setdefault(task, {}).update( golds )
+                    all_pred.setdefault(task, {}).update( preds )
+        
+        
+        
         scores = {}
-        for task in tasks:
+        for task in evaluate.task_flatten:
             gold, pred = all_gold.get(task, {}), all_pred.get(task, {})
             if pred:
                 log.info(
@@ -589,11 +590,7 @@ class TableSet(HashBag):
                 task_scores = evaluate.score.classification(gold, pred)
                 task_scores["predictions"] = len(pred)
                 scores[task] = task_scores
-
-        return tables.__class__([{"score": scores}])
-
-    def triples(tables: TableSet, include_type: bool = True):
-        """Make triples for predictions"""
-        from . import evaluate
-
-        return tables._pipe(evaluate.triples, include_type=include_type)
+        
+        return {'scores': scores}
+    
+    

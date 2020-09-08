@@ -10,5 +10,6 @@ from the Web!
    
    intro
    t2d
+   novelty
    chartedIn
    clusters
