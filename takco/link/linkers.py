@@ -189,7 +189,9 @@ class Salient(Linker):
                             if not cellresults:
                                 # Check for overlap with literals
                                 for o in os:
-                                    matches = self.graph.cellType.match(o, celltext)
+                                    matches = self.graph.cellType.literal_match(
+                                        o, celltext
+                                    )
                                     mscore = sum(1 for m in matches)
                                     if mscore:
                                         prop_count[p] += mscore

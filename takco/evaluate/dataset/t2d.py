@@ -80,7 +80,7 @@ class T2D(Dataset):
 
                 tocol_props[str(colnum)] = {fix_uri(uri): 1.0}
             keycol = table_keycol.get(name, -1)
-            table_properties[name] = {str(keycol): tocol_props}
+            table_properties[name] = {str(keycol): tocol_props} if tocol_props else {}
 
         # Classes
         table_class = {}
@@ -111,7 +111,7 @@ class T2D(Dataset):
                 numheaderrows[name] = 0
                 row_uris = {str(int(ri) + 1): uris for ri, uris in row_uris.items()}
 
-            table_entities[name] = {str(keycol): row_uris}
+            table_entities[name] = {str(keycol): row_uris} if row_uris else {}
 
         table_info = [table_rows, table_entities, table_class, table_properties]
         names = set.union(*map(set, table_info))

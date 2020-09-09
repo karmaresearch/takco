@@ -217,25 +217,6 @@ div.stats {
     bottom: 0;
     right: 0;
 }
-.unannotated {
-    color: gray;
-    background: #eee;
-}
-.noent, .noent a {
-    color: red;
-}
-.noclass, .noclass a {
-    color: green;
-}
-.nomatch {
-    background: #8ff;
-}
-.match {
-    color: #0aa;
-}
-.noprop {
-    background: lightgreen;
-}
 
 #kblinkbox {
     padding:10px;

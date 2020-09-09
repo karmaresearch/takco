@@ -94,7 +94,7 @@ class SimpleCellType(CellType):
         return {}
 
     @classmethod
-    def match(cls, literal: URIRef, surface: str, stringmatch="jaccard"):
+    def literal_match(cls, literal: Literal, surface: str, stringmatch="jaccard"):
 
         dtype = literal.datatype if hasattr(literal, "datatype") else None
         literal, surface = str(literal).strip(), str(surface).strip()

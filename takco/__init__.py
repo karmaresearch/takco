@@ -43,7 +43,6 @@ def wiki(
     justurls: bool = False,
     encoding: str = None,
     executor: str = None,
-    config: Config = None,
 ):
     """
     Download Wikipedia articles
@@ -155,7 +154,7 @@ class TableSet(HashBag):
         assets: typing.List[Config] = (),
         sample: int = None,
         executor: str = None,
-        config: Config = None,
+        **_,
     ):
         """Load tables from a dataset
         
@@ -171,9 +170,6 @@ class TableSet(HashBag):
         executor = (
             (executor or HashBag) if type(executor) != str else globals()[executor]
         )
-        datadir = datadir or config.get("datadir")
-        resourcedir = resourcedir or config.get("resourcedir")
-        assets = assets or config.get("assets")
 
         assets = {a.get("name", a.get("class")): Config(a) for a in assets}
         import itertools
@@ -185,12 +181,7 @@ class TableSet(HashBag):
         return executor(itertools.islice(ds.get_unannotated_tables(), sample))
 
     @classmethod
-    def extract(
-        cls,
-        source: typing.Union[Config, HashBag],
-        executor: str = None,
-        config: Config = None,
-    ):
+    def extract(cls, source: typing.Union[Config, HashBag], executor: str = None, **_):
         """Collect tables from HTML files
         
         See also: :mod:`takco.extract`
@@ -220,7 +211,7 @@ class TableSet(HashBag):
         heuristics: typing.List[Config] = ({"class": "NumSuffix"},),
         load_user: str = None,
         split_compound_columns: bool = False,
-        config: Config = None,
+        **_,
     ):
         """Reshape tables
         
@@ -279,7 +270,7 @@ class TableSet(HashBag):
         agg_threshold: float = 0,
         edge_exp: float = 1,
         store_align_meta: typing.List[str] = ["tableHeaders"],
-        config: Config = None,
+        **_,
     ):
         """Cluster tables
         
@@ -450,7 +441,7 @@ class TableSet(HashBag):
         },
         kbs: typing.List[Config] = (),
         pfd_threshold: float = 0.9,
-        config: Config = None,
+        **_,
     ):
         """Integrate tables with a KB
         
@@ -480,7 +471,7 @@ class TableSet(HashBag):
         },
         kbs: typing.List[Config] = (),
         usecols: str = [],
-        config: Config = None,
+        **_,
     ):
         """Link table entities to KB
         
@@ -515,11 +506,10 @@ class TableSet(HashBag):
         labels: Config,
         assets: typing.List[Config] = (),
         datadir: Path = None,
-        workdir: Path = None,
         resourcedir: Path = None,
         report: typing.Dict = None,
         keycol_only: bool = False,
-        config: Config = None,
+        **_,
     ):
         """Calculate evaluation scores
         
@@ -534,10 +524,7 @@ class TableSet(HashBag):
             report: Report config
             keycol_only: Only report results for key column
         """
-        assets = assets or config.get('assets', [])
-        datadir = datadir or config.get('datadir', [])
-        resourcedir = resourcedir or config.get('resourcedir', [])
-        
+
         assets = {a.get("name", a.get("class")): Config(a) for a in assets}
 
         from . import evaluate
@@ -549,36 +536,59 @@ class TableSet(HashBag):
 
         return tables._pipe(evaluate.table_score, table_annot, keycol_only=keycol_only)
 
+    def novelty(
+        tables: TableSet,
+        linker_config: Config = None,
+        kbs: typing.List[Config] = (),
+        **_,
+    ):
+        from . import evaluate
+
+        kbs = {k.get("name", k.get("class")): Config(k) for k in kbs}
+        linker_config = Config(linker_config, **kbs)
+
+        return tables._pipe(evaluate.table_novelty, linker_config)
+
     def triples(tables: TableSet, include_type: bool = True):
         """Make triples for predictions"""
         from . import evaluate
 
         return tables._pipe(evaluate.table_triples, include_type=include_type)
 
-    
-    def make_report(tables: TableSet, keycol_only: bool=False):
+    def make_report(tables: TableSet, keycol_only: bool = False):
         from . import evaluate
-        
+
+        data = {}
+
         all_gold = {}
         all_pred = {}
+        kb_kind_novelty_hashes = {}
         for table in tables:
-            key = [ table.get('_id') ]
+            key = [table.get("_id")]
             for task, flatten in evaluate.task_flatten.items():
-                gold = table.get('gold', {}).get(task, {})
+                gold = table.get("gold", {}).get(task, {})
                 if gold:
-                    
+
                     pred = table.get(task, {})
                     if keycol_only and pred.get(str(table.get("keycol"))):
                         keycol = str(table.get("keycol"))
                         pred = {keycol: pred.get(keycol)}
-                    
-                    golds = dict( flatten(gold, key=key) )
-                    preds = dict( flatten(pred, key=key) )
-                    all_gold.setdefault(task, {}).update( golds )
-                    all_pred.setdefault(task, {}).update( preds )
-        
-        
-        
+
+                    golds = dict(flatten(gold, key=key))
+                    preds = dict(flatten(pred, key=key))
+                    all_gold.setdefault(task, {}).update(golds)
+                    all_pred.setdefault(task, {}).update(preds)
+
+            if "novelty" in table:
+                for kbname, novelty in table["novelty"].items():
+                    kind_novelty_hashes = kb_kind_novelty_hashes.setdefault(kbname, {})
+                    # aggregate all hashes
+                    for kind, novelty_hashes in novelty.get("hashes", {}).items():
+                        nhs = kind_novelty_hashes.setdefault(kind, {})
+                        for novelty, hashes in novelty_hashes.items():
+                            hs = nhs.setdefault(novelty, set())
+                            hs |= set(hashes)
+
         scores = {}
         for task in evaluate.task_flatten:
             gold, pred = all_gold.get(task, {}), all_pred.get(task, {})
@@ -590,7 +600,14 @@ class TableSet(HashBag):
                 task_scores = evaluate.score.classification(gold, pred)
                 task_scores["predictions"] = len(pred)
                 scores[task] = task_scores
-        
-        return {'scores': scores}
-    
-    
+        if scores:
+            data["scores"] = scores
+
+        if kb_kind_novelty_hashes:
+            data["novelty"] = {}
+            for kb, kind_novelty_hashes in kb_kind_novelty_hashes.items():
+                data["novelty"][kb] = evaluate.novelty.count_noveltyhashes(
+                    kind_novelty_hashes
+                )
+
+        return data

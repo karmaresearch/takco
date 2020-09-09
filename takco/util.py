@@ -69,7 +69,10 @@ class Config(dict):
                     k: Config.init_class(v, force=False, **context)
                     for k, v in self.items()
                 }
-                return c(**kwargs)
+                obj = c(**kwargs)
+                if "name" in self:
+                    obj.name = self["name"]
+                return obj
         else:
             return self
 
@@ -319,7 +322,13 @@ def preview(tables, nrows=5, ntables=10):
         table.setdefault("classes", {})
         table.setdefault("properties", {})
 
-        t = template.render(table=json.loads(json.dumps(table)))
+        ri_ann = {}
+        for ci, res in table.get("gold", {}).get("entities", {}).items():
+            for r, es in res.items():
+                if es:
+                    ri_ann[r] = True
+
+        t = template.render(table=json.loads(json.dumps(table)), annotated_rows=ri_ann)
         more_rows = max(0, len(table.get("tableData", [])) - nrows) if nrows else 0
         if more_rows:
             t += f"<p>({more_rows} more rows)</p>"

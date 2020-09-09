@@ -142,10 +142,12 @@ class RDFSearcher(Searcher, GraphDB):
             s = uri
             for lp in self.labelProperties:
                 for _, _, o in self.triples([s, lp, None]):
-                    for match in self.cellType.match(o, surface, self.stringmatch):
+                    for match in self.cellType.literal_match(
+                        o, surface, self.stringmatch
+                    ):
                         yield match
         else:
-            for match in self.cellType.match(uri, surface, self.stringmatch):
+            for match in self.cellType.literal_match(uri, surface, self.stringmatch):
                 yield match
 
     def _yield_qualified_statements_about(self, e):
@@ -195,7 +197,7 @@ class RDFSearcher(Searcher, GraphDB):
 
                                 if hasattr(o, "datatype"):
                                     for ci, txt in enumerate(celltexts):
-                                        for lm in self.cellType.match(o, txt):
+                                        for lm in self.cellType.literal_match(o, txt):
                                             qm = QualifierMatchResult(ci, (q, p, o), lm)
                                             qmatches.append(qm)
                                 else:

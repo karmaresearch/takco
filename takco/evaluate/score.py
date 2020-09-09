@@ -1,10 +1,15 @@
 try:
     from sklearn.metrics import classification_report
+    from sklearn.exceptions import UndefinedMetricWarning
     import pandas as pd
 
     def classification(gold, pred):
+        import warnings
+
         df = pd.DataFrame({"gold": gold, "pred": pred}).fillna(0).applymap(bool)
-        return classification_report(df.gold, df.pred, output_dict=True).get("True")
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+            return classification_report(df.gold, df.pred, output_dict=True).get("True")
 
 
 except ImportError:

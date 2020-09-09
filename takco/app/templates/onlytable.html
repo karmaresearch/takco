@@ -1,5 +1,31 @@
+<style>
+.unannotated {
+    color: gray;
+    background: #eee;
+}
+.noent, .noent a {
+    color: red;
+}
+.noclass, .noclass a {
+    color: green;
+}
+.nomatch {
+    background: #8ff;
+}
+.match {
+    color: #0aa;
+}
+.noprop {
+    background: lightgreen;
+}
+</style>
+
 {% set kbinfo = kbinfo | default({}, true) %}
 <table class="dataframe">
+    <thead>
+        <!-- legend if asked for -->
+        
+    </thead>
     
     {# COLUMN NUMBERS #}
     <tr style="font-size:90%">
