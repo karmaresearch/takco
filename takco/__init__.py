@@ -93,32 +93,6 @@ def warc(
     fnames = [fname for g in globstrings for fname in datadir.glob(g)]
     return executor(fnames)._pipe(get_warc_pages)
 
-
-def appcache(
-    assets: typing.List[Config] = (),
-    kbs: typing.List[Config] = (),
-    datadir: Path = None,
-    resourcedir: Path = None,
-    links_for_kb: typing.List[str] = (),
-):
-    """ Build app cache
-    
-    Args:
-        datadir: Data directory
-        resourcedir: Resource directory
-        assets: Asset specifications
-        kbs: Knowledge Base specifications
-        links_for_kb: Names of KBs for which to cache links and novelty stats
-    
-    """
-    import tqdm
-    from .app import make_datasets
-
-    return make_datasets(
-        assets, kbs, resourcedir, datadir, links_for_kb=links_for_kb, wrap=tqdm.tqdm
-    )
-
-
 class TableSet(HashBag):
     """A set of tables that can be clustered and linked.
     """
@@ -538,16 +512,16 @@ class TableSet(HashBag):
 
     def novelty(
         tables: TableSet,
-        linker_config: Config = None,
+        searcher_config: Config = None,
         kbs: typing.List[Config] = (),
         **_,
     ):
         from . import evaluate
 
         kbs = {k.get("name", k.get("class")): Config(k) for k in kbs}
-        linker_config = Config(linker_config, **kbs)
+        searcher_config = Config(searcher_config, **kbs)
 
-        return tables._pipe(evaluate.table_novelty, linker_config)
+        return tables._pipe(evaluate.table_novelty, searcher_config)
 
     def triples(tables: TableSet, include_type: bool = True):
         """Make triples for predictions"""
@@ -555,7 +529,7 @@ class TableSet(HashBag):
 
         return tables._pipe(evaluate.table_triples, include_type=include_type)
 
-    def make_report(tables: TableSet, keycol_only: bool = False):
+    def report(tables: TableSet, keycol_only: bool = False):
         from . import evaluate
 
         data = {}

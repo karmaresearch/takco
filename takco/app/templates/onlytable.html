@@ -18,6 +18,9 @@
 .noprop {
     background: lightgreen;
 }
+tr.hidden {
+    display: none;
+}
 </style>
 
 {% set kbinfo = kbinfo | default({}, true) %}
@@ -42,11 +45,17 @@
             {% for ci in range(table.rows[0] | length) %}
                 <th>
                     {% for cls in table.classes[ci|string] %}
-                        {% set noclass = (cls not in kbinfo) or not kbinfo[cls].inlinks %}
-                        <span class="{{'noent' if noclass else ''}}">
+                        {% set cgold = table.gold.classes.get((ci|string), {}) %}
+                        {% set incorrect = cgold and (cls not in cgold) %}
+                        {% set noclass = (cls not in kbinfo) or not kbinfo[cls].inlinks or incorrect %}
+                        <nobr class="{{'noent' if noclass else ''}}">
                             {% set cname = cls.split('/')[-1].split('#')[-1] %}
-                            <a href="{{cls}}" data-id="{{cls}}" class="kblink" title="{{cls}}">{{cname}}</a>
-                        </span>
+                            <a href="{{cls}}" data-id="{{cls}}" class="kblink" title="{{cls}}">
+                                {{cname}}
+                                {% if incorrect %}❌{% endif %}
+                                {% if not cgold %}❓{% endif %}
+                            </a>
+                        </nobr>
                     {% endfor %}
                 </th>
             {% endfor %}
@@ -65,12 +74,20 @@
                     </abbr>
                 </th>
                 {% for toci in range(table.rows[0] | length) %}
+                    {% set pgold = table.gold.properties.get((fromci|string), {}).get((toci|string), {}) %}
                     {% set props = fromprops[toci|string] %}
                     {% set noprops = not (props | lookup(kbinfo) | any) %}
                     <th class="{{'noent' if noprops else ''}}">
                         {% for prop in props %}
+                            {% set incorrect = pgold and (prop not in pgold) %}
                             {% set pname = prop.split('/')[-1].split('#')[-1] %}
-                            <a href="{{prop}}" data-id="{{prop}}" class="kblink" title="{{prop}}">{{pname}}</a>
+                            <nobr class="{{'noent' if incorrect else ''}}">
+                            <a href="{{prop}}" data-id="{{prop}}" class="kblink" title="{{prop}}">
+                                {{pname}}
+                                {% if incorrect %}❌{% endif %}
+                                {% if not pgold %}❓{% endif %}
+                            </a>
+                            </nobr>
                         {% endfor %}
                     </th>
                 {% endfor %}
@@ -93,7 +110,8 @@
     {% for ri in range(table.rows | length) %}
         {% set row = table.rows[ri] %}
         {% set rowannotated = (ri|string) in annotated_rows %}
-        <tr class="{{'unannotated' if not rowannotated else ''}}">
+        {% set rowhidden = (hidden_rows or {}).get(ri|string) %}
+        <tr class="{{'unannotated' if not rowannotated else ''}} {{'hidden' if rowhidden else ''}}">
             <td></td>
             {% for ci in range(row | length) %}
                 {% set classes = [] %}
@@ -114,7 +132,7 @@
                 {% set goldents = table.gold.entities.get(ci, {}).get(ri, {}) if 'gold' in table else {} %}
                 {% set goldent = (goldents | list | select | first | string) %}
                 <!-- goldent: {{goldent}}; correct: {{ent == goldent}} -->
-                {% set iscorrect = ents and rowannotated and goldent and (ent == goldent) %}
+                {% set iscorrect = ents and rowannotated and goldents and (ent == goldent) %}
                 <!-- {{classes.append('incorrect') if not iscorrect else 'correct'}} -->
                 
                 {% if kblinks %}
@@ -136,7 +154,10 @@
                         {% if ('gold' in table) and not iscorrect %}
                             {{celltext}}
                             <nobr>
-                                <a href="{{ent}}" data-id="{{ent}}" class="kblink btn" title="{{ent}}">❌</a>
+                                <a href="{{ent}}" data-id="{{ent}}" class="kblink btn" title="{{ent}}">
+                                    {% if goldents %}❌{% endif %}
+                                    {% if not goldents %}❓{% endif %}
+                                </a>
                                 {% if goldent %}
                                     <a href="{{goldent}}" data-id="{{goldent}}" class="kblink btn" title="{{goldent}}">💡</a>
                                 {% endif %}

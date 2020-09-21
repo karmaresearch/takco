@@ -134,7 +134,6 @@ def unpivot_tables(
     }
 
     for table in tables:
-        table = copy.deepcopy(table)
 
         headerText = [
             [c.get("text", "") for c in hrow] for hrow in table["tableHeaders"]

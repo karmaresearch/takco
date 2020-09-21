@@ -22,9 +22,26 @@ labelProperties = ["http://dbpedia.org/ontology/title"]
 store = {class = "Trident", configuration = 'kb/dbpedia/2016-10/'}
 
 [[kbs]]
-name = "dbpedialookup"
-class = "DBpediaLookup"
-    
+name = "dbpedia_t2ksubset_extralabels"
+class = "SQLiteSearcher"
+files = "data/dbpedia-t2ksubset-label-sqlitedbs-2/*"
+baseuri = "http://dbpedia.org/resource/"
+    [kbs.graph]
+    class = "RDFSearcher"
+    labelProperties = ["http://dbpedia.org/ontology/title"]
+    store = {class = "Trident", configuration = 'kb/dbpedia_t2ksubset/db+extralabels/'}
+
+[[kbs]]
+name = "dbpedialookup_t2ksubset"
+class = "SQLiteSearcher"
+files = "data/dbpedia-lookup-sqlitedbs/*"
+baseuri = "http://dbpedia.org/resource/"
+fallback = {class = "DBpediaLookup"}
+    [kbs.graph]
+    name = "dbpedia_t2ksubset"
+    class = "RDFSearcher"
+    labelProperties = ["http://dbpedia.org/ontology/title"]
+    store = {class = "Trident", configuration = 'kb/dbpedia_t2ksubset/db/'}
 
 #[[assets]]
 #name = "t2d-v1"
@@ -51,5 +68,4 @@ fixuri = "t2d_fix.csv"
 name = "t2d-v2-predictions"
 class = "Annotation"
 path = "output/t2d-v2-baseline/"
-fname = "1-link"
-gold = "t2d-v2"
+fname = "4-novelty"

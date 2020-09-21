@@ -20,35 +20,39 @@
         text-align: right;
     }
 </style
-{% set novelty_types = {'lbl':'Label', 'cls':'Class', 'prop':'Property'} %}
+{% set tasks = ['label', 'class', 'property'] %}
 <p>
     <h2>Novelty of dataset annotations</h2>
     {% if novelty %}
     <!-- {{novelty | tojson | safe }} -->
     <div style="display:flex">
-        {% for typ,typname in novelty_types.items() %}
-            {% set n = novelty.get(typ, 0) %}
-            {% set nomatch = novelty.get(typ+'_nomatch', 0) %}
-            {% set total = novelty.get(typ+'_total', 0) %}
-            {% set redundant = novelty.get(typ+'_redundant', 0) %}
-            <div style="width:175px; text-align:center; margin:0 16px">
-                <b>{{typname}}</b><br>
-                <script>
-                    $(function(){ 
-                        pie('.{{typ}}-novelty-pie', {{n}}, {{nomatch}}, {{redundant}}, 50) 
-                    })
-                </script>
+        {% for task in tasks %}
+            {% set counts = novelty.get('counts', {}).get(task, {}) %}
+            {% if counts %}
+                {% set attnovel = counts.get('tp_attnovel', 0) %}
+                {% set valnovel = counts.get('tp_valnovel', 0) %}
+                {% set existing = counts.get('tp_existing', 0) %}
+                {% set total = attnovel + valnovel + existing %}
+    
+                <div style="width:175px; text-align:center; margin:0 16px">
+                    <b>{{task.title()}}</b><br>
+                    <script>
+                        $(function(){ 
+                            pie('.{{task}}-novelty-pie', {{attnovel}}, {{valnovel}}, {{existing}}, 50) 
+                        })
+                    </script>
 
-                <div class="{{typ}}-novelty-pie" style="margin:.5em"></div>
-                <small>
-                {{bignum(n)}} / {{bignum(total)}} = 
-                {{'%d' % (100 * n / total) if total else 0}}% 
-                att. novel<br>
-                {{bignum(nomatch)}} / {{bignum(total)}} = 
-                {{'%d' % (100 * nomatch / total) if total else 0}}%
-                val. novel
-                </small>
-            </div>
+                    <div class="{{task}}-novelty-pie" style="margin:.5em"></div>
+                    <small>
+                    {{bignum(attnovel)}} / {{bignum(total)}} = 
+                    {{'%d' % (100 * attnovel / total) if total else 0}}% 
+                    att. novel<br>
+                    {{bignum(valnovel)}} / {{bignum(total)}} = 
+                    {{'%d' % (100 * valnovel / total) if total else 0}}%
+                    val. novel
+                    </small>
+                </div>
+            {% endif %}
         {% endfor %}
     </div>
     {% endif %}
@@ -68,8 +72,8 @@
             <th></th>
             <th></th>
             <th></th>
-            {% for typ,typname in novelty_types.items() %}
-                <th colspan=3>{{typname}}</th>
+            {% for task in tasks %}
+                <th colspan=3>{{task.title()}}</th>
             {% endfor %}
         </tr>
         <tr>
@@ -78,7 +82,7 @@
             <th>Cols <a class="sort_btn"/></th>
             <th>Class <a class="sort_btn"/></th>
             
-            {% for typ,typname in novelty_types.items() %}
+            {% for task in tasks %}
                 <th class="num">A<a class="sort_btn"/></th>
                 <th class="num">V<a class="sort_btn"/></th>
                 <th></th>
@@ -104,13 +108,17 @@
                 <i style="color:lightgray">no annotations</i>
             {% endif %}
         </td>
-        {% set n = table_novelty.get(name, {}) %}
-        {% for typ,typname in novelty_types.items() %}
-            {% set v = n.get(typ, 0) %}
-            {% set pct = n.get(typ + '_pct', 0) %}
-            {% set val_pct = n.get(typ + '_val_pct', 0) %}
-            {% set nomatch = n.get(typ + '_nomatch', 0) %}
-            {% set redundant = n.get(typ + '_redundant', 0) %}
+        {% set n = table.get('novelty', {}).get(kbid, {}) %}
+        {% for task in tasks %}
+            {% set counts = n.get('counts', {}).get(task, {}) %}
+            {% set attnovel = counts.get('tp_attnovel', 0) %}
+            {% set valnovel = counts.get('tp_valnovel', 0) %}
+            {% set existing = counts.get('tp_existing', 0) %}
+            {% set total = attnovel + valnovel + existing %}
+    
+            {% set pct = attnovel / total if total else 0 %}
+            {% set val_pct = valnovel / total if total else 0 %}
+    
             {% if pct %}
                 <td data-value="{{pct}}" class="num">
                     {{ '.%.0d'%(100*pct) if pct < 1 else 1 }}
@@ -121,11 +129,11 @@
                 <td>
                     <script>
                         $(function(){ 
-                            pie('#{{typ}}-pie-{{name}}', 
-                            {{v}}, {{nomatch}}, {{redundant}}, 15) 
+                            pie('#{{task}}-pie-{{name}}', 
+                            {{attnovel}}, {{valnovel}}, {{existing}}, 15) 
                         })
                     </script>
-                    <span id="{{typ}}-pie-{{name}}"></span>
+                    <span id="{{task}}-pie-{{name}}"></span>
                 </td>
             {% else %}
                 <td></td><td></td><td></td>

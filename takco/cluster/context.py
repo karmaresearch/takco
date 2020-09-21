@@ -1,4 +1,3 @@
-import copy
 import hashlib
 import logging as log
 
@@ -13,7 +12,6 @@ def get_headerId(header):
 def tables_add_context_rows(tables, fields=()):
     """Add context to table depending on table dict fields"""
     for table in tables:
-        table = copy.deepcopy(table)
 
         for field in fields:
             empty_header = {

@@ -1,6 +1,7 @@
 import json
 import logging as log
 import inspect
+import copy
 
 
 class Config(dict):
@@ -93,6 +94,7 @@ class HashBag:
 
     def _pipe(self, func, *args, desc=None, **kwargs):
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
+        it = (copy.deepcopy(x) for x in it)
         if desc:
             log.info(desc)
         return self.__class__(func(it, *args, **kwargs))
@@ -291,10 +293,9 @@ def get_warc_pages(fnames):
 
 from collections.abc import Iterable
 import json
-import copy
 
 
-def preview(tables, nrows=5, ntables=10):
+def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
     """Show table previews in Jupyter"""
     if isinstance(tables, dict):
         tables = [tables]
@@ -313,7 +314,31 @@ def preview(tables, nrows=5, ntables=10):
     for i, table in enumerate(tables):
         table = copy.deepcopy(table)
 
-        rows = [[c.get("text") for c in r] for r in table.get("tableData", [])][:nrows]
+        ri_ann = {}
+        hidden_rows = {}
+        for ci, res in table.get("gold", {}).get("entities", {}).items():
+            for ri, es in res.items():
+                if es:
+                    ri_ann[ri] = True
+                    
+                    if hide_correct_rows:
+                        predents = table.get('entities', {}).get(ci, {}).get(ri, {})
+                        hide = all(e in predents for e in es)
+                        hidden_rows[ri] = hidden_rows.get(ri, True) and hide
+                else:
+                    hidden_rows[ri] = hidden_rows.get(ri, True)
+        
+        if nrows and any(hidden_rows.values()):
+            n, nshow = 0, 0
+            for ri, h in sorted(hidden_rows.items()):
+                n += 1
+                nshow += int(not h)
+                if nshow >= nrows:
+                    break
+        else:
+            n = nrows
+            
+        rows = [[c.get("text") for c in r] for r in table.get("tableData", [])][:n]
         table.setdefault("rows", rows)
         headers = [[c.get("text") for c in r] for r in table.get("tableHeaders", [])]
         table.setdefault("headers", headers)
@@ -321,14 +346,12 @@ def preview(tables, nrows=5, ntables=10):
         table.setdefault("entities", {})
         table.setdefault("classes", {})
         table.setdefault("properties", {})
-
-        ri_ann = {}
-        for ci, res in table.get("gold", {}).get("entities", {}).items():
-            for r, es in res.items():
-                if es:
-                    ri_ann[r] = True
-
-        t = template.render(table=json.loads(json.dumps(table)), annotated_rows=ri_ann)
+        
+        t = template.render(
+            table=json.loads(json.dumps(table)), 
+            annotated_rows=ri_ann,
+            hidden_rows=hidden_rows,
+        )
         more_rows = max(0, len(table.get("tableData", [])) - nrows) if nrows else 0
         if more_rows:
             t += f"<p>({more_rows} more rows)</p>"

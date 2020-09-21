@@ -158,7 +158,9 @@ def run(
                 tables = executor._load(str(stepdir) + "/*")
         else:
             log.warn(f"Pipeline step {si} has no step type!")
-    return tables
+    
+    if not cache:
+        return tables
 
 
 def main():
@@ -212,7 +214,6 @@ def main():
     funcs = (
         run,
         wiki,
-        appcache,
         TableSet.dataset,
         TableSet.extract,
         TableSet.reshape,

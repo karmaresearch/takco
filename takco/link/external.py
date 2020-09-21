@@ -312,7 +312,7 @@ class DBpediaLookup(Searcher, WikiLookup):
             return {}
         results = self._query(
             QueryString=search,
-            MaxHits=limit,
+            MaxHits=limit or 1000,
             #   language=self.language,
         )
         if results:
@@ -320,7 +320,8 @@ class DBpediaLookup(Searcher, WikiLookup):
             for r in results.get("results", []):
                 if "classes" in r:
                     r[RDF_type] = r.pop("classes")
-                sr.append(SearchResult(r.pop("uri"), r))
+                score = 1-(1/(1+r.get('refCount', 0)))
+                sr.append(SearchResult(r.pop("uri"), r, score=score ))
             return sr
 
 

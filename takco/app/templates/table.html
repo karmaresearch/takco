@@ -74,29 +74,33 @@
 <h2>Novelty of table annotations</h2>
 {% if novelty.values()|select|first %}
     <div style="display:flex">
-        {% for typ,typname in {'lbl':'Label', 'cls':'Class', 'prop':'Property'}.items() %}
-            {% set n = novelty.get(typ, 0) %}
-            {% set nomatch = novelty.get(typ+'_nomatch', 0) %}
-            {% set total = novelty.get(typ+'_total', 0) %}
-            {% set redundant = novelty.get(typ+'_redundant', 0) %}
-            <div style="width:200px; text-align:center; margin:0 1em">
-                <b>{{typname}}</b><br>
-                <script>
-                    $(function(){ 
-                        pie('.{{typ}}-novelty-pie', {{n}}, {{nomatch}}, {{redundant}}, 50) 
-                    })
-                </script>
+        {% for task in ['label', 'class', 'property'] %}
+            {% set counts = novelty.get('counts', {}).get(task, {}) %}
+            {% if counts %}
+                {% set attnovel = counts.get('tp_attnovel', 0) %}
+                {% set valnovel = counts.get('tp_valnovel', 0) %}
+                {% set existing = counts.get('tp_existing', 0) %}
+                {% set total = attnovel + valnovel + existing %}
 
-                <div class="{{typ}}-novelty-pie" style="margin:.5em"></div>
-                <small>
-                {{bignum(n)}} / {{bignum(total)}} = 
-                {{'%d' % (100 * n / total) if total else 0}}% 
-                att. novel<br>
-                {{bignum(nomatch)}} / {{bignum(total)}} = 
-                {{'%d' % (100 * nomatch / total) if total else 0}}%
-                val. novel
-                </small>
-            </div>
+                <div style="width:200px; text-align:center; margin:0 1em">
+                    <b>{{ task.title() }}</b><br>
+                    <script>
+                        $(function(){ 
+                            pie('.{{task}}-novelty-pie', {{attnovel}}, {{valnovel}}, {{existing}}, 50) 
+                        })
+                    </script>
+
+                    <div class="{{task}}-novelty-pie" style="margin:.5em"></div>
+                    <small>
+                    {{bignum(attnovel)}} / {{bignum(total)}} = 
+                    {{'%d' % (100 * attnovel / total) if total else 0}}% 
+                    att. novel<br>
+                    {{bignum(valnovel)}} / {{bignum(total)}} = 
+                    {{'%d' % (100 * valnovel / total) if total else 0}}%
+                    val. novel
+                    </small>
+                </div>
+            {% endif %}
         {% endfor %}
     </div>
 {% endif %}

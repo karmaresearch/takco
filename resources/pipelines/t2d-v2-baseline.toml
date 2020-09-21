@@ -23,11 +23,7 @@ lookup_config = {}
     prop_cover = 0.2
     class_cover = 0.2
     #only_majority = "@type"
-        [step.linker_config.searcher]
-        class = "SQLiteSearcher"
-        files = "data/dbpedia-t2ksubset-label-sqlitedbs-2/*"
-        baseuri = "http://dbpedia.org/resource/"
-        graph = {name = "dbpedia_t2ksubset"}
+    searcher = {name = "dbpedia_t2ksubset_extralabels"}
     
     #[step.linker_config]
     #class = "First"
@@ -41,3 +37,10 @@ step = "score"
 labels = "t2d-v2"
 keycol_only = true
 report = ["pdf", "md"]
+
+[[step]]
+step = "triples"
+
+[[step]]
+step = "novelty"
+searcher_config = {name = "dbpedia_t2ksubset"}

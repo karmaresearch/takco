@@ -29,7 +29,7 @@ class T2D(Dataset):
 
             if uri.startswith("http://dbpedia.org/resource/"):
                 uripart = uri.replace("http://dbpedia.org/resource/", "")
-                uripart = urllib.parse.quote_plus(uripart, safe="'()&,")
+                uripart = urllib.parse.quote_plus(uripart, safe="'()&,!")
                 uri = "http://dbpedia.org/resource/" + uripart
 
             return uri

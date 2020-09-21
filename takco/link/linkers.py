@@ -13,7 +13,7 @@ class First(Linker):
     Args:
         searcher: The Searcher to find KB entities
         limit: Number of candidates to search for
-        only_majority: Only use entities that have the majority value for this property
+        majority_class: Only use entities that have the majority value for this property
         exclude_about: Exclude entities that have these property-values
     
     """
@@ -22,14 +22,16 @@ class First(Linker):
         self,
         searcher: Searcher,
         limit: int = 1,
-        only_majority: URI = None,
+        search_limit: int = 10,
+        majority_class: URI = None,
         exclude_about: Dict[URI, URI] = None,
     ):
         self.searcher = searcher
         self.limit = limit
-        self.only_majority = only_majority
+        self.search_limit = search_limit
+        self.majority_class = majority_class
         self.exclude_about = exclude_about
-        self.add_about = bool(only_majority or exclude_about)
+        self.add_about = bool(majority_class or exclude_about)
 
     def link(
         self,
@@ -44,30 +46,33 @@ class First(Linker):
         existing_entities = (existing or {}).get("entities", {})
         rowcol_results = self._rowcol_results(
             rows,
-            limit=self.limit,
+            limit=self.search_limit,
             usecols=usecols,
             skiprows=skiprows,
             existing_entities=existing_entities,
+            add_about=self.add_about,
         )
         # TODO: lookup facts about existing entities
 
-        if self.only_majority:
+        if self.majority_class:
             # Keep track of the most frequent attribute of a certain predicate
             ci_att_count = {}
             for (_, ci), results in rowcol_results.items():
                 for result in results:
-                    for att in result.get(URIRef(self.only_majority), []):
+                    for att in result.get(URIRef(self.majority_class), []):
                         ci_att_count.setdefault(ci, {}).setdefault(att, 0)
                         ci_att_count[ci][att] += 1
 
             ci_majoratt = {}
+            ci_classes = {}
             for ci, att_count in ci_att_count.items():
                 ci_majoratt[ci] = max(att_count, key=att_count.get)
+                ci_classes[str(ci)] = {ci_majoratt[ci]: att_count[ci_majoratt[ci]]}
             log.debug(f"Got majority attribute {ci_majoratt}")
-
-            for k, results in rowcol_results.items():
-                atts = lambda r: set(r.get(URIRef(self.only_majority), []))
-                rowcol_results[k] = [
+            
+            atts = lambda r: r.get(URIRef(self.majority_class), [])
+            for (ri,ci), results in rowcol_results.items():
+                rowcol_results[(ri,ci)] = [
                     r for r in results if ci_majoratt.get(ci) in atts(r)
                 ]
 
@@ -89,7 +94,10 @@ class First(Linker):
                 ents = entities.setdefault(str(ci), {}).setdefault(str(ri), {})
                 ents[r.uri] = r.score
 
-        return {"entities": entities}
+        if self.majority_class:
+            return {"entities": entities, "classes": ci_classes}
+        else:
+            return {"entities": entities}
 
 
 class Salient(Linker):

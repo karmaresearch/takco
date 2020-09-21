@@ -27,13 +27,13 @@
         {% endraw %}
         </script>
         <script>
-            function pie(el, novel, nomatch, redundant, size) {
+            function pie(el, attnovel, valnovel, existing, size) {
 
-                var myvalues = [ novel, nomatch, redundant ]
+                var myvalues = [ attnovel, valnovel, existing ]
                 var levels = {}
-                levels[novel] = 'Attribute Novel'
-                levels[nomatch] = 'Value Novel'
-                levels[redundant] = 'Redundant'
+                levels[attnovel] = 'Attribute Novel'
+                levels[valnovel] = 'Value Novel'
+                levels[existing] = 'Redundant'
                 var spark = $(el).sparkline(myvalues, {
                     type: 'pie', width:size, height:size,
                     sliceColors: ['#8c8', '#4cf', '#ddd'],

@@ -20,6 +20,14 @@ from .base import (
 from .datatype import SimpleCellType
 
 
+def encode_wikidata(query):
+    import json
+
+    chars = [json.dumps(c)[1:-1] for c in query]
+    chars = [c[:2] + c[2:].upper() if c.startswith("\\") else c for c in chars]
+    newquery = "".join(chars)
+    return newquery
+
 class GraphDB(Database, rdflib.Graph):
     def __init__(self, *args, **kwargs):
         rdflib.Graph.__init__(self, *args, **kwargs)
@@ -75,6 +83,7 @@ class RDFSearcher(Searcher, GraphDB):
         store=None,
         language="en",
         stringmatch="jaccard",
+        refsort=True,
         cellType: CellType = SimpleCellType,
         encoding=None,
         labelProperties=[],
@@ -95,6 +104,7 @@ class RDFSearcher(Searcher, GraphDB):
 
         self.encoding = encoding
         self.stringmatch = stringmatch
+        self.refsort = refsort
         self.cellType = cellType
 
         self.qualifierIDProperty = None
@@ -108,15 +118,7 @@ class RDFSearcher(Searcher, GraphDB):
     def search_entities(self, query: str, limit=1, add_about=False):
         if self.encoding and (query != query.encode("ascii", errors="ignore").decode()):
             if self.encoding == "wikidata":
-                import json
-
-                chars = [json.dumps(c)[1:-1] for c in query]
-                chars = [
-                    c[:2] + c[2:].upper() if c.startswith("\\") else c for c in chars
-                ]
-                newquery = "".join(chars)
-                log.debug(f"Transformed {query} to {newquery}")
-                query = newquery
+                query = encode_wikidata(query)
             else:
                 query = query.encode(self.encoding)
         results = [
@@ -125,6 +127,7 @@ class RDFSearcher(Searcher, GraphDB):
             for lang in [None, self.language]
             for e, _, _ in self.triples((None, l, Literal(query, lang=lang)))
         ][:limit]
+        
         if not results:
             ls = [Literal(query, lang=lang).n3() for lang in [None, self.language]]
             ls = " or ".join(ls)
@@ -133,9 +136,25 @@ class RDFSearcher(Searcher, GraphDB):
             log.debug(
                 f"{len(results):2d} {self.__class__.__name__} results for {query}"
             )
-        return [
-            SearchResult(str(e), self.about(e) if add_about else {}) for e in results
+        
+        e_score = {}
+        if self.refsort:
+            for e in results:
+                e_score[e] = 1-1/(1+self.count([None, None, URIRef(sr.uri)]))
+            
+        results = [
+            SearchResult(
+                str(e), 
+                self.about(e) if add_about else {}, 
+                score=e_score.get(e, 1)
+            )
+            for e in results
         ]
+        
+        if self.refsort:
+            results = sorted(results, lambda sr: -sr.score)
+        
+        return results
 
     def label_match(self, uri, surface):
         if isinstance(uri, URIRef):

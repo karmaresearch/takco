@@ -8,9 +8,6 @@ from .data import load_kb
 from .stats import (
     get_kbgold,
     get_kbinfo,
-    get_table_kblinks,
-    get_novelty,
-    novelty_add_pct,
 )
 
 # Run Flask: env PYTHONPATH=src/ FLASK_ENV=development FLASK_APP=app/app.py DATADIR=data/ flask run --port=5555
@@ -24,71 +21,30 @@ if os.environ.get("config"):
 
     config = toml.load(Path(os.environ.get("config")).open())
 else:
-    config = dict(os.environ)
+    config = {}
+config.update( dict(os.environ) )
 
-kbs = {k.get("name", k.get("class")): k for k in config.get("kbs", {})}
+kbs = {k.get("name", k.get("class")): k for k in config.get("kbs", []) }
+assets = {a.get("name", a.get("class")): a for a in config.get("assets", []) }
 
 if os.environ.get("LOGLEVEL"):
     log.getLogger().setLevel(getattr(log, os.environ.get("LOGLEVEL").upper()))
 
 
-def make_datasets(assets, kbs, resourcedir, datadir, links_for_kb=(), wrap=None):
-    if wrap is None:
-
-        def wrap(it, **kwargs):
-            yield from it
-
-    if not isinstance(kbs, dict):
-        kbs = {k.get("name", k.get("class")): k for k in kbs}
-
-    datasets = {}
-    dataset_gold = {}
-    assets = {a.get("name", a.get("class")): a for a in assets}
-    for datasetname, params in assets.items():
-        dataset_gold[datasetname] = params.get("gold")
-        dataset = eval_dataset.load(resourcedir, datadir, **params)
-        tables = list(dataset.tables)
-        datasets[datasetname] = {}
-        for kbname in links_for_kb:
-            kb = load_kb(kbs.get(kbname))
-            for table in wrap(tables, desc=f"{datasetname}/{kbname}"):
-                kblinks = get_table_kblinks(kb, table)
-                kblinks["novelty"] = get_novelty(kb, table, kblinks)
-                table.setdefault("kblinks", {}).setdefault(kbname, kblinks)
-        datasets[datasetname] = {t["name"]: t for t in wrap(tables, desc=datasetname)}
-
-    for datasetname, tables in datasets.items():
-        gold = datasets.get(dataset_gold.get(datasetname))
-        if gold:
-            for name, table in tables.items():
-                table["gold"] = gold.get(name)
-
-    return datasets
-
-
 def get_datasets():
     if "datasets" not in g:
         datadir = Path(config["datadir"])
-        datasets_file = datadir / Path("datasets-cache.json")
-        if not os.path.exists(datasets_file) or not config.get("cache"):
 
-            log.info("Re-loading datasets...")
-            resourcedir = config.get("resourcedir")
-            assets = config.get("assets", ())
-            datasets = make_datasets(assets, kbs, resourcedir, datadir)
+        log.info("Re-loading datasets...")
+        resourcedir = config.get("resourcedir")
 
-            with open(datasets_file, "w") as fw:
-                json.dump(datasets, fw)
-        g.datasets = json.load(open(datasets_file))
+        datasets = {}
+        for datasetname, params in assets.items():
+            dataset = eval_dataset.load(resourcedir, datadir, **params)
+            datasets[datasetname] = {t["name"]: t for t in dataset.tables}
+            
+        g.datasets = datasets
     return g.datasets
-
-
-def save_datasets():
-    datadir = config.get("datadir")
-    datasets_file = os.path.join(datadir, "datasets-cache.json")
-    with open(datasets_file, "w") as fw:
-        json.dump(g.datasets, fw)
-
 
 def get_kbs():
     global kbs
@@ -186,12 +142,11 @@ def table():
 
             kblinks, kbinfo = get_kbgold(kb, table)
             table.setdefault("kblinks", {}).setdefault(kb.name, kblinks)
-            save_datasets()
         else:
             kbinfo = get_kbinfo(kb, table)
 
         log.info(f"kbinfo is about {len(kbinfo)} nodes")
-        novelty = get_novelty(kb, table, kblinks)
+        novelty = table.get('novelty', {}).get(kb.name)
     else:
         log.info(f"No KB")
 
@@ -228,42 +183,24 @@ def dataset():
         table["numRows"] = len(table["rows"])
         table["numCols"] = len(table["rows"][0]) if table["numRows"] else 0
 
-    table_novelty = {}
+    novelty = {'counts': {}}
     kb = get_kb()
     if kb:
-        kbinfo = {}
         for i, (name, table) in enumerate(tables.items()):
-            kblinks = table.get("kblinks", {}).get(kb.name)
-            if (not cache) or (not kblinks):
-                log.info(f"{i:4d} / {len(tables)} {name}")
-                kblinks, kbinfo_ = get_kbgold(kb, table)
-                kbinfo.update(kbinfo_)
-                table.setdefault("kblinks", {}).setdefault(kb.name, kblinks)
-            table_novelty[name] = table["kblinks"][kb.name]["novelty"]
-
-        save_datasets()
+            task_counts = table.get("novelty", {}).get(kb.name, {}).get('counts', {})
+            for task, counts in task_counts.items():
+                novelty['counts'].setdefault(task, {})
+                for c,v in counts.items():
+                    novelty['counts'][task].setdefault(c, 0)
+                    novelty['counts'][task][c] += v
     else:
         log.info(f"No kb")
 
-    novelty = {}
-    for kind in ["lbl", "cls", "prop"]:
-        novelty[kind] = sum(n[kind] for n in table_novelty.values())
-        novelty[kind + "_nomatch"] = sum(
-            n.get(kind + "_nomatch", 0) for n in table_novelty.values()
-        )
-        novelty[kind + "_redundant"] = sum(
-            n.get(kind + "_redundant", 0) for n in table_novelty.values()
-        )
-        novelty[kind + "_total"] = sum(
-            n[kind + "_total"] for n in table_novelty.values()
-        )
-    novelty_add_pct(novelty)
-
+    
     return render_template(
         "dataset.html",
         dataset=dataset,
         tables=tables,
-        table_novelty=table_novelty,
         novelty=novelty,
         **get_kbs(),
     )

@@ -82,15 +82,25 @@ class Trident(rdflib.store.Store):
 
     def count(self, triple):
         s, p, o = triple
-        if s and (not p) and (not o):
-            i = self.id(s, baseuri=self.ent_baseuri)
-            return self.db.count_s(i) if (i is not None) else 0
-        elif (not s) and p and (not o):
-            i = self.id(p, baseuri=self.prop_baseuri)
-            return self.db.count_p(i) if (i is not None) else 0
-        elif (not s) and (not p) and o:
-            i = self.id(o, baseuri=self.ent_baseuri)
-            return self.db.count_o(i) if (i is not None) else 0
+        vs = (s is None) or isinstance(s, rdflib.Variable)
+        vp = (p is None) or isinstance(p, rdflib.Variable)
+        vo = (o is None) or isinstance(s, rdflib.Variable)
+        si = self.id(s, baseuri=self.ent_baseuri, ns=self.ns) if not vs else None
+        pi = self.id(p, baseuri=self.prop_baseuri, ns=self.ns) if not vp else None
+        oi = self.id(o, baseuri=self.ent_baseuri, ns=self.ns) if not vo else None
+        
+        if si and (not pi) and (not oi):
+            return self.db.count_s(si)
+        elif (not si) and pi and (not oi):
+            return self.db.count_p(pi)
+        elif (not si) and (not pi) and oi:
+            return self.db.count_o(oi)
+        
+        elif si and pi and (not oi):
+            return self.db.n_o(si,pi)
+        elif (not si) and pi and oi:
+            return self.db.n_s(pi,oi)
+        
         else:
             ts = self.triples((s, p, o))
             return len(ts) if hasattr(ts, "__len__") else sum(1 for _ in ts)

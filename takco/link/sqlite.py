@@ -77,16 +77,31 @@ class SQLiteSearcher(Searcher):
         parts=True,
         baseuri=None,
         fallback=None,
+        refsort=True,
+        **_
     ):
         self.graph = graph
         if "*" in files:
-            files = glob.glob(files)
+            if any(Path(f).exists() for f in glob.glob(files)):
+                files = glob.glob(files)
+            else:
+                files = [files.replace('*', 'index.sqlitedb')]
+        
+        for f in files:
+            if not Path(f).exists():
+                Path(f).parent.mkdir(parents=True, exist_ok=True)
+                with sqlite3.connect(f) as con:
+                    cur = con.cursor()
+                    cur.executescript(SQLiteSearcher._INITDB)
+                    con.commit()
+        
         self.files = files
-        self.baseuri = baseuri
+        self.baseuri = baseuri or ''
         self.fallback = fallback
         self.exact = exact
         self.lower = lower
         self.parts = parts
+        self.refsort = refsort
 
         sizes = []
         for fname in self.files:
@@ -102,53 +117,68 @@ class SQLiteSearcher(Searcher):
             query = query.lower()
 
         queries = [query]
-        if self.parts:
-            for char in "([,:":
-                queries += query.split(char)
-            queries = set(queries)
+        
 
         all_results = []
-        for query in queries:
-            query = query.strip()
+        knownempty = False
+        for fname in self.files:
+            with sqlite3.connect(fname) as con:
+                cur = con.cursor()
+                params = {"query": query, "limit": limit}
+                q = self._EXACTQUERY if self.exact else self._LIKEQUERY
 
-            for fname in self.files:
-                with sqlite3.connect(fname) as con:
-                    cur = con.cursor()
-                    params = {"query": query, "limit": limit}
-                    q = self._EXACTQUERY if self.exact else self._LIKEQUERY
-
-                    results = cur.execute(q, params).fetchall()
-                    for uri, txt, score in results:
+                results = cur.execute(q, params).fetchall()
+                for uri, txt, score in results:
+                    if uri == "-1":
+                        query_knownempty = True
+                    else:
                         if self.baseuri:
                             uri = self.baseuri + uri
+                        if self.refsort:
+                            c = self.graph.count([None, None, rdflib.URIRef(uri)])
+                            log.debug(f"{uri} scored {score} * {1-1/(5+c):.4f}")
+                            score *= 1-1/(5+c)
                         sr = SearchResult(uri, score=score)
                         all_results.append(sr)
 
         n = len(all_results)
         log.debug(f"{self.__class__.__name__} got {n} results for {query}")
 
-        for query in queries:
-            q = "insert or replace into label(uri, text, score) values (?,?,?)"
-            if self.fallback and (not all_results or str(all_results[0].uri) == "-1"):
-                all_results += list(self.fallback.search_entities(query, limit=limit))
-                if all_results:
-                    for fname in self.files:
-                        with sqlite3.connect(fname) as con:
-                            for sr in all_results:
-                                uri = sr.uri.replace(self.baseuri, "") if uri else "-1"
-                                con.execute(q, [uri, query.lower(), sr.score])
-                else:
-                    for fname in self.files:
-                        with sqlite3.connect(fname) as con:
-                            for sr in all_results:
-                                con.execute(q, ["-1", query.lower(), 1])
-
+        q = "insert or replace into label(uri, txt, score) values (?,?,?)"
+        if self.fallback and not (knownempty or all_results):
+            all_results += list(self.fallback.search_entities(query, limit=None))
+            if all_results:
+                for fname in self.files:
+                    with sqlite3.connect(fname) as con:
+                        for sr in all_results:
+                            uri = sr.uri.replace(self.baseuri, "") if sr.uri else "-1"
+                            con.execute(q, [uri, query, sr.score])
+                        con.commit()
+            else:
+                for fname in self.files:
+                    with sqlite3.connect(fname) as con:
+                        con.execute(q, ["-1", query, 1])
+                        con.commit()
+                log.debug(f"Added empty-result-value for '{query}' ")
+        
         if add_about and self.graph:
             all_results = [
                 SearchResult(sr.uri, self.graph.about(sr.uri), sr.score)
                 for sr in all_results
             ]
-
+            
+        if not all_results:
+            if self.parts:
+                for char in "([,:":
+                    for qpart in query.split(char):
+                        qpart = qpart.translate(str.maketrans('','',')]')).strip()
+                        if qpart != query:
+                            all_results += self.search_entities(
+                                qpart, limit=limit, add_about=add_about
+                            )
+        
+        all_results = sorted(all_results, key=lambda x: -x.score)
+        
         return all_results[:limit]
 
 

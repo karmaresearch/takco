@@ -69,6 +69,7 @@ class SearchResult(dict):
 
     def __repr__(self):
         return f"SearchResult('{self.uri}', {dict(self)}, score={self.score})"
+    
 
 
 class CellType(enum.Enum):

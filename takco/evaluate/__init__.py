@@ -42,22 +42,22 @@ def table_score(tables, table_annot, keycol_only=False):
         yield table
 
 
-def table_novelty(tables, linker_config):
+def table_novelty(tables, searcher_config):
     from .. import link
     from . import novelty
 
-    linker = linker_config.init_class(**link.__dict__)
+    searcher = searcher_config.init_class(**link.__dict__)
     for table in tables:
 
         triples = table.get("triples", [])
-        noveltyhashes = novelty.get_cell_noveltyhashes(triples, linker)
+        noveltyhashes = novelty.get_cell_noveltyhashes(triples, searcher)
 
         kbnovelty = {
             "hashes": noveltyhashes,
             "counts": novelty.count_noveltyhashes(noveltyhashes),
         }
 
-        kbname = linker.name
+        kbname = searcher.name
         table.setdefault("novelty", {}).setdefault(kbname, kbnovelty)
 
         yield table
