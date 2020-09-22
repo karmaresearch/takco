@@ -63,12 +63,14 @@ class MatchResult(NamedTuple):
 class SearchResult(dict):
     def __init__(self, uri: URI, about: Dict[URI, List[URI]] = None, score: int = 1):
         """An entity search result with optional score"""
+        self.update({'@id':uri, '@score': score})
         self.uri = uri
         self.update(about or {})
         self.score = score
 
     def __repr__(self):
         return f"SearchResult('{self.uri}', {dict(self)}, score={self.score})"
+        
 
 
 class CellType(enum.Enum):
