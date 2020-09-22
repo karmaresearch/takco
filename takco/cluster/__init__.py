@@ -23,24 +23,24 @@ def table_get_headerId(table):
 
 def louvain(tablesim, edge_exp=1) -> List[List[int]]:
     """Louvain clustering
-    
+
     .. math::
-    
+
         Q = \\frac{1}{2m}\\sum\\limits_{ij}\\bigg[A_{ij} - \\frac{k_i k_j}{2m}\\bigg]\\delta (c_i,c_j)
 
     where
-    
+
     - :math:`A_{ij}` represents the edge weight between nodes :math:`i` and :math:`j`;
     - :math:`k_i` and :math:`k_j` are the sum of the weights of the edges attached to nodes :math:`i` and :math:`j`, respectively;
     - :math:`m` is the sum of all of the edge weights in the graph;
-    - :math:`c_i` and :math:`c_j` are the communities of the nodes; and 
+    - :math:`c_i` and :math:`c_j` are the communities of the nodes; and
     - :math:`\\delta` is the Kronecker delta function (:math:`\\delta_{x,y}= 1` if :math:`x=y`, :math:`0` otherwise).
-    
+
     See also:
-        
+
         - `igraph.Graph.community_multilevel <https://igraph.org/python/doc/igraph.Graph-class.html#community_multilevel>`_
         - `Louvain modularity <https://en.wikipedia.org/wiki/Louvain_modularity>`_
-    
+
     """
     import igraph as ig
 
@@ -68,9 +68,11 @@ def make_column_index_df(tables):
             }
             for t in tables
         ]
-    ).set_index("i")
-    log.debug(f"Indexed {len(df)} tables")
-    yield df
+    )
+    if len(df):
+        df = df.set_index("i")
+        log.debug(f"Indexed {len(df)} tables")
+        yield df
 
 
 def make_blocked_matches_df(table_indices, dirpath, matcher_kwargs):

@@ -3,13 +3,6 @@ workdir = "output/chartedIn/"
 resourcedir = "resources"
 cache = true
 
-#executor = "tqdm"
-[executor]
-name="dask"
-n_workers=4
-threads_per_worker=2
-memory_target_fraction = 0.85
-
 [[kbs]]
 name = "wikidata2019-P31inf-wikibase-simple-qualifiers"
 class = "RDFSearcher"

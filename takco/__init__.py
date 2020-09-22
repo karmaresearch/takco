@@ -9,28 +9,9 @@ See http://karmaresearch.github.io/takco for further documentation.
 
 import typing
 from pathlib import Path
-
 import logging as log
 
 from .util import *
-
-
-def _download(ent_abouturl, encoding=None):
-    import requests
-
-    for e, url in ent_abouturl:
-        result = requests.get(url)
-        if encoding:
-            if encoding == "guess":
-                result.encoding = result.apparent_encoding
-            else:
-                result.encoding = encoding
-        if result.status_code == 200:
-            yield {
-                "url": url,
-                "about": e,
-                "html": result.text,
-            }
 
 
 def wiki(
@@ -43,12 +24,13 @@ def wiki(
     justurls: bool = False,
     encoding: str = None,
     executor: str = None,
+    **_,
 ):
     """
     Download Wikipedia articles
-    
+
     Downloads HTML files for entities that have a certain predicate/object in a DB.
-    
+
     Args:
         dbconfig: DB configuration (default: Wikidata)
         pred: Predicate URI
@@ -57,7 +39,7 @@ def wiki(
         localprefix: Wikipedia URL prefix for locally hosted pages
         encoding: Force encoding (use "guess" for guessing)
     """
-    executor = (executor or HashBag) if type(executor) != str else globals()[executor]
+    executor = globals().get(executor, executor) or HashBag
 
     from . import link
 
@@ -73,29 +55,32 @@ def wiki(
     if justurls:
         return ({"entity": e, "page": url} for e, url in ent_abouturl)
 
-    log.info(f"Downloading {len(ent_abouturl)} URLs with executor {executor}")
-    return executor(ent_abouturl)._pipe(_download, encoding=encoding)
+    log.info(f"Downloading {len(ent_abouturl)} pages with executor {executor}")
+    return executor(ent_abouturl)._pipe(pages_download, encoding=encoding)
 
 
 def warc(
     globstrings: typing.List[str] = (), datadir: Path = None, executor: str = None
 ):
     """Load HTML pages from WARC files
-    
+
     Args:
         globstrings: Glob strings for WARC gz files
         datadir: Data directory
-    
+
     """
-    executor = (executor or HashBag) if type(executor) != str else globals()[executor]
+    executor = globals().get(executor, executor) or HashBag
     datadir = Path(datadir) if datadir else Path(".")
 
     fnames = [fname for g in globstrings for fname in datadir.glob(g)]
-    return executor(fnames)._pipe(get_warc_pages)
+    log.info(
+        f"Extracting pages from {len(fnames)} warc files using executor {executor}"
+    )
+    return executor(fnames)._pipe(pages_warc)
 
-class TableSet(HashBag):
-    """A set of tables that can be clustered and linked.
-    """
+
+class TableSet:
+    """A set of tables that can be clustered and linked."""
 
     @classmethod
     def _from_csvs(cls, *fnames):
@@ -131,9 +116,9 @@ class TableSet(HashBag):
         **_,
     ):
         """Load tables from a dataset
-        
+
         See also: :mod:`takco.evaluate.dataset`
-        
+
         Args:
             params: Dataset parameters
             datadir: Data directory
@@ -141,9 +126,7 @@ class TableSet(HashBag):
             assets: Asset specifications
             sample: Sample N tables
         """
-        executor = (
-            (executor or HashBag) if type(executor) != str else globals()[executor]
-        )
+        executor = globals().get(executor, executor) or HashBag
 
         assets = {a.get("name", a.get("class")): Config(a) for a in assets}
         import itertools
@@ -157,13 +140,14 @@ class TableSet(HashBag):
     @classmethod
     def extract(cls, source: typing.Union[Config, HashBag], executor: str = None, **_):
         """Collect tables from HTML files
-        
+
         See also: :mod:`takco.extract`
 
         Args:
             source: Source of HTML files
             workdir: Working directory for caching
         """
+        executor = globals().get(executor, executor) or HashBag
         if isinstance(source, dict):
             for k, v in source.items():
                 htmlpages = globals()[k](**v, executor=executor)
@@ -188,7 +172,7 @@ class TableSet(HashBag):
         **_,
     ):
         """Reshape tables
-        
+
         See also: :mod:`takco.reshape`
 
         Args:
@@ -247,7 +231,7 @@ class TableSet(HashBag):
         **_,
     ):
         """Cluster tables
-        
+
         See also: :mod:`takco.cluster`
 
         Args:
@@ -396,7 +380,9 @@ class TableSet(HashBag):
                 pi = table["part"]
                 pi_mergetable[pi] = (
                     clustering.merge_partition_tables(
-                        pi_mergetable[pi], table, store_align_meta=store_align_meta,
+                        pi_mergetable[pi],
+                        table,
+                        store_align_meta=store_align_meta,
                     )
                     if (pi in pi_mergetable)
                     else table
@@ -418,9 +404,9 @@ class TableSet(HashBag):
         **_,
     ):
         """Integrate tables with a KB
-        
+
         See also: :meth:`takco.link.integrate`
-        
+
         Args:
             tables: Tables to integrate
             pfd_threshold:
@@ -448,9 +434,9 @@ class TableSet(HashBag):
         **_,
     ):
         """Link table entities to KB
-        
+
         See also: :meth:`takco.link.link`
-        
+
         Args:
             tables: Tables to link
             linker: Entity Linker config
@@ -471,7 +457,11 @@ class TableSet(HashBag):
         if linker_config:
             linker_config = Config(linker_config, **kbs)
             log.info(f"Linking with config {linker_config}")
-            tables = tables._pipe(link.link, linker_config, usecols=usecols,)
+            tables = tables._pipe(
+                link.link,
+                linker_config,
+                usecols=usecols,
+            )
 
         return tables
 
@@ -486,9 +476,9 @@ class TableSet(HashBag):
         **_,
     ):
         """Calculate evaluation scores
-        
+
         See also: :mod:`takco.evaluate.score`
-        
+
         Args:
             tables: Table with predictions to score
             labels: Annotated data config
@@ -585,3 +575,96 @@ class TableSet(HashBag):
                 )
 
         return data
+
+    @classmethod
+    def run(
+        cls,
+        pipeline: Config,
+        workdir: Path = None,
+        datadir: Path = None,
+        resourcedir: Path = None,
+        assets: Config = (),
+        kbs: Config = (),
+        force: bool = False,
+        step_force: int = 0,
+        cache: bool = False,
+        executor: str = None,
+        **_,
+    ):
+        """Run entire pipeline
+
+        Args:
+            pipeline: Pipeline config
+            workdir: Working directory (also for cache)
+            datadir: Data directory
+            resourcedir: Resource directory
+            assets: Asset definitions
+            kbs: Knowledge Base definitions
+            force: Force execution of steps if cache files are already present
+            step_force: Force execution of steps starting at this number
+            cache: Cache intermediate results
+        """
+        import shutil
+
+        pipeline = Config(pipeline)
+        if "name" in pipeline:
+            name = pipeline["name"]
+        else:
+            import datetime
+
+            name = "takco-run-" + str(datetime.datetime.now().isoformat())
+
+        conf = {
+            "workdir": workdir or pipeline.get("workdir"),
+            "datadir": datadir or pipeline.get("datadir"),
+            "resourcedir": resourcedir or pipeline.get("resourcedir"),
+            "assets": assets or pipeline.get("assets"),
+            "kbs": kbs or pipeline.get("kbs"),
+            "cache": cache or pipeline.get("cache"),
+            "executor": executor or pipeline.get("executor"),
+        }
+        executor = globals().get(conf["executor"], conf["executor"]) or HashBag
+
+        if conf["cache"]:
+            if force:
+                shutil.rmtree(conf["workdir"], ignore_errors=True)
+            Path(conf["workdir"]).mkdir(exist_ok=True, parents=True)
+
+        def wrap_step(stepfunc, stepargs, stepdir):
+            if conf.get("cache"):
+                shutil.rmtree(stepdir, ignore_errors=True)
+                stepdir.mkdir(exist_ok=True, parents=True)
+                tablefile = Path(stepdir) / Path("*")
+
+                log.info(f"Writing cache to {tablefile}")
+                return stepfunc(**stepargs)._dump(tablefile)
+            else:
+                return stepfunc(**stepargs)
+
+        log.info(f"Running pipeline '{name}' in {workdir}")
+        tables = []
+        for si, stepargs in enumerate(pipeline.get("step", [])):
+            if "step" in stepargs:
+                stepfuncname = stepargs.get("step")
+                stepname = f"{si}-{stepargs.get('name', stepfuncname)}"
+                stepdir = Path(workdir) / Path(stepname)
+
+                nodir = (not stepdir.exists()) or (not any(stepdir.iterdir()))
+                if force or (si >= step_force) or nodir:
+                    stepfunc = getattr(TableSet, stepfuncname)
+                    if not stepfunc:
+                        log.error(f"Pipeline step '{stepfuncname}' does not exist")
+                        break
+
+                    stepargs["tables"] = tables
+                    stepargs.update(conf)
+                    log.info(f"Chaining pipeline step {stepname}: {stepargs}")
+                    tables = wrap_step(stepfunc, stepargs, stepdir)
+                else:
+                    log.warn(f"Skipping step {stepname}, using cache instead")
+                    tables = executor._load(str(stepdir) + "/*")
+            else:
+                log.warn(f"Pipeline step {si} has no step type!")
+
+        if not cache:
+            return tables

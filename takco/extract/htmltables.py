@@ -6,9 +6,9 @@ import logging as log
 class Extractor(object):
     """
     Extracts cells from tables with colspans and rowspans
-    
+
     Based on `html-table-extractor <https://github.com/yuanxu-li/html-table-extractor>`_.
-    
+
     """
 
     WHITESPACE = re.compile(r"\s+")

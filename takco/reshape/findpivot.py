@@ -7,10 +7,10 @@ def get_colspan_repeats(
     rows: List[List[str]],
 ) -> Tuple[List[List[int]], List[List[int]]]:
     """Find cells that span multiple columns and cells that repeat
-    
+
     Args:
         rows: A matrix of cells
-    
+
     Returns:
         - A matrix of colspans
         - A matrix of repeats (excluding colspans)
@@ -77,8 +77,7 @@ def longest_seq(numbers: Container[int]) -> Container[int]:
 
 
 class Pivot(NamedTuple):
-    """The sequence of cells in a header row that looks more like it should be a column
-    """
+    """The sequence of cells in a header row that looks more like it should be a column"""
 
     level: int  #: Header row index
     colfrom: int  #: Leftmost column index

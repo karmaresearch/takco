@@ -215,11 +215,11 @@ if __name__ == "__main__":
 
     def dbpedia_subset(fname: Path):
         """Process Dbpedia subset
-        
+
         Download the subset file from:
         ``http://data.dws.informatik.uni-mannheim.de/webtables/dbpedia_subset.tar.gz``
 
-        
+
         """
         import tarfile
 

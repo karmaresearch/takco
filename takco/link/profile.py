@@ -56,22 +56,22 @@ def perTuple_pFDs(
     rowdicts: List[Dict[int, str]], depsize: int
 ) -> Iterator[Tuple[List[int], int, float]]:
     """Finds probablistic functional dependencies.
-    
-    A probabilistic functional dependency :math:`X \\rightarrow_p a` indicates that two 
-    tuples which share the same value for the column set :math:`X` also share the same 
+
+    A probabilistic functional dependency :math:`X \\rightarrow_p a` indicates that two
+    tuples which share the same value for the column set :math:`X` also share the same
     value for the column :math:`a` with probability :math:`p`.
-    
+
     See also:
-    
-        Wang, Daisy Zhe, Xin Luna Dong, Anish Das Sarma, Michael J. Franklin, and Alon 
-        Y. Halevy. `Functional Dependency Generation and Applications in Pay-As-You-Go 
+
+        Wang, Daisy Zhe, Xin Luna Dong, Anish Das Sarma, Michael J. Franklin, and Alon
+        Y. Halevy. `Functional Dependency Generation and Applications in Pay-As-You-Go
         Data Integration Systems. <https://api.semanticscholar.org/CorpusID:15960115>`_
         In WebDB (2009)
-    
+
     Args:
         rowdicts: a list of ``{colnr:text}`` dicts
         depsize: is the maximum ``len(X)``
-    
+
     Returns:
         Yields ``(X, a, score)`` where ``a`` is a column number and ``X`` is a list of them
     """

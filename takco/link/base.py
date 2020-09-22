@@ -69,7 +69,6 @@ class SearchResult(dict):
 
     def __repr__(self):
         return f"SearchResult('{self.uri}', {dict(self)}, score={self.score})"
-    
 
 
 class CellType(enum.Enum):
@@ -88,7 +87,7 @@ class Searcher:
 
     def get_about(self, uri: URI) -> Optional[SearchResult]:
         """Get facts about an entity.
-        
+
         Args:
             uri: Entity URI
         """
@@ -98,7 +97,7 @@ class Searcher:
         self, query: str, limit: int = 1, add_about: bool = False
     ) -> Iterator[SearchResult]:
         """Search for entities using a label query.
-        
+
         Args:
             query: Label query
             limit: Maximum number of results to return
@@ -114,7 +113,7 @@ class Searcher:
 class WikiLookup:
     def lookup_wikititle(self, title: str) -> str:
         """Lookup Wikipedia title in KB
-        
+
         Args:
             title: The title to look up
         """
@@ -142,7 +141,7 @@ class Database:
 
     def about(self, e: URI) -> Dict[URI, List[Node]]:
         """Look up facts about an entity
-        
+
         Args:
             e: Entity URI to query
         """
@@ -153,7 +152,7 @@ class Database:
 
     def count(self, triplepattern: TriplePattern) -> int:
         """Count the number of triples that match a pattern
-        
+
         Args:
             triplepattern: A 3-tuple of None or URI
         """
@@ -164,7 +163,7 @@ class Database:
 
     def triples(self, triplepattern: TriplePattern) -> Iterator[Triple]:
         """Yield triples that match a pattern
-        
+
         Args:
             triplepattern: A 3-tuple of None or URI
         """
@@ -172,7 +171,7 @@ class Database:
 
     def pages_about(self, triplepattern=None) -> Iterator[Tuple[URI, str]]:
         """Yield URLs of webpages about subjects of a triple pattern
-        
+
         Args:
             triplepattern: A 3-tuple of None or URI
         """
@@ -181,7 +180,7 @@ class Database:
 
 class Linker:
     """For linking tables to a Knowledge Base
-        
+
     Args:
         searcher: The Knowledge Base searcher to use
     """

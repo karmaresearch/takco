@@ -22,7 +22,7 @@ class LSHMatcher(Matcher):
         self,
         fdir,
         source="body",
-        redis_dir=Path("."),
+        redis_dir=None,
         basename=None,
         port=6379,
         num_perm=256,
@@ -38,49 +38,56 @@ class LSHMatcher(Matcher):
         mdir.mkdir(parents=True, exist_ok=True)
 
         self.source = source
-        self.redis_dir = str(redis_dir)
+        self.redis_dir = redis_dir if Path(redis_dir).exists() else None
         self.basename = str(fdir) if (basename is None) else basename
         self.port = port
         self.num_perm = num_perm
         self.threshold = threshold
         self.config(Path(mdir) / Path("config.toml"))
 
-        self.redis_dir = Path(self.redis_dir)
-        self.redis_cli = str((self.redis_dir / Path("redis-cli")).resolve())
+        if self.redis_dir:
+            self.redis_dir = Path(self.redis_dir)
+            self.redis_cli = str((self.redis_dir / Path("redis-cli")).resolve())
 
-        log.info(f"redis cli: {self.redis_cli}")
+            log.info(f"redis cli: {self.redis_cli}")
 
-        # Start redis if not running
-        ping = self.cli("ping")
-        if ping.returncode != 0:
-            subprocess.run(
-                [
-                    self.redis_dir / Path("redis-server"),
-                    "--daemonize",
-                    "yes",
-                    "--port",
-                    str(self.port),
-                    "--pidfile",
-                    Path(mdir) / Path(f"{self.port}.pid"),
-                    "--dbfilename",
-                    "dump.rdb",
-                ]
-            )
-        while ping.returncode != 0:
-            time.sleep(1)
+            # Start redis if not running
             ping = self.cli("ping")
-            log.info(f"Ping redis: {'offline' if ping.returncode else 'online'}")
+            if ping.returncode != 0:
+                subprocess.run(
+                    [
+                        self.redis_dir / Path("redis-server"),
+                        "--daemonize",
+                        "yes",
+                        "--port",
+                        str(self.port),
+                        "--pidfile",
+                        Path(mdir) / Path(f"{self.port}.pid"),
+                        "--dbfilename",
+                        "dump.rdb",
+                    ]
+                )
+            while ping.returncode != 0:
+                time.sleep(1)
+                ping = self.cli("ping")
+                log.info(f"Ping redis: {'offline' if ping.returncode else 'online'}")
 
-        self.lshindex = datasketch.MinHashLSH(
-            num_perm=self.num_perm,
-            threshold=self.threshold,
-            storage_config={
-                "type": "redis",
-                "basename": self.basename.encode(),
-                "redis": {"host": "localhost", "port": self.port},
-            },
-        )
-        self.session = None
+            self.lshindex = datasketch.MinHashLSH(
+                num_perm=self.num_perm,
+                threshold=self.threshold,
+                storage_config={
+                    "type": "redis",
+                    "basename": self.basename.encode(),
+                    "redis": {"host": "localhost", "port": self.port},
+                },
+            )
+            self.session = None
+        else:
+            self.lshindex = datasketch.MinHashLSH(
+                num_perm=self.num_perm,
+                threshold=self.threshold,
+            )
+            self.session = None
 
         self.minhashes_fname = Path(mdir) / Path("minhashes.npy")
         if self.minhashes_fname.exists():
@@ -101,7 +108,8 @@ class LSHMatcher(Matcher):
 
     def cli(self, command):
         return subprocess.run(
-            [self.redis_cli, "-p", str(self.port), command], capture_output=True,
+            [self.redis_cli, "-p", str(self.port), command],
+            capture_output=True,
         )
 
     def add(self, table):
@@ -152,8 +160,9 @@ class LSHMatcher(Matcher):
         )
         np.save(self.column_ids_fname, np.array(list(self.ci_digest.keys())))
 
-        r = self.cli("save")
-        log.info(f"Saved redis with code {r.returncode}")
+        if self.redis_dir:
+            r = self.cli("save")
+            log.info(f"Saved redis with code {r.returncode}")
 
     def block(self, ti: int):
         for ci in self.get_columns(ti):
@@ -172,5 +181,6 @@ class LSHMatcher(Matcher):
                     yield np.mean((mh1 == mh2)), ci1, ci2
 
     def close(self):
-        r = self.cli("shutdown")
-        log.info(f"Shutdown redis with code {r.returncode}")
+        if self.redis_dir:
+            r = self.cli("shutdown")
+            log.info(f"Shutdown redis with code {r.returncode}")

@@ -13,3 +13,4 @@ from the Web!
    novelty
    chartedIn
    clusters
+   slurm

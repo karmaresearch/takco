@@ -23,7 +23,10 @@ def convert_table(doc, wpname_id=None):
                 tableHeader = []
                 for hcell in hrow["columns"]:
                     tableHeader.append(
-                        dict(text=hcell.get("name", ""), surfaceLinks=[],)
+                        dict(
+                            text=hcell.get("name", ""),
+                            surfaceLinks=[],
+                        )
                     )
                 tableHeaders.append(tableHeader)
 

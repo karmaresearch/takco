@@ -74,7 +74,7 @@ def yield_tablepairs_matches(table_index_pairs, dirpath, matcher_kwargs):
 
 def aggregate_similarities(sims, agg_func):
     """Aggregate similarities using a numexpr aggregation function.
-    
+
     See also:
         `Pandas eval <https://pandas.pydata.org/pandas-docs/stable/user_guide/enhancingperf.html#supported-syntax>`_
     """
@@ -113,10 +113,10 @@ except:
 
 def cluster_columns(colsim: DataFrame, clus: AgglomerativeClustering, pi=None):
     """Cluster columns from different tables together within a cluster of tables
-    
-    Column similarities within one table are set to 0 to prevent different columns 
+
+    Column similarities within one table are set to 0 to prevent different columns
     within one table from linking.
-    
+
     Args:
         colsim: Dataframe of column similarities
         clus: Agglomerative clustering method

@@ -22,10 +22,10 @@ if os.environ.get("config"):
     config = toml.load(Path(os.environ.get("config")).open())
 else:
     config = {}
-config.update( dict(os.environ) )
+config.update(dict(os.environ))
 
-kbs = {k.get("name", k.get("class")): k for k in config.get("kbs", []) }
-assets = {a.get("name", a.get("class")): a for a in config.get("assets", []) }
+kbs = {k.get("name", k.get("class")): k for k in config.get("kbs", [])}
+assets = {a.get("name", a.get("class")): a for a in config.get("assets", [])}
 
 if os.environ.get("LOGLEVEL"):
     log.getLogger().setLevel(getattr(log, os.environ.get("LOGLEVEL").upper()))
@@ -42,9 +42,10 @@ def get_datasets():
         for datasetname, params in assets.items():
             dataset = eval_dataset.load(resourcedir, datadir, **params)
             datasets[datasetname] = {t["name"]: t for t in dataset.tables}
-            
+
         g.datasets = datasets
     return g.datasets
+
 
 def get_kbs():
     global kbs
@@ -146,7 +147,7 @@ def table():
             kbinfo = get_kbinfo(kb, table)
 
         log.info(f"kbinfo is about {len(kbinfo)} nodes")
-        novelty = table.get('novelty', {}).get(kb.name)
+        novelty = table.get("novelty", {}).get(kb.name)
     else:
         log.info(f"No KB")
 
@@ -183,20 +184,19 @@ def dataset():
         table["numRows"] = len(table["rows"])
         table["numCols"] = len(table["rows"][0]) if table["numRows"] else 0
 
-    novelty = {'counts': {}}
+    novelty = {"counts": {}}
     kb = get_kb()
     if kb:
         for i, (name, table) in enumerate(tables.items()):
-            task_counts = table.get("novelty", {}).get(kb.name, {}).get('counts', {})
+            task_counts = table.get("novelty", {}).get(kb.name, {}).get("counts", {})
             for task, counts in task_counts.items():
-                novelty['counts'].setdefault(task, {})
-                for c,v in counts.items():
-                    novelty['counts'][task].setdefault(c, 0)
-                    novelty['counts'][task][c] += v
+                novelty["counts"].setdefault(task, {})
+                for c, v in counts.items():
+                    novelty["counts"][task].setdefault(c, 0)
+                    novelty["counts"][task][c] += v
     else:
         log.info(f"No kb")
 
-    
     return render_template(
         "dataset.html",
         dataset=dataset,

@@ -25,11 +25,11 @@ except:
 
 def lookup_hyperlinks(tables: List[dict], lookup_config: Dict, lookup_cells=False):
     """Lookup the (Wikipedia) hyperlinks inside cells for entity links
-    
-        Args:
-            tables: Tables to link
-            lookup_config: Configuration hash for a :mod:`takco.link.base.WikiLookup`
-                object
+
+    Args:
+        tables: Tables to link
+        lookup_config: Configuration hash for a :mod:`takco.link.base.WikiLookup`
+            object
     """
 
     lookup = lookup_config.init_class(**globals())
@@ -60,14 +60,16 @@ def lookup_hyperlinks(tables: List[dict], lookup_config: Dict, lookup_cells=Fals
 
 
 def link(
-    tables: List[dict], linker_config: Dict, usecols: Union[str, List[int]] = [],
+    tables: List[dict],
+    linker_config: Dict,
+    usecols: Union[str, List[int]] = [],
 ):
     """Link table entities to KB
-        
-        Args:
-            tables: Tables to link
-            linker_config: Entity Linker config
-            usecols: Columns to use (table attribute name or list of column indexes)
+
+    Args:
+        tables: Tables to link
+        linker_config: Entity Linker config
+        usecols: Columns to use (table attribute name or list of column indexes)
     """
 
     linker = linker_config.init_class(**globals())
@@ -118,11 +120,11 @@ def link(
 
 def integrate(tables: List[dict], searcher_config: Dict, pfd_threshold=0.9):
     """Integrate tables with n-ary relations
-        
-        Args:
-            tables: Tables to link
-            kbdir: KB directory (TODO config)
-            pfd_threshold: Probabilistic Functional Dependency Threshold
+
+    Args:
+        tables: Tables to link
+        kbdir: KB directory (TODO config)
+        pfd_threshold: Probabilistic Functional Dependency Threshold
     """
 
     searcher = searcher_config.init_class(**globals())

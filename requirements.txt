@@ -1,3 +1,7 @@
 defopt==6.0
 toml==0.10.1
 rdflib==5.0.0
+bs4
+python-igraph
+faiss-cpu
+datasketch

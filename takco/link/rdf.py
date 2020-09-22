@@ -28,6 +28,7 @@ def encode_wikidata(query):
     newquery = "".join(chars)
     return newquery
 
+
 class GraphDB(Database, rdflib.Graph):
     def __init__(self, *args, **kwargs):
         rdflib.Graph.__init__(self, *args, **kwargs)
@@ -66,16 +67,16 @@ class GraphDB(Database, rdflib.Graph):
 
 class RDFSearcher(Searcher, GraphDB):
     """Entity Searcher model based on an RDF graph database.
-    
+
     Args:
         store: RDF store object
         language: Language code for label lookups (default: English)
         encoding: Encoding of labels (use "wikidata" for ``\\\\Uxx`` escaped strings)
-        labelProperties: Additional property URIs for labels (default: ``rdfs:label`` & 
+        labelProperties: Additional property URIs for labels (default: ``rdfs:label`` &
             ``skos:prefLabel``)
         typeProperties: Additional property URIs for types (default: ``rdf:type``)
         qualifierIDProperty: Property URI for (``<qualifier> <id> <entity>``) triples
-        statementURIprefix: URI prefix for (``<entity> prefix:foo <qualifier>``) triples    
+        statementURIprefix: URI prefix for (``<entity> prefix:foo <qualifier>``) triples
     """
 
     def __init__(
@@ -127,7 +128,7 @@ class RDFSearcher(Searcher, GraphDB):
             for lang in [None, self.language]
             for e, _, _ in self.triples((None, l, Literal(query, lang=lang)))
         ][:limit]
-        
+
         if not results:
             ls = [Literal(query, lang=lang).n3() for lang in [None, self.language]]
             ls = " or ".join(ls)
@@ -136,24 +137,22 @@ class RDFSearcher(Searcher, GraphDB):
             log.debug(
                 f"{len(results):2d} {self.__class__.__name__} results for {query}"
             )
-        
+
         e_score = {}
         if self.refsort:
             for e in results:
-                e_score[e] = 1-1/(1+self.count([None, None, URIRef(sr.uri)]))
-            
+                e_score[e] = 1 - 1 / (1 + self.count([None, None, URIRef(sr.uri)]))
+
         results = [
             SearchResult(
-                str(e), 
-                self.about(e) if add_about else {}, 
-                score=e_score.get(e, 1)
+                str(e), self.about(e) if add_about else {}, score=e_score.get(e, 1)
             )
             for e in results
         ]
-        
+
         if self.refsort:
             results = sorted(results, lambda sr: -sr.score)
-        
+
         return results
 
     def label_match(self, uri, surface):
@@ -185,7 +184,7 @@ class RDFSearcher(Searcher, GraphDB):
         self, celltexts: List[str], entsets: List[Collection[str]]
     ) -> Iterator[MatchResult]:
         """Get matched (n-ary) facts for a row
-        
+
         Args:
             celltexts: Cell text
             entsets: Set of URIs per cell

@@ -6,11 +6,10 @@ __version__ = "0.1.0"
 import typing
 from pathlib import Path
 import logging as log
+import os, sys, defopt, json, toml, types, argparse
 
 from . import *
 from .util import *
-
-executor = TableSet
 
 
 def get_executor(name):
@@ -39,181 +38,68 @@ def get_executor(name):
         elif name == "tqdm":
             return TqdmHashBag
         else:
-            return TableSet
+            return HashBag
     else:
-        return TableSet
+        return HashBag
 
 
 def load_tables(s):
     global executor
     log.debug(f"Loading tables {s} using executor {executor}")
-    return executor._load(s)
+    return TableSet(executor._load(s))
 
 
-def run(
-    pipeline: Config,
-    workdir: Path = None,
-    kbdir: Path = None,
-    datadir: Path = None,
-    resourcedir: Path = None,
-    assets: typing.Dict = None,
-    kbs: typing.Dict = None,
-    force: bool = False,
-    step_force: int = None,
-    cache: bool = False,
-    executor: str = None,
-):
-    """Run entire pipeline
-    
-    Args:
-        pipeline: Pipeline config
-        workdir: Working directory (also for cache)
-        kbdir: Knowledge Base directory
-        datadir: Data directory
-        resourcedir: Resource directory
-        assets: Asset definitions
-        kbs: Knowledge Base definitions
-        force: Force execution of steps if cache files are already present
-        step_force: Force execution of steps starting at this number
-        cache: Cache intermediate results
-    """
-    pipeline = Config(pipeline)
+class SetConfig(argparse.Action):
+    def __init__(self, option_strings, dest, nargs="?", **kwargs):
+        super(SetConfig, self).__init__(option_strings, dest, nargs="?", **kwargs)
 
-    executor = executor or pipeline.pop("executor", None)
-    executor = (
-        (executor or TableSet) if isinstance(executor, type) else get_executor(executor)
-    )
-
-    from inspect import signature
-
-    if "name" in pipeline:
-        name = pipeline["name"]
-    elif "path" in pipeline:
-        name = Path(pipeline["path"]).name.split(".")[0]
-    else:
-        import datetime
-
-        name = "takco-run-" + str(datetime.datetime.now().isoformat())
-
-    if "workdir" in pipeline:
-        workdir = pipeline["workdir"]
-
-    if not workdir:
-        workdir = Path(pipeline.get("path", ".")).parent.resolve() / Path(name)
-    workdir = Path(workdir)
-    if cache:
-        workdir.mkdir(exist_ok=True, parents=True)
-
-    config = dict(
-        datadir=datadir,
-        resourcedir=resourcedir,
-        workdir=workdir,
-        assets=assets or {},
-        kbs=kbs or {},
-        cache=cache,
-        executor=executor,
-    )
-    for k, v in config.items():
-        if k in pipeline:
-            config[k] = v or pipeline[k]
-
-    def wrap_step(stepfunc, stepargs, stepdir):
-        if config.get("cache"):
-            import json, shutil
-
-            shutil.rmtree(stepdir, ignore_errors=True)
-            stepdir.mkdir(exist_ok=True, parents=True)
-            tablefile = Path(stepdir) / Path("*")
-
-            log.info(f"Writing cache to {tablefile}")
-            return stepfunc(**stepargs)._dump(tablefile)
+    def __call__(self, parser, namespace, values, option_string=None):
+        config = {}
+        if self.dest and values:
+            conf = Config(values)
+            if conf:
+                config.update(conf)
+                log.info(f"Loaded config {conf}")
+        elif Path("config.toml").exists():
+            config.update(toml.load(Path("config.toml").open()))
+            log.info(f"Loaded local config.toml")
         else:
-            return stepfunc(**stepargs)
+            config.update(os.environ)
+            log.info(f"Loaded config from environment")
 
-    log.info(f"Running pipeline '{name}' in {workdir}")
-    tables = []
-    for si, stepargs in enumerate(pipeline.get("step", [])):
-        if "step" in stepargs:
-            steptype = stepargs.pop("step")
-            stepname = f"{si}-{stepargs.get('name', steptype)}"
-            stepdir = Path(workdir) / Path(stepname)
+        if "executor" in config:
+            global executor
+            executor = get_executor(config.pop("executor"))
+            config["executor"] = executor
+            log.debug(f"Set config to use executor {executor}")
 
-            nodir = (not stepdir.exists()) or (not any(stepdir.iterdir()))
-            if force or (si >= step_force) or nodir:
+        for k, v in config.items():
+            setattr(namespace, k, v)
 
-                stepfunc = getattr(TableSet, steptype)
-                if stepfunc:
-                    sig = signature(stepfunc)
 
-                    local_config = dict(tables=tables, **config)
-                    for k, v in local_config.items():
-                        if (k in sig.parameters) and (k not in stepargs):
-                            stepargs[k] = v
-                    log.info(f"Chaining pipeline step {stepname}: {stepargs}")
-                    tables = wrap_step(stepfunc, stepargs, stepdir)
-                else:
-                    log.warning(f"Pipeline step type '{steptype}' does not exist")
-            else:
-                log.warn(f"Skipping step {stepname}")
-                tables = executor._load(str(stepdir) + "/*")
+class SetVerbosity(argparse.Action):
+    def __init__(self, option_strings, dest, nargs=None, **kwargs):
+        if nargs is not None:
+            raise ValueError("nargs not allowed")
+        super(SetVerbosity, self).__init__(option_strings, dest, nargs=0, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        if self.dest:
+            loglevel = getattr(log, self.dest.upper(), log.WARNING)
+            log.getLogger().setLevel(loglevel)
         else:
-            log.warn(f"Pipeline step {si} has no step type!")
-    
-    if not cache:
-        return tables
+            ll = os.environ.get("LOGLEVEL", "").upper()
+            loglevel = getattr(log, ll, log.WARNING)
+            log.getLogger().setLevel(loglevel)
+            logfile = os.environ.get("LOGFILE", None)
+            log.getLogger().addHandler(log.FileHandler(logfile))
+        log.info(f"Set log level to {log.getLogger().getEffectiveLevel()}")
 
 
 def main():
-    import os, sys, defopt, json, toml, types, logging, argparse
-
-    class SetConfig(argparse.Action):
-        def __init__(self, option_strings, dest, nargs="?", **kwargs):
-            super(SetConfig, self).__init__(option_strings, dest, nargs="?", **kwargs)
-
-        def __call__(self, parser, namespace, values, option_string=None):
-            config = {}
-            if self.dest and values:
-                conf = Config(values)
-                if conf:
-                    config.update(conf)
-                    logging.info(f"Loaded config {conf}")
-            elif Path("config.toml").exists():
-                config.update(toml.load(Path("config.toml").open()))
-                log.info(f"Loaded local config.toml")
-            else:
-                config.update(os.environ)
-                log.info(f"Loaded config from environment")
-
-            if "executor" in config:
-                global executor
-                executor = get_executor(config.pop("executor"))
-                config["executor"] = executor
-                log.debug(f"Set config to use executor {executor}")
-
-            for k, v in config.items():
-                setattr(namespace, k, v)
-
-    class SetVerbosity(argparse.Action):
-        def __init__(self, option_strings, dest, nargs=None, **kwargs):
-            if nargs is not None:
-                raise ValueError("nargs not allowed")
-            super(SetVerbosity, self).__init__(option_strings, dest, nargs=0, **kwargs)
-
-        def __call__(self, parser, namespace, values, option_string=None):
-            if self.dest:
-                loglevel = getattr(logging, self.dest.upper(), logging.WARNING)
-                logging.getLogger().setLevel(loglevel)
-            else:
-                ll = os.environ.get("LOGLEVEL", "").upper()
-                loglevel = getattr(logging, ll, logging.WARNING)
-                logging.getLogger().setLevel(loglevel)
-                logfile = os.environ.get("LOGFILE", None)
-                logging.getLogger().addHandler(logging.FileHandler(logfile))
-            log.info(f"Set log level to {logging.getLogger().getEffectiveLevel()}")
 
     funcs = (
-        run,
-        wiki,
+        TableSet.run,
         TableSet.dataset,
         TableSet.extract,
         TableSet.reshape,
@@ -258,10 +144,8 @@ def main():
         strict_kwonly=False,
         parsers={
             typing.Container[str]: str.split,
-            typing.Dict: json.loads,
             Config: Config,
             TableSet: load_tables,
-            HashBag: HashBag._load,
         },
         argparse_kwargs={"description": __doc__},
     )
@@ -276,7 +160,9 @@ def main():
                     help="Use global configuration (see docs)",
                 )
                 subparser.add_argument(
-                    "-O", "--out", help="Write output to file(s)",
+                    "-O",
+                    "--out",
+                    help="Write output to file(s)",
                 )
                 subparser.add_argument(
                     "-v", "--info", action=SetVerbosity, help="Log general information"

@@ -18,14 +18,14 @@ from .clean import (
 
 def extract_tables(pages: Iterator[Dict]) -> Iterator[Dict]:
     """Extract tables from pages.
-    
+
     Pages are dicts with an ``html`` field.
     Tables are dicts in Bhagavatula format.
-    
+
     See also:
-    
+
         - :meth:`takco.extract.htmltables.page_extract_tables`
-    
+
     """
     for page in pages:
         yield from page_extract_tables(page.get("html"), aboutURI=page.get("about"))
@@ -33,9 +33,9 @@ def extract_tables(pages: Iterator[Dict]) -> Iterator[Dict]:
 
 def restructure(tables: Iterator[Dict]) -> Iterator[Dict]:
     """Restructure tables.
-    
+
     Performs all sorts of heuristic cleaning operations, including:
-    
+
         - Remove empty columns (:meth:`takco.extract.clean.remove_empty_columns`)
         - Deduplicate header rows (:meth:`takco.extract.clean.deduplicate_header_rows`)
         - Remove empty header rows (:meth:`takco.extract.clean.remove_empty_header_rows`)
@@ -43,7 +43,7 @@ def restructure(tables: Iterator[Dict]) -> Iterator[Dict]:
         - Restack horizontal schema repeats (:meth:`takco.extract.clean.restack_horizontal_schema_repeats`)
         - Remove empty rows (:meth:`takco.extract.clean.remove_empty_rows`)
         - Process rowspanning body cells (:meth:`takco.extract.clean.process_rowspanning_body_cells`)
-        
+
     """
     for table in tables:
         init_captions(table)

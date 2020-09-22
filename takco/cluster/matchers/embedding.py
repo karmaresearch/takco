@@ -10,7 +10,7 @@ try:
     import pandas as pd
     import numpy as np
 except:
-    log.error(f"Cannot import fais/pandas/numpy")
+    log.error(f"Cannot import faiss/pandas/numpy")
 
 
 class EmbeddingMatcher(Matcher):

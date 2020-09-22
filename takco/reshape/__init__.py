@@ -27,17 +27,17 @@ def unpivot(
     wrap_funcs=(json.dumps, json.loads),
 ) -> Tuple[List[List[Any]], List[List[Any]]]:
     """Unpivot a table.
-    
+
     Header and body should both be a matrix of values for which ``x == eval(str(x))``,
     where ``eval`` and ``str`` can be set using ``wrap_funcs``.
-    
+
     Args:
         header: Table header rows
         body: Table body rows
         level: Index of header row to pivot
         colfrom: Index of leftmost pivot column
         colto: Index of rightmost pivot column
-        
+
         leftcolheader: New header for left column
         emptycell: New value for empty cells
         rightcolheader: New header for right column (if single header row)
@@ -83,9 +83,7 @@ def unpivot(
 
 
 def yield_pivots(headerobjs, use_heuristics: Dict = None):
-    """ Detect headers that should be unpivoted using heuristics.
-    
-    """
+    """Detect headers that should be unpivoted using heuristics."""
     heuristics = {
         hname: h.init_class(**findpivot.__dict__) for hname, h in use_heuristics.items()
     }

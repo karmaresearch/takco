@@ -106,7 +106,7 @@ class SparqlStore(Store):
 class MediaWikiAPI(Searcher, WikiLookup):
     """A `MediaWiki API <https://www.mediawiki.org/wiki/API:Main_page>`_ endpoint.
     By default, uses the `Wikidata API <https://www.wikidata.org/w/api.php>`_.
-    
+
     """
 
     def __init__(
@@ -139,17 +139,20 @@ class MediaWikiAPI(Searcher, WikiLookup):
         return self.get_json(self.url, params=params)
 
     def lookup_wikititle(
-        self, title: str, site: str = "enwiki", normalize: bool = True,
+        self,
+        title: str,
+        site: str = "enwiki",
+        normalize: bool = True,
     ):
         """Gets the URI of a Wikibase entity based on wikipedia title.
-        
+
         Args:
             title: The title of the corresponding page
-            
-            
+
+
         >>> MediaWikiAPI().lookup_wikititle('amsterdam')
         'http://www.wikidata.org/entity/Q727'
-            
+
         """
         results = self._query(
             action="wbgetentities",
@@ -167,10 +170,10 @@ class MediaWikiAPI(Searcher, WikiLookup):
 
     def snak2rdf(self, snak):
         """Convert Wikidata snak to RDF
-        
-            See also:
-                - https://www.mediawiki.org/wiki/Wikibase/DataModel/JSON
-                - https://www.mediawiki.org/wiki/Wikibase/Indexing/RDF_Dump_Format
+
+        See also:
+            - https://www.mediawiki.org/wiki/Wikibase/DataModel/JSON
+            - https://www.mediawiki.org/wiki/Wikibase/Indexing/RDF_Dump_Format
 
         """
         if snak.get("snaktype") == "value":
@@ -210,13 +213,15 @@ class MediaWikiAPI(Searcher, WikiLookup):
 
     def get_claims(self, *ids: str, mainsnak: bool = True):
         """Gets the claims for multiple Wikibase entities.
-        
+
         Args:
-            ids: The IDs of the entities to get the data from 
+            ids: The IDs of the entities to get the data from
         """
         if ids:
             results = self._query(
-                action="wbgetentities", ids="|".join(ids), props="claims",
+                action="wbgetentities",
+                ids="|".join(ids),
+                props="claims",
             )
             if results:
                 ent_claims = {}
@@ -240,17 +245,17 @@ class MediaWikiAPI(Searcher, WikiLookup):
         add_about: bool = False,
         mainsnak: bool = True,
     ) -> typing.List[SearchResult]:
-        """Searches for entities using labels and aliases. 
-        
+        """Searches for entities using labels and aliases.
+
         .. role:: pre
-        
+
         See also:
-        
+
             - |wbsearchentities|_
-        
+
         .. |wbsearchentities| replace:: ``wbsearchentities``
         .. _wbsearchentities: https://www.wikidata.org/w/api.php?action=help&modules=wbsearchentities
-        
+
         """
         if not search:
             return {}
@@ -301,12 +306,15 @@ class DBpediaLookup(Searcher, WikiLookup):
         return str(redir).replace("/page/", "/resource/")
 
     def search_entities(
-        self, search: str, limit: int = 1, **kwargs,
+        self,
+        search: str,
+        limit: int = 1,
+        **kwargs,
     ) -> typing.List[SearchResult]:
         """Searches for entities using the Keyword Search API.
-        The Keyword Search API can be used to find related DBpedia resources for a 
+        The Keyword Search API can be used to find related DBpedia resources for a
         given string. The string may consist of a single or multiple words.
-        
+
         """
         if not search:
             return {}
@@ -320,8 +328,8 @@ class DBpediaLookup(Searcher, WikiLookup):
             for r in results.get("results", []):
                 if "classes" in r:
                     r[RDF_type] = r.pop("classes")
-                score = 1-(1/(1+r.get('refCount', 0)))
-                sr.append(SearchResult(r.pop("uri"), r, score=score ))
+                score = 1 - (1 / (1 + r.get("refCount", 0)))
+                sr.append(SearchResult(r.pop("uri"), r, score=score))
             return sr
 
 
@@ -333,10 +341,13 @@ if __name__ == "__main__":
         db = DBpediaLookup
 
     def search(
-        kind: Searchers, query: str, limit: int = 1, add_about: bool = False,
+        kind: Searchers,
+        query: str,
+        limit: int = 1,
+        add_about: bool = False,
     ):
         """Search for entities
-        
+
         Args:
             kind: Searcher (mw=MediaWikiAPI, db=DBpediaLookup)
             query: Query string

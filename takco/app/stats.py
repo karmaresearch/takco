@@ -44,25 +44,26 @@ def get_kbinfo(kb, table):
         ents = table.get("entities", {})
         return set(e for row_es in ents.values() for es in row_es.values() for e in es)
 
-    
     def get_links(e, p):
         if kb.count([URIRef(e), URIRef(p), None]) < 10:
-            yield 1, (o for _, _, o in kb.triples([URIRef(e), URIRef(p), None]) )
+            yield 1, (o for _, _, o in kb.triples([URIRef(e), URIRef(p), None]))
         else:
             yield 1, None
-        
+
         if kb.count([None, URIRef(p), URIRef(e)]) < 10:
-            yield -1, (s for s, _, _ in kb.triples([None, URIRef(p), URIRef(e)]) )
+            yield -1, (s for s, _, _ in kb.triples([None, URIRef(p), URIRef(e)]))
         else:
             yield -1, None
-     
+
     all_e = all_ents(table) | all_ents(table.get("gold", {}))
-    
+
     all_p = set(kb.labelProperties) | set(kb.typeProperties) | set(props)
     all_p = sorted(str(p) for p in all_p)
-    
-    log.info(f"Getting data for {len(all_e)} entities and {len(all_p)} properties = {len(all_e) * len(all_p)}")
-    
+
+    log.info(
+        f"Getting data for {len(all_e)} entities and {len(all_p)} properties = {len(all_e) * len(all_p)}"
+    )
+
     for e in all_e:
         kbinfo[str(e)] = {
             "uri": e,
@@ -73,8 +74,8 @@ def get_kbinfo(kb, table):
         for p in all_p:
             vals = set(
                 ("> " if d < 0 else "") + str(o)
-                for d, os in get_links(e,p)
-                for o in (os if os is not None else ['(many)'])
+                for d, os in get_links(e, p)
+                for o in (os if os is not None else ["(many)"])
                 if e and o
                 if not hasattr(o, "language") or (o.language in [None, "en"])
             )

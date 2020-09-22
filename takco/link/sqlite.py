@@ -20,29 +20,45 @@ class SQLiteWikiLookup(WikiLookup):
 
     def __init__(self, sqlitedb: Path, baseuri="", fallback: WikiLookup = None):
         self.sqlitedb = sqlitedb
+        try:
+            with sqlite3.connect(self.sqlitedb) as con:
+                con.execute("select count(*) from WikiLookup").fetchall()
+        except:
+            try:
+                with sqlite3.connect(self.sqlitedb) as con:
+                    con.executescript(self._INITDB)
+                    con.commit()
+            except:
+                pass
+
         self.baseuri = baseuri
         self.fallback = fallback
 
     def lookup_wikititle(self, title: str) -> str:
         """Gets the URI for a DBpedia entity based on wikipedia title."""
         title = title.replace(" ", "_")
-        with sqlite3.connect(self.sqlitedb) as con:
-            q = "select uri from WikiLookup where title=:q"
-            for uri in con.execute(q, {"q": title}).fetchone() or []:
-                if str(uri) == "-1":
-                    continue
-                if not uri:
-                    return
-                return self.baseuri + str(uri)
+        try:
+            with sqlite3.connect(self.sqlitedb) as con:
+                q = "select uri from WikiLookup where title=:q"
+                for uri in con.execute(q, {"q": title}).fetchone() or []:
+                    if str(uri) == "-1":
+                        continue
+                    if not uri:
+                        return
+                    return self.baseuri + str(uri)
 
-            if self.fallback:
-                uri = self.fallback.lookup_wikititle(title)
-                if str(uri) != "-1":
-                    uri = None
-                q = "insert or replace into WikiLookup(title, uri) values (?,?)"
-                con.execute(q, [title, uri.replace(self.baseuri, "") if uri else None])
-                con.commit()
-                return uri
+                if self.fallback:
+                    uri = self.fallback.lookup_wikititle(title)
+                    if str(uri) == "-1":
+                        uri = None
+                    q = "insert or replace into WikiLookup(title, uri) values (?,?)"
+                    con.execute(
+                        q, [title, uri.replace(self.baseuri, "") if uri else None]
+                    )
+                    con.commit()
+                    return uri
+        except Exception as e:
+            log.error(e)
 
 
 class SQLiteSearcher(Searcher):
@@ -78,15 +94,15 @@ class SQLiteSearcher(Searcher):
         baseuri=None,
         fallback=None,
         refsort=True,
-        **_
+        **_,
     ):
         self.graph = graph
         if "*" in files:
             if any(Path(f).exists() for f in glob.glob(files)):
                 files = glob.glob(files)
             else:
-                files = [files.replace('*', 'index.sqlitedb')]
-        
+                files = [files.replace("*", "index.sqlitedb")]
+
         for f in files:
             if not Path(f).exists():
                 Path(f).parent.mkdir(parents=True, exist_ok=True)
@@ -94,9 +110,9 @@ class SQLiteSearcher(Searcher):
                     cur = con.cursor()
                     cur.executescript(SQLiteSearcher._INITDB)
                     con.commit()
-        
+
         self.files = files
-        self.baseuri = baseuri or ''
+        self.baseuri = baseuri or ""
         self.fallback = fallback
         self.exact = exact
         self.lower = lower
@@ -117,7 +133,6 @@ class SQLiteSearcher(Searcher):
             query = query.lower()
 
         queries = [query]
-        
 
         all_results = []
         knownempty = False
@@ -137,7 +152,7 @@ class SQLiteSearcher(Searcher):
                         if self.refsort:
                             c = self.graph.count([None, None, rdflib.URIRef(uri)])
                             log.debug(f"{uri} scored {score} * {1-1/(5+c):.4f}")
-                            score *= 1-1/(5+c)
+                            score *= 1 - 1 / (5 + c)
                         sr = SearchResult(uri, score=score)
                         all_results.append(sr)
 
@@ -160,25 +175,25 @@ class SQLiteSearcher(Searcher):
                         con.execute(q, ["-1", query, 1])
                         con.commit()
                 log.debug(f"Added empty-result-value for '{query}' ")
-        
+
         if add_about and self.graph:
             all_results = [
                 SearchResult(sr.uri, self.graph.about(sr.uri), sr.score)
                 for sr in all_results
             ]
-            
+
         if not all_results:
             if self.parts:
                 for char in "([,:":
                     for qpart in query.split(char):
-                        qpart = qpart.translate(str.maketrans('','',')]')).strip()
+                        qpart = qpart.translate(str.maketrans("", "", ")]")).strip()
                         if qpart != query:
                             all_results += self.search_entities(
                                 qpart, limit=limit, add_about=add_about
                             )
-        
+
         all_results = sorted(all_results, key=lambda x: -x.score)
-        
+
         return all_results[:limit]
 
 

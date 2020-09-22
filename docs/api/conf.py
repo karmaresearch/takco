@@ -12,7 +12,7 @@
 #
 # import os
 # import sys
-# sys.path.insert(0, '/export/scratch1/home/kruit/nary/takco')
+# sys.path.insert(0, '/var/scratch/bbkruit/takco/takco')
 
 
 # -- Project information -----------------------------------------------------

@@ -2,6 +2,7 @@ import json
 import logging as log
 import inspect
 import copy
+import typing
 
 
 class Config(dict):
@@ -65,12 +66,12 @@ class Config(dict):
         if isinstance(self, dict) and "class" in self:
             self = dict(self)
             if inspect.isclass(context.get(self["class"])):
-                c = context[self.pop("class")]
+                cls = context[self.pop("class")]
                 kwargs = {
                     k: Config.init_class(v, force=False, **context)
                     for k, v in self.items()
                 }
-                obj = c(**kwargs)
+                obj = cls(**kwargs)
                 if "name" in self:
                     obj.name = self["name"]
                 return obj
@@ -189,7 +190,7 @@ try:
 
         def __init__(self, it, **kwargs):
             def wrap(it):
-                return tqdm.tqdm(list(it), leave=False)
+                return tqdm.tqdm(it, leave=False)
 
             super().__init__(it, wrap=wrap, **kwargs)
 
@@ -270,7 +271,26 @@ except Exception as e:
     log.debug(e)
 
 
-def get_warc_pages(fnames):
+def pages_download(ent_abouturl, encoding=None):
+    """Download html pages from urls"""
+    import requests
+
+    for e, url in ent_abouturl:
+        result = requests.get(url)
+        if encoding:
+            if encoding == "guess":
+                result.encoding = result.apparent_encoding
+            else:
+                result.encoding = encoding
+        if result.status_code == 200:
+            yield {
+                "url": url,
+                "about": e,
+                "html": result.text,
+            }
+
+
+def pages_warc(fnames):
     """Yield html pages from WARC files"""
     from warcio.archiveiterator import ArchiveIterator
 
@@ -291,19 +311,18 @@ def get_warc_pages(fnames):
                     }
 
 
-from collections.abc import Iterable
-import json
-
-
 def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
     """Show table previews in Jupyter"""
-    if isinstance(tables, dict):
-        tables = [tables]
-
+    import json
     from jinja2 import Environment, PackageLoader
     from IPython.display import HTML
 
-    env = Environment(loader=PackageLoader("takco", "app"),)
+    if isinstance(tables, dict):
+        tables = [tables]
+
+    env = Environment(
+        loader=PackageLoader("takco", "app"),
+    )
     env.filters["any"] = any
     env.filters["all"] = all
     env.filters["lookup"] = lambda ks, d: [d.get(k) for k in ks]
@@ -320,14 +339,14 @@ def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
             for ri, es in res.items():
                 if es:
                     ri_ann[ri] = True
-                    
+
                     if hide_correct_rows:
-                        predents = table.get('entities', {}).get(ci, {}).get(ri, {})
+                        predents = table.get("entities", {}).get(ci, {}).get(ri, {})
                         hide = all(e in predents for e in es)
                         hidden_rows[ri] = hidden_rows.get(ri, True) and hide
                 else:
                     hidden_rows[ri] = hidden_rows.get(ri, True)
-        
+
         if nrows and any(hidden_rows.values()):
             n, nshow = 0, 0
             for ri, h in sorted(hidden_rows.items()):
@@ -337,7 +356,7 @@ def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
                     break
         else:
             n = nrows
-            
+
         rows = [[c.get("text") for c in r] for r in table.get("tableData", [])][:n]
         table.setdefault("rows", rows)
         headers = [[c.get("text") for c in r] for r in table.get("tableHeaders", [])]
@@ -346,9 +365,9 @@ def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
         table.setdefault("entities", {})
         table.setdefault("classes", {})
         table.setdefault("properties", {})
-        
+
         t = template.render(
-            table=json.loads(json.dumps(table)), 
+            table=json.loads(json.dumps(table)),
             annotated_rows=ri_ann,
             hidden_rows=hidden_rows,
         )

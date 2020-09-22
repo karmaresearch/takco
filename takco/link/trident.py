@@ -88,19 +88,19 @@ class Trident(rdflib.store.Store):
         si = self.id(s, baseuri=self.ent_baseuri, ns=self.ns) if not vs else None
         pi = self.id(p, baseuri=self.prop_baseuri, ns=self.ns) if not vp else None
         oi = self.id(o, baseuri=self.ent_baseuri, ns=self.ns) if not vo else None
-        
+
         if si and (not pi) and (not oi):
             return self.db.count_s(si)
         elif (not si) and pi and (not oi):
             return self.db.count_p(pi)
         elif (not si) and (not pi) and oi:
             return self.db.count_o(oi)
-        
+
         elif si and pi and (not oi):
-            return self.db.n_o(si,pi)
+            return self.db.n_o(si, pi)
         elif (not si) and pi and oi:
-            return self.db.n_s(pi,oi)
-        
+            return self.db.n_s(pi, oi)
+
         else:
             ts = self.triples((s, p, o))
             return len(ts) if hasattr(ts, "__len__") else sum(1 for _ in ts)

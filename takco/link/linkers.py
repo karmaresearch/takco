@@ -9,13 +9,13 @@ URI = str
 
 class First(Linker):
     """Returns the first match for entity linking, under possible constraints
-    
+
     Args:
         searcher: The Searcher to find KB entities
         limit: Number of candidates to search for
         majority_class: Only use entities that have the majority value for this property
         exclude_about: Exclude entities that have these property-values
-    
+
     """
 
     def __init__(
@@ -69,10 +69,10 @@ class First(Linker):
                 ci_majoratt[ci] = max(att_count, key=att_count.get)
                 ci_classes[str(ci)] = {ci_majoratt[ci]: att_count[ci_majoratt[ci]]}
             log.debug(f"Got majority attribute {ci_majoratt}")
-            
+
             atts = lambda r: r.get(URIRef(self.majority_class), [])
-            for (ri,ci), results in rowcol_results.items():
-                rowcol_results[(ri,ci)] = [
+            for (ri, ci), results in rowcol_results.items():
+                rowcol_results[(ri, ci)] = [
                     r for r in results if ci_majoratt.get(ci) in atts(r)
                 ]
 
@@ -102,15 +102,15 @@ class First(Linker):
 
 class Salient(Linker):
     """Filters on the most salient class and property per column.
-    
+
     When ``expand`` is set, expands the candidate entity set with values of salient
-    properties, if they match according to 
+    properties, if they match according to
     :meth:`~takco.link.base.Searcher.label_match`. Salience is defined as follows:
-    
+
     .. math::
-    
+
         \\frac{\\text{number of matches}}{\\text{count}}
-        
+
     Args:
         searcher: The Searcher to find KB entities
         limit: Number of candidates to search for
@@ -120,7 +120,7 @@ class Salient(Linker):
         expand: Whether to expand candidates with values of salient properties
         graph: Graph to use when expanding, if ``searcher`` is not a Graph
         max_backlink: When expanding, only use properties that have fewer backlinks
-    
+
     """
 
     def __init__(

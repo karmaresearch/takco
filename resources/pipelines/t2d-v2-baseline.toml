@@ -1,6 +1,5 @@
 name = 't2d-v2-baseline'
 datadir = 'data'
-executor = 'tqdm'
 workdir = "output/t2d-v2-baseline/"
 cache = false
 

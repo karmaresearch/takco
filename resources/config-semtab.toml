@@ -1,7 +1,5 @@
 datadir = "data"
 resourcedir = "resources"
-cache = false
-#executor = "dask"
 
 [[kbs]]
 name = "wikidata-20200709-direct-prefLabel-en-db"
