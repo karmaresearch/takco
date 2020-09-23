@@ -1,3 +1,10 @@
+"""
+This module is executable. Run ``python -m takco.evaluate.dataset.t2d -h`` for help.
+"""
+import warnings
+
+warnings.filterwarnings("ignore")
+
 from pathlib import Path
 import logging as log
 import csv
@@ -29,7 +36,7 @@ class T2D(Dataset):
 
             if uri.startswith("http://dbpedia.org/resource/"):
                 uripart = uri.replace("http://dbpedia.org/resource/", "")
-                uripart = urllib.parse.quote_plus(uripart, safe="'()&,!")
+                uripart = urllib.parse.quote_plus(uripart, safe="'()&,!:")
                 uri = "http://dbpedia.org/resource/" + uripart
 
             return uri
@@ -54,6 +61,7 @@ class T2D(Dataset):
                 table_rows[self.get_name(fname)] = list(
                     zip(*json.loads(tablefile).get("relation", []))
                 )
+        log.info(f"Read {len(table_rows)} tables from {vpath['table']}")
         assert any(rows for rows in table_rows.values())
 
         # Properties (TODO: col-col props)
@@ -102,9 +110,11 @@ class T2D(Dataset):
             keycol = table_keycol.get(name, -1)
 
             row_uris = {}
-            for uri, celltext, rownum in csv.reader(open(fname)):
-                rownum = str(int(rownum) - 1)
-                row_uris[rownum] = {fix_uri(uri): 1.0}
+            for row in csv.reader(open(fname)):
+                if row:
+                    uri, celltext, rownum = row
+                    rownum = str(int(rownum) - 1)
+                    row_uris[rownum] = {fix_uri(uri): 1.0}
 
             numheaderrows[name] = 1
             if any(int(ri) < 0 for ri in row_uris):
@@ -112,7 +122,10 @@ class T2D(Dataset):
                 row_uris = {str(int(ri) + 1): uris for ri, uris in row_uris.items()}
 
             table_entities[name] = {str(keycol): row_uris} if row_uris else {}
-
+        log.info(f"Read {len(table_rows)} entity tables from {vpath['entity']}")
+        
+        assert bool(set(table_entities) & set(table_rows))
+        
         table_info = [table_rows, table_entities, table_class, table_properties]
         names = set.union(*map(set, table_info))
         self.tables = []

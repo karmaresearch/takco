@@ -63,14 +63,13 @@ class MatchResult(NamedTuple):
 class SearchResult(dict):
     def __init__(self, uri: URI, about: Dict[URI, List[URI]] = None, score: int = 1):
         """An entity search result with optional score"""
-        self.update({'@id':uri, '@score': score})
+        self.update({"@id": uri, "@score": score})
         self.uri = uri
         self.update(about or {})
         self.score = score
 
     def __repr__(self):
         return f"SearchResult('{self.uri}', {dict(self)}, score={self.score})"
-        
 
 
 class CellType(enum.Enum):
@@ -87,14 +86,6 @@ class CellType(enum.Enum):
 class Searcher:
     """For searching and matching for Knowledge Base entities."""
 
-    def get_about(self, uri: URI) -> Optional[SearchResult]:
-        """Get facts about an entity.
-
-        Args:
-            uri: Entity URI
-        """
-        return None
-
     def search_entities(
         self, query: str, limit: int = 1, add_about: bool = False
     ) -> Iterator[SearchResult]:
@@ -105,10 +96,6 @@ class Searcher:
             limit: Maximum number of results to return
             add_about: Include facts about the result entity
         """
-        return
-
-    def label_match(self, uri: URI, surface: str) -> Iterator[LiteralMatchResult]:
-        """Match a cell value to a KB entity"""
         return
 
 
@@ -151,25 +138,6 @@ class Database:
         for (_, p, o) in self.triples((e, None, None)):
             about.setdefault(p, []).append(o)
         return about
-
-    def count(self, triplepattern: TriplePattern) -> int:
-        """Count the number of triples that match a pattern
-
-        Args:
-            triplepattern: A 3-tuple of None or URI
-        """
-        return
-
-    def __len__(self):
-        return self.count([None, None, None])
-
-    def triples(self, triplepattern: TriplePattern) -> Iterator[Triple]:
-        """Yield triples that match a pattern
-
-        Args:
-            triplepattern: A 3-tuple of None or URI
-        """
-        return
 
     def pages_about(self, triplepattern=None) -> Iterator[Tuple[URI, str]]:
         """Yield URLs of webpages about subjects of a triple pattern

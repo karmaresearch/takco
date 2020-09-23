@@ -1,3 +1,10 @@
+"""
+This module is executable. Run ``python -m takco.evaluate.dataset.t2d -h`` for help.
+"""
+import warnings
+
+warnings.filterwarnings("ignore")
+
 from pathlib import Path
 import logging as log
 import csv

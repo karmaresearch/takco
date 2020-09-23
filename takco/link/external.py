@@ -1,6 +1,11 @@
 """
-Wrappers for external linking APIs
+Wrappers for external linking APIs.
+This module is executable. Run ``python -m takco.link.external -h`` for help.
 """
+import warnings
+
+warnings.filterwarnings("ignore")
+
 import typing
 from decimal import Decimal
 from datetime import datetime
@@ -139,10 +144,7 @@ class MediaWikiAPI(Searcher, WikiLookup):
         return self.get_json(self.url, params=params)
 
     def lookup_wikititle(
-        self,
-        title: str,
-        site: str = "enwiki",
-        normalize: bool = True,
+        self, title: str, site: str = "enwiki", normalize: bool = True,
     ):
         """Gets the URI of a Wikibase entity based on wikipedia title.
 
@@ -219,9 +221,7 @@ class MediaWikiAPI(Searcher, WikiLookup):
         """
         if ids:
             results = self._query(
-                action="wbgetentities",
-                ids="|".join(ids),
-                props="claims",
+                action="wbgetentities", ids="|".join(ids), props="claims",
             )
             if results:
                 ent_claims = {}
@@ -306,10 +306,7 @@ class DBpediaLookup(Searcher, WikiLookup):
         return str(redir).replace("/page/", "/resource/")
 
     def search_entities(
-        self,
-        search: str,
-        limit: int = 1,
-        **kwargs,
+        self, search: str, limit: int = 1, **kwargs,
     ) -> typing.List[SearchResult]:
         """Searches for entities using the Keyword Search API.
         The Keyword Search API can be used to find related DBpedia resources for a
@@ -340,11 +337,8 @@ if __name__ == "__main__":
         mw = MediaWikiAPI
         db = DBpediaLookup
 
-    def search(
-        kind: Searchers,
-        query: str,
-        limit: int = 1,
-        add_about: bool = False,
+    def test(
+        kind: Searchers, query: str, limit: int = 1, add_about: bool = False,
     ):
         """Search for entities
 
@@ -356,7 +350,7 @@ if __name__ == "__main__":
         result = kind.value().search_entities(query, limit=limit, add_about=add_about)
         return result
 
-    funcs = [search]
+    funcs = [test]
 
-    r = defopt.run(funcs, strict_kwonly=False)
+    r = defopt.run(funcs, strict_kwonly=False, show_types=True)
     print(json.dumps(r))

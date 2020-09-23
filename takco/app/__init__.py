@@ -198,9 +198,5 @@ def dataset():
         log.info(f"No kb")
 
     return render_template(
-        "dataset.html",
-        dataset=dataset,
-        tables=tables,
-        novelty=novelty,
-        **get_kbs(),
+        "dataset.html", dataset=dataset, tables=tables, novelty=novelty, **get_kbs(),
     )

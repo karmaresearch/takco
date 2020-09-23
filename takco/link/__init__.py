@@ -61,9 +61,7 @@ def lookup_hyperlinks(tables: List[dict], lookup_config: Dict, lookup_cells=Fals
 
 
 def link(
-    tables: List[dict],
-    linker_config: Dict,
-    usecols: Union[str, List[int]] = [],
+    tables: List[dict], linker_config: Dict, usecols: Union[str, List[int]] = [],
 ):
     """Link table entities to KB
 

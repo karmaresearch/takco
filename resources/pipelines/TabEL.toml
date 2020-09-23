@@ -1,0 +1,21 @@
+name = "TabEL"
+datadir = "data"
+
+[[assets]]
+name  = "tabel"
+class = "Annotation"
+download = [
+    "http://websail-fe.cs.northwestern.edu/TabEL/tables.json.gz",
+]
+path = "data/TabEL"
+fname = "tables.json.gz"
+
+[[step]]
+step = "dataset"
+params = "tabel"
+sample = 100
+
+[[step]]
+step = "reshape"
+split_compound_columns = false
+heuristics = [{class = "NumSuffix"}]

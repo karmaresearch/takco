@@ -144,7 +144,9 @@ def main():
         strict_kwonly=False,
         parsers={
             typing.Container[str]: str.split,
+            typing.Dict: json.loads,
             Config: Config,
+            HashBag: HashBag,
             TableSet: load_tables,
         },
         argparse_kwargs={"description": __doc__},
@@ -160,9 +162,7 @@ def main():
                     help="Use global configuration (see docs)",
                 )
                 subparser.add_argument(
-                    "-O",
-                    "--out",
-                    help="Write output to file(s)",
+                    "-O", "--out", help="Write output to file(s)",
                 )
                 subparser.add_argument(
                     "-v", "--info", action=SetVerbosity, help="Log general information"

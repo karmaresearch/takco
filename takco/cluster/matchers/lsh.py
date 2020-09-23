@@ -84,8 +84,7 @@ class LSHMatcher(Matcher):
             self.session = None
         else:
             self.lshindex = datasketch.MinHashLSH(
-                num_perm=self.num_perm,
-                threshold=self.threshold,
+                num_perm=self.num_perm, threshold=self.threshold,
             )
             self.session = None
 
@@ -108,8 +107,7 @@ class LSHMatcher(Matcher):
 
     def cli(self, command):
         return subprocess.run(
-            [self.redis_cli, "-p", str(self.port), command],
-            capture_output=True,
+            [self.redis_cli, "-p", str(self.port), command], capture_output=True,
         )
 
     def add(self, table):

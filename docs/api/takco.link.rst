@@ -14,6 +14,7 @@ Submodules
 
    takco.link.base
    takco.link.datatype
+   takco.link.elasticsearch
    takco.link.external
    takco.link.integrate
    takco.link.linkers

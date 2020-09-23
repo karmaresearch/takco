@@ -73,11 +73,7 @@ def count_noveltyhashes(kind_novelty_hashes):
                 r = tp / (tp + fn)
                 f1 = 2 * ((p * r) / (p + r))
                 counts.update(
-                    {
-                        f"{n}_precision": p,
-                        f"{n}_recall": r,
-                        f"{n}_f1": f1,
-                    }
+                    {f"{n}_precision": p, f"{n}_recall": r, f"{n}_f1": f1,}
                 )
             except:
                 pass

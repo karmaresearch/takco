@@ -1,6 +1,13 @@
+"""
+This module is executable. Run ``python -m takco.link.sqlite -h`` for help.
+"""
+import warnings
+
+warnings.filterwarnings("ignore")
+
+import typing
 from pathlib import Path
 import glob
-
 import rdflib
 import logging as log
 import sqlite3
@@ -196,22 +203,18 @@ class SQLiteSearcher(Searcher):
 
         return all_results[:limit]
 
-
-if __name__ == "__main__":
-    import defopt, typing, tqdm, re, json
-    from pathlib import Path
-    import logging as log
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
+    @staticmethod
     def createdb(
-        triplefile,
-        outdir,
-        baseuri=None,
-        langmatch="en",
-        chunk=10 ** 4,
-        scoredict=None,
-        limit=None,
+        triplefile: Path,
+        outdir: Path,
+        baseuri: str = None,
+        langmatch: str = "en",
+        chunk: int = 10 ** 4,
+        scoredict: typing.Dict = None,
+        limit: int = None,
     ):
+        import re
+
         scoredict = scoredict or SQLiteSearcher._DEFAULT_SCORES
         nbaseuri = len(baseuri) if baseuri else 0
 
@@ -255,7 +258,9 @@ if __name__ == "__main__":
             con.commit()
         return fname
 
+    @classmethod
     def create(
+        cls,
         triplefiles: typing.List[Path],
         outdir: Path = Path("."),
         baseuri: str = None,
@@ -266,6 +271,8 @@ if __name__ == "__main__":
         max_workers: int = 2,
     ):
         """Create SQLite DBs from triples"""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import tqdm
 
         Path(outdir).mkdir(exist_ok=True, parents=True)
 
@@ -280,7 +287,8 @@ if __name__ == "__main__":
                 limit=nlimit,
             )
             futures = {
-                executor.submit(createdb, f, outdir, **kwargs): f for f in triplefiles
+                executor.submit(cls.createdb, f, outdir, **kwargs): f
+                for f in triplefiles
             }
             pbar = tqdm.tqdm(as_completed(futures), total=len(futures))
             pbar.set_description(f"Indexing")
@@ -292,13 +300,24 @@ if __name__ == "__main__":
                     nrows += cur.execute("select count(*) from label").fetchone()[0]
                     pbar.set_description(f"Indexed {nrows} labels")
 
-    def search(sqlitedir: Path, query: str, limit: int = 1):
+    @classmethod
+    def test(cls, sqlitedir: Path, query: str, limit: int = 1):
         """Search a set of sqlite label DBs for a query string """
+        import json
 
-        s = SQLiteSearcher(files=sqlitedir.glob("*.sqlitedb"))
+        s = cls(files=sqlitedir.glob("*.sqlitedb"))
         return json.dumps(s.search_entities(query, limit=limit))
 
+
+if __name__ == "__main__":
+    import defopt, json, os
+
+    log.getLogger().setLevel(getattr(log, os.environ.get("LOGLEVEL", "WARN")))
+
     r = defopt.run(
-        [create, search], strict_kwonly=False, parsers={typing.Dict: json.loads}
+        [SQLiteSearcher.create, SQLiteSearcher.test],
+        strict_kwonly=False,
+        show_types=True,
+        parsers={typing.Dict: json.loads},
     )
     print(r)

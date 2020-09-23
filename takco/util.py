@@ -320,9 +320,7 @@ def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
     if isinstance(tables, dict):
         tables = [tables]
 
-    env = Environment(
-        loader=PackageLoader("takco", "app"),
-    )
+    env = Environment(loader=PackageLoader("takco", "app"),)
     env.filters["any"] = any
     env.filters["all"] = all
     env.filters["lookup"] = lambda ks, d: [d.get(k) for k in ks]

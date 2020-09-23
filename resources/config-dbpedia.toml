@@ -2,7 +2,7 @@ datadir = "data"
 resourcedir = "resources"
 
 [[kbs]]
-name = "dbpedia_t2ksubset"
+name = "dbpedia_t2ksubset" # 
 class = "RDFSearcher"
 labelProperties = ["http://dbpedia.org/ontology/title"]
 store = {class = "Trident", configuration = 'kb/dbpedia_t2ksubset/db/'}

@@ -113,6 +113,7 @@ class TableSet:
         assets: typing.List[Config] = (),
         sample: int = None,
         executor: str = None,
+        withgold: bool = False,
         **_,
     ):
         """Load tables from a dataset
@@ -157,17 +158,16 @@ class TableSet:
         else:
             htmlpages = HashBag(source)
 
-        from .extract import extract_tables, restructure
+        from .extract import extract_tables
 
         tables = htmlpages._pipe(extract_tables, desc="Extract")
-        tables = tables._pipe(restructure, desc="Restructure")
         return tables
 
     def reshape(
         tables: TableSet,
         workdir: Path = None,
-        heuristics: typing.List[Config] = ({"class": "NumSuffix"},),
-        load_user: str = None,
+        restructure: bool = True,
+        unpivot_heuristics: typing.List[Config] = ({"class": "NumSuffix"},),
         split_compound_columns: bool = False,
         **_,
     ):
@@ -177,29 +177,30 @@ class TableSet:
 
         Args:
             workdir: Working Directory
-
             heuristics: Use a subset of available heuristics
-            load_user: Load into db as user
 
         """
-        heuristics = {h.get("name", h.get("class")): Config(h) for h in heuristics}
         from . import reshape
+        
+        if restructure:
+            tables = tables._pipe(reshape.restructure, desc="Restructure")
+        
+        upheur = {h.get("name", h.get("class")): Config(h) for h in unpivot_heuristics}
+        if upheur:
+            log.info(f"Reshaping with heuristics: {', '.join(upheur)}")
+            tables.persist()
+            headers = tables._fold(reshape.table_get_headerId, lambda x, y: x)
+            headers = headers._pipe(reshape.get_headerobjs)
+            pivots = headers._pipe(reshape.yield_pivots, use_heuristics=upheur)
+            headerId_pivot = {p["headerId"]: p for p in pivots}
+            log.info(f"Found {len(headerId_pivot)} pivots")
 
-        log.info(f"Reshaping with heuristics {heuristics}")
-
-        tables.persist()
-        headers = tables._fold(reshape.table_get_headerId, lambda x, y: x)
-        headers = headers._pipe(reshape.get_headerobjs)
-        pivots = headers._pipe(reshape.yield_pivots, use_heuristics=heuristics)
-        headerId_pivot = {p["headerId"]: p for p in pivots}
-        log.info(f"Found {len(headerId_pivot)} pivots")
-
-        tables = tables._pipe(
-            reshape.unpivot_tables,
-            headerId_pivot,
-            use_heuristics=heuristics,
-            desc="Unpivoting",
-        )
+            tables = tables._pipe(
+                reshape.unpivot_tables,
+                headerId_pivot,
+                use_heuristics=upheur,
+                desc="Unpivoting",
+            )
 
         if split_compound_columns:
             tables = tables._pipe(reshape.split_compound_columns, desc="Uncompounding")
@@ -380,9 +381,7 @@ class TableSet:
                 pi = table["part"]
                 pi_mergetable[pi] = (
                     clustering.merge_partition_tables(
-                        pi_mergetable[pi],
-                        table,
-                        store_align_meta=store_align_meta,
+                        pi_mergetable[pi], table, store_align_meta=store_align_meta,
                     )
                     if (pi in pi_mergetable)
                     else table
@@ -457,11 +456,7 @@ class TableSet:
         if linker_config:
             linker_config = Config(linker_config, **kbs)
             log.info(f"Linking with config {linker_config}")
-            tables = tables._pipe(
-                link.link,
-                linker_config,
-                usecols=usecols,
-            )
+            tables = tables._pipe(link.link, linker_config, usecols=usecols,)
 
         return tables
 
@@ -615,7 +610,7 @@ class TableSet:
             name = "takco-run-" + str(datetime.datetime.now().isoformat())
 
         conf = {
-            "workdir": workdir or pipeline.get("workdir"),
+            "workdir": workdir or pipeline.get("workdir") or '.',
             "datadir": datadir or pipeline.get("datadir"),
             "resourcedir": resourcedir or pipeline.get("resourcedir"),
             "assets": assets or pipeline.get("assets"),
@@ -647,7 +642,7 @@ class TableSet:
             if "step" in stepargs:
                 stepfuncname = stepargs.get("step")
                 stepname = f"{si}-{stepargs.get('name', stepfuncname)}"
-                stepdir = Path(workdir) / Path(stepname)
+                stepdir = Path(conf['workdir']) / Path(stepname)
 
                 nodir = (not stepdir.exists()) or (not any(stepdir.iterdir()))
                 if force or (si >= step_force) or nodir:

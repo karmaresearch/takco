@@ -154,12 +154,12 @@ tr.hidden {
                         {% if ('gold' in table) and not iscorrect %}
                             {{celltext}}
                             <nobr>
-                                <a href="{{ent}}" data-id="{{ent}}" class="kblink btn" title="{{ent}}">
+                                <a href="{{ent}}" data-id="{{ent}}" class="kblink" title="{{ent}}">
                                     {% if goldents %}❌{% endif %}
                                     {% if not goldents %}❓{% endif %}
                                 </a>
                                 {% if goldent %}
-                                    <a href="{{goldent}}" data-id="{{goldent}}" class="kblink btn" title="{{goldent}}">💡</a>
+                                    <a href="{{goldent}}" data-id="{{goldent}}" class="kblink" title="{{goldent}}">💡</a>
                                 {% endif %}
                             </nobr>
                         {% else %}
@@ -168,7 +168,7 @@ tr.hidden {
                     {% else %}
                         {{celltext}}
                         {% if goldent %}
-                            <a href="{{goldent}}" data-id="{{goldent}}" class="kblink btn" title="{{goldent}}">💡</a>
+                            <a href="{{goldent}}" data-id="{{goldent}}" class="kblink" title="{{goldent}}">💡</a>
                         {% endif %}
                     {% endif %}
                     {% if match and (1 > match.score) %}

@@ -10,12 +10,7 @@ class CellJaccMatcher(Matcher):
     """Jaccard similarity of table cells from header and/or body"""
 
     def __init__(
-        self,
-        fdir: Path,
-        source="head",
-        tokenize=True,
-        create=False,
-        **kwargs,
+        self, fdir: Path, source="head", tokenize=True, create=False, **kwargs,
     ):
         mdir = Path(fdir) / Path("CellJaccMatcher")
         if create:

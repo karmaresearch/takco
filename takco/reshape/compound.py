@@ -92,12 +92,7 @@ class SpacyCompoundSplitter(CompoundSplitter):
                     {"TEXT": {"REGEX": "^\d{2}$"}},
                 ],
             },
-            {
-                "label": "URL",
-                "pattern": [
-                    {"LEMMA": {"REGEX": self.URL_REGEX}},
-                ],
-            },
+            {"label": "URL", "pattern": [{"LEMMA": {"REGEX": self.URL_REGEX}},],},
         ]
         ruler.add_patterns(patterns)
         self.nlp.add_pipe(ruler)
