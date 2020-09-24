@@ -5,6 +5,7 @@ from typing import List, Dict, Iterator
 
 from .htmltables import page_extract_tables
 
+
 def extract_tables(pages: Iterator[Dict]) -> Iterator[Dict]:
     """Extract tables from pages.
 
@@ -18,5 +19,3 @@ def extract_tables(pages: Iterator[Dict]) -> Iterator[Dict]:
     """
     for page in pages:
         yield from page_extract_tables(page.get("html"), aboutURI=page.get("about"))
-
-

@@ -11,15 +11,17 @@ class Config(dict):
     Resolves ``{name=x}`` hashes from kwargs.
     """
 
-    def __init__(self, val, **context):
+    def __init__(self, val, context=None):
         from pathlib import Path
         import logging as log
         import toml, json
 
+        context = {c.get("name", c.get("class")): Config(c) for c in (context or [])}
+
         if isinstance(val, dict):
             if context and ("name" in val) and (val["name"] in context):
                 self["name"] = val["name"]
-                self.update(context[val.pop("name")])
+                self.update(context[val.get("name")])
             self.update(
                 {
                     k: Config(v, **context) if isinstance(v, dict) else v
@@ -151,7 +153,7 @@ class HashBag:
             return self.__class__(dumped_it(f))
 
     @classmethod
-    def _load(cls, files):
+    def _load(cls, files, **kwargs):
         from io import TextIOBase
         from pathlib import Path
 
@@ -203,21 +205,35 @@ try:
     import dask.diagnostics
     import sys
 
-    #     pbar = dask.diagnostics.ProgressBar(out=sys.stderr)
-    #     pbar.register()
-
     class DaskHashBag(HashBag):
         """A HashBag that uses the `Dask <http://dask.org>`_ library."""
 
-        def __init__(self, it, npartitions=None, **kwargs):
+        def start_client(self, **kwargs):
+            from dask.distributed import Client
 
-            global cluster
+            self.client = Client(**kwargs)
+
+        def __init__(self, it, npartitions=None, **kwargs):
+            if kwargs:
+                self.start_client(**kwargs)
 
             if isinstance(it, db.Bag):
                 self.bag = it
             else:
                 it = list(it)
                 self.bag = db.from_sequence(it, npartitions=npartitions)
+
+        @classmethod
+        def _load(cls, f, **kwargs):
+            if kwargs:
+                self.start_client(**kwargs)
+
+            from io import TextIOBase
+
+            if isinstance(f, TextIOBase):
+                cls(json.loads(line) for line in f)
+            else:
+                return cls(db.read_text(f).map(json.loads))
 
         def persist(self):
             self.bag.persist()
@@ -255,15 +271,6 @@ try:
             else:
                 self.bag.map(json.dumps).to_textfiles(f, last_endline=True)
                 return self._load(f)
-
-        @classmethod
-        def _load(cls, f):
-            from io import TextIOBase
-
-            if isinstance(f, TextIOBase):
-                cls(json.loads(line) for line in f)
-            else:
-                return cls(db.read_text(f).map(json.loads))
 
 
 except Exception as e:

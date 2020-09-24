@@ -2,13 +2,13 @@ name = 'chartedIn'
 
 [[step]]
 step = "extract"
-    #[step.source.warc]
-    #globstrings = ["data/wikipedia-2019-12-P2291/*-00000.warc.gz"]
+    [step.source.warc]
+    globstrings = ["./data/wikipedia-2019-12-P2291/*-00000.warc.gz"]
     
-    [step.source.wiki]
-    pred = "http://www.wikidata.org/prop/direct/P2291"
+    #[step.source.wiki]
+    #pred = "http://www.wikidata.org/prop/direct/P2291"
     #localurlprefix = "http://localhost:8989/wikipedia_en_all_nopic_2019-12/A/"
-    encoding = "utf-8"
+    #encoding = "utf-8"
     #sample=10
     
 [[step]]
@@ -24,7 +24,7 @@ addcontext = ["pgTitle"]
 headerunions = true
 #matchers = []
 #agg_func = 'max'
-agg_func = '@mean( headjacc, @max(bodylsh, bodyvec) )'
+agg_func = '@mean(  @max(headjacc, headvec), @max(bodylsh, bodyvec) )'
 agg_threshold = 0.9
 edge_exp = 2
 store_align_meta = ["tableHeaders", "tableData"]
@@ -34,6 +34,13 @@ store_align_meta = ["tableHeaders", "tableData"]
     class = 'CellJaccMatcher'
     source = 'head'
     tokenize = true
+    
+    [[step.matchers]]
+    name  = 'headvec'
+    class = 'EmbeddingMatcher'
+    source = 'head'
+    wordvec_fname = "./data/glove.6B/glove.6B.50d.txt"
+    exp = 8
 
     [[step.matchers]]
     name  = 'bodylsh'

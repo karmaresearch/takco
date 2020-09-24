@@ -123,9 +123,9 @@ class T2D(Dataset):
 
             table_entities[name] = {str(keycol): row_uris} if row_uris else {}
         log.info(f"Read {len(table_rows)} entity tables from {vpath['entity']}")
-        
+
         assert bool(set(table_entities) & set(table_rows))
-        
+
         table_info = [table_rows, table_entities, table_class, table_properties]
         names = set.union(*map(set, table_info))
         self.tables = []

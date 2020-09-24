@@ -71,7 +71,7 @@ def make_query_body(surface, limit=10):
                     }
                 },
                 "functions": [
-                    {"field_value_factor": {"field": "score", "modifier": "sqrt",}}
+                    {"field_value_factor": {"field": "score", "modifier": "log1p",}}
                 ],
                 "boost_mode": "sum",
             }
@@ -115,10 +115,18 @@ class ElasticSearcher(Searcher):
 
         return results
 
+    def labels(self, uri: str):
+        id = str(uri).replace(self.baseuri, "")
+        esresults = self.es.search(
+            index="test-1", body={"query": {"match": {"id": id}}}
+        )
+        hits = esresults.get("hits", []).get("hits", [])
+        return set([h.get("_source", {}).get("surface") for h in hits])
+
     @classmethod
     def load_synonyms(cls, redirects_label: Path):
         import urllib.parse as ul
-        
+
         for line in Path(redirects_label).open():
             line = ul.unquote_plus(line)
             try:
@@ -179,7 +187,7 @@ class ElasticSearcher(Searcher):
             es.indices.create(index=index, body=SETTINGS)
 
         action = {"_index": index}
-        
+
         syn, check_syn = {}, ()
         if synonym_file:
             print("Loading synonyms from", synonym_file, file=sys.stderr)
@@ -187,23 +195,24 @@ class ElasticSearcher(Searcher):
             if Path(synonym_file).is_file():
                 try:
                     from subprocess import run
-                
-                    wc = run(['wc', '-l', synonym_file], capture_output=True)
+
+                    wc = run(["wc", "-l", synonym_file], capture_output=True)
                     t = int(wc.stdout.split()[0])
                 except:
                     pass
-            syn = dict(tqdm.tqdm(cls.load_synonyms(synonym_file), total = t))
-            
+            syn = dict(tqdm.tqdm(cls.load_synonyms(synonym_file), total=t))
+
             try:
                 from pybloomfilter import BloomFilter
+
                 print(f"Making Bloom filter", file=sys.stderr)
-                check_syn = BloomFilter(len(syn), 0.1, '/tmp/filter.bloom')
+                check_syn = BloomFilter(len(syn), 0.1, "/tmp/filter.bloom")
                 check_syn.update(syn)
             except:
                 check_syn = syn
-            
+
         print(f"Using {len(syn)} synonyms", file=sys.stderr)
-        
+
         def get_synonyms(s, path=()):
             if s and (s not in path):
                 yield s
@@ -218,7 +227,7 @@ class ElasticSearcher(Searcher):
                             id, surface, score = line.split("\t")
                             score = float(score)
                             surface = surface.encode().decode("unicode-escape")
-                            
+
                             for s in get_synonyms(surface):
                                 yield {
                                     **action,
@@ -234,17 +243,19 @@ class ElasticSearcher(Searcher):
 
                         if limit and (i > limit):
                             break
-        
+
         if (limit is None) and Path(surfaceFormsScores).is_file():
             try:
                 from subprocess import run
 
-                wc = run(['wc', '-l', surfaceFormsScores], capture_output=True)
+                wc = run(["wc", "-l", surfaceFormsScores], capture_output=True)
                 limit = int(wc.stdout.split()[0])
             except:
                 pass
-        
-        results = helpers.parallel_bulk(es, stream(limit=limit), thread_count=thread_count)
+
+        results = helpers.parallel_bulk(
+            es, stream(limit=limit), thread_count=thread_count
+        )
         for i, (status, r) in enumerate(results):
             if not status:
                 print("ERROR", r, file=sys.stderr)
@@ -272,11 +283,7 @@ if __name__ == "__main__":
     log.getLogger().setLevel(getattr(log, os.environ.get("LOGLEVEL", "WARN")))
 
     r = defopt.run(
-        [
-            ElasticSearcher.tables2surface,
-            ElasticSearcher.create,
-            ElasticSearcher.test,
-        ],
+        [ElasticSearcher.tables2surface, ElasticSearcher.create, ElasticSearcher.test,],
         strict_kwonly=False,
         show_types=True,
         parsers={typing.Dict: json.loads},

@@ -12,37 +12,6 @@ from . import *
 from .util import *
 
 
-def get_executor(name):
-    if name:
-        config = {}
-        if isinstance(name, dict) and ("name" in name):
-            config = dict(name)
-            name = config.pop("name")
-
-        if name == "dask":
-            from dask.distributed import LocalCluster, Client
-
-            config.setdefault("scheduler_port", 8786)
-            config.setdefault("dashboard_address", ":8787")
-            config.setdefault("n_workers", 4)
-            config.setdefault("threads_per_worker", 1)
-            # config.setdefault('memory_target_fraction', .9)
-
-            log.info(f"Starting dask cluster with {config}")
-            cluster = LocalCluster(**config)
-            log.info(f"Started {cluster}")
-
-            client = Client(cluster)
-
-            return DaskHashBag
-        elif name == "tqdm":
-            return TqdmHashBag
-        else:
-            return HashBag
-    else:
-        return HashBag
-
-
 def load_tables(s):
     global executor
     log.debug(f"Loading tables {s} using executor {executor}")
@@ -66,12 +35,6 @@ class SetConfig(argparse.Action):
         else:
             config.update(os.environ)
             log.info(f"Loaded config from environment")
-
-        if "executor" in config:
-            global executor
-            executor = get_executor(config.pop("executor"))
-            config["executor"] = executor
-            log.debug(f"Set config to use executor {executor}")
 
         for k, v in config.items():
             setattr(namespace, k, v)

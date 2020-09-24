@@ -69,3 +69,33 @@ def table_triples(tables, include_type=True):
         table["triples"] = list(triples.yield_triples(table, include_type=True))
 
         yield table
+
+
+def pr_plot(show_curves, title=None, ylim=[0, 1.0]):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    fig, ax = plt.subplots(nrows=1, ncols=1)
+
+    # Isolines of constant F1-score
+    f_scores = np.linspace(0, 1, num=20)
+    for f_score in f_scores:
+        x = np.linspace(0.01, 1)
+        y = f_score * x / (2 * x - f_score)
+        (l,) = ax.plot(x[y >= 0], y[y >= 0], color="gray", alpha=0.2)
+
+    table = []
+    for name, data in show_curves.items():
+        r_curve, p_curve = data["recall"], data["precision"]
+        ax.step(r_curve[1:-1], p_curve[1:-1], where="post", label=name)
+
+    ax.legend()
+    ax.set_xlabel("Recall")
+    ax.set_ylabel("Precision")
+    ax.set_ylim(ylim)
+    ax.set_xlim([0.0, 1.0])
+    if title:
+        ax.set_title(title)
+
+    plt.close(fig)
+    return fig

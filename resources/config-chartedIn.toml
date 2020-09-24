@@ -3,6 +3,14 @@ workdir = "output/chartedIn/"
 resourcedir = "resources"
 cache = true
 
+[[executors]]
+name = "dask-local"
+class = "DaskHashBag"
+scheduler_port = 8786
+dashboard_address = ":8787"
+n_workers = 4
+threads_per_worker = 1
+
 [[kbs]]
 name = "wikidata2019-P31inf-wikibase-simple-qualifiers"
 class = "RDFSearcher"

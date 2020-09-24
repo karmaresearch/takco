@@ -207,7 +207,7 @@ def unpivot_tables(
                 emptycell = {"text": ""}
 
                 headrows, bodyrows = table["tableHeaders"], table["tableData"]
-            
+
                 headrows, bodyrows = unpivot(
                     headrows,
                     bodyrows,
@@ -242,7 +242,7 @@ def unpivot_tables(
                 log.debug(f"Pivoted table {table.get('_id')}")
             except Exception as e:
                 log.debug(f"Cannot pivot table {table.get('_id')} due to {e}")
-                
+
         yield table
 
 
@@ -280,6 +280,7 @@ def split_compound_columns(tables, **kwargs):
             table["tableData"] = list(zip(*datacols))
 
         yield table
+
 
 def restructure(tables: Iterator[Dict]) -> Iterator[Dict]:
     """Restructure tables.

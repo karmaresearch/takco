@@ -1,5 +1,5 @@
 try:
-    from sklearn.metrics import classification_report
+    from sklearn.metrics import classification_report, precision_recall_curve
     from sklearn.exceptions import UndefinedMetricWarning
     import pandas as pd
 
@@ -10,6 +10,16 @@ try:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
             return classification_report(df.gold, df.pred, output_dict=True).get("True")
+
+    def pr_curve(gold, pred):
+        import warnings
+
+        df = pd.DataFrame({"gold": gold, "pred": pred}).fillna(0)
+        df.gold = df.gold.apply(bool)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+            p, r, t = precision_recall_curve(df.gold, df.pred)
+            return dict(precision=p, recall=r, thresholds=t)
 
 
 except ImportError:

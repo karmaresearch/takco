@@ -25,6 +25,7 @@ class First(Linker):
         search_limit: int = 10,
         majority_class: URI = None,
         exclude_about: Dict[URI, URI] = None,
+        normalize: bool = False,
     ):
         self.searcher = searcher
         self.limit = limit
@@ -32,6 +33,7 @@ class First(Linker):
         self.majority_class = majority_class
         self.exclude_about = exclude_about
         self.add_about = bool(majority_class or exclude_about)
+        self.normalize = normalize
 
     def link(
         self,
@@ -88,9 +90,14 @@ class First(Linker):
 
         entities = existing_entities
         for (ri, ci), results in rowcol_results.items():
-            for j, r in enumerate(results):
-                if j >= self.limit:
-                    break
+            results = results[: self.limit]
+            if self.normalize:
+                total_score = sum(r.score for r in results)
+                results = [
+                    SearchResult(r.uri, r, r.score / total_score) for r in results
+                ]
+
+            for r in results:
                 ents = entities.setdefault(str(ci), {}).setdefault(str(ri), {})
                 ents[r.uri] = r.score
 

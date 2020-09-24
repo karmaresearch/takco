@@ -49,6 +49,14 @@ class TridentNode(rdflib.term.Node):
 
 class Trident(rdflib.store.Store):
     def __init__(self, ent_baseuri=None, prop_baseuri=None, ns=None, *args, **kwargs):
+        """Trident store. Required kwarg: ``configuration``.
+        
+        Args:
+            configuration: Path to Trident KB (required)
+            ent_baseuri: Base URI for entities
+            prop_baseuri: Base URI for properties
+            ns: Namespace dict
+        """
         self.db = None
         self.ent_baseuri = ent_baseuri
         self.prop_baseuri = prop_baseuri

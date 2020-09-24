@@ -14,6 +14,23 @@ import logging as log
 from .util import *
 
 
+def get_executor_kwargs(conf: Config, executors):
+    """Get executor configuration"""
+    if conf:
+        conf = Config(conf, executors)
+
+        if isinstance(conf, dict):
+            if "class" in conf:
+                cls = globals().get(conf.pop("class"))
+                return cls, conf
+            elif "name" in conf:
+                return globals().get(conf.pop("name"), HashBag), {}
+        else:
+            return globals().get(str(conf), HashBag), {}
+    else:
+        return HashBag, {}
+
+
 def wiki(
     dbconfig: Config = {"class": "GraphDB", "store": {"class": "SparqlStore"}},
     pred: str = None,
@@ -23,8 +40,8 @@ def wiki(
     sample: int = None,
     justurls: bool = False,
     encoding: str = None,
-    executor: str = None,
-    **_,
+    executor: Config = None,
+    **_kwargs,
 ):
     """
     Download Wikipedia articles
@@ -39,7 +56,7 @@ def wiki(
         localprefix: Wikipedia URL prefix for locally hosted pages
         encoding: Force encoding (use "guess" for guessing)
     """
-    executor = globals().get(executor, executor) or HashBag
+    executor, exkw = get_executor_kwargs(executor, _kwargs.get("executors"))
 
     from . import link
 
@@ -56,11 +73,14 @@ def wiki(
         return ({"entity": e, "page": url} for e, url in ent_abouturl)
 
     log.info(f"Downloading {len(ent_abouturl)} pages with executor {executor}")
-    return executor(ent_abouturl)._pipe(pages_download, encoding=encoding)
+    return executor(ent_abouturl, **exkw)._pipe(pages_download, encoding=encoding)
 
 
 def warc(
-    globstrings: typing.List[str] = (), datadir: Path = None, executor: str = None
+    globstrings: typing.List[str] = (),
+    datadir: Path = None,
+    executor: Config = None,
+    **_kwargs,
 ):
     """Load HTML pages from WARC files
 
@@ -69,14 +89,14 @@ def warc(
         datadir: Data directory
 
     """
-    executor = globals().get(executor, executor) or HashBag
-    datadir = Path(datadir) if datadir else Path(".")
+    executor, exkw = get_executor_kwargs(executor, _kwargs.get("executors"))
 
-    fnames = [fname for g in globstrings for fname in datadir.glob(g)]
+    fnames = [fname for g in globstrings for fname in Path(".").glob(g)]
+    assert len(fnames), f"No glob results for {globstrings}"
     log.info(
         f"Extracting pages from {len(fnames)} warc files using executor {executor}"
     )
-    return executor(fnames)._pipe(pages_warc)
+    return executor(fnames, **exkw)._pipe(pages_warc)
 
 
 class TableSet:
@@ -110,11 +130,10 @@ class TableSet:
         params: Config,
         datadir: Path = None,
         resourcedir: Path = None,
-        assets: typing.List[Config] = (),
         sample: int = None,
-        executor: str = None,
         withgold: bool = False,
-        **_,
+        executor: Config = None,
+        **_kwargs,
     ):
         """Load tables from a dataset
 
@@ -124,22 +143,22 @@ class TableSet:
             params: Dataset parameters
             datadir: Data directory
             resourcedir: Resource directory
-            assets: Asset specifications
             sample: Sample N tables
         """
-        executor = globals().get(executor, executor) or HashBag
+        executor, exkw = get_executor_kwargs(executor, _kwargs.get("executors"))
 
-        assets = {a.get("name", a.get("class")): Config(a) for a in assets}
         import itertools
         from . import evaluate
 
-        params = Config(params, **assets)
+        params = Config(params, _kwargs.get("assets"))
         log.info(f"Loading dataset {params}")
         ds = evaluate.dataset.load(resourcedir=resourcedir, datadir=datadir, **params)
-        return executor(itertools.islice(ds.get_unannotated_tables(), sample))
+        return executor(itertools.islice(ds.get_unannotated_tables(), sample), **exkw)
 
     @classmethod
-    def extract(cls, source: typing.Union[Config, HashBag], executor: str = None, **_):
+    def extract(
+        cls, source: typing.Union[Config, HashBag], executor: Config = None, **_kwargs
+    ):
         """Collect tables from HTML files
 
         See also: :mod:`takco.extract`
@@ -148,10 +167,9 @@ class TableSet:
             source: Source of HTML files
             workdir: Working directory for caching
         """
-        executor = globals().get(executor, executor) or HashBag
         if isinstance(source, dict):
             for k, v in source.items():
-                htmlpages = globals()[k](**v, executor=executor)
+                htmlpages = globals()[k](**v, executor=executor, **_kwargs)
                 break
         elif isinstance(source, HashBag):
             htmlpages = source
@@ -169,7 +187,7 @@ class TableSet:
         restructure: bool = True,
         unpivot_heuristics: typing.List[Config] = ({"class": "NumSuffix"},),
         split_compound_columns: bool = False,
-        **_,
+        **_kwargs,
     ):
         """Reshape tables
 
@@ -181,10 +199,10 @@ class TableSet:
 
         """
         from . import reshape
-        
+
         if restructure:
             tables = tables._pipe(reshape.restructure, desc="Restructure")
-        
+
         upheur = {h.get("name", h.get("class")): Config(h) for h in unpivot_heuristics}
         if upheur:
             log.info(f"Reshaping with heuristics: {', '.join(upheur)}")
@@ -229,7 +247,7 @@ class TableSet:
         agg_threshold: float = 0,
         edge_exp: float = 1,
         store_align_meta: typing.List[str] = ["tableHeaders"],
-        **_,
+        **_kwargs,
     ):
         """Cluster tables
 
@@ -398,9 +416,8 @@ class TableSet:
             "statementURIprefix": "http://www.wikidata.org/entity/statement/",
             "store": {"class": "SparqlStore"},
         },
-        kbs: typing.List[Config] = (),
         pfd_threshold: float = 0.9,
-        **_,
+        **_kwargs,
     ):
         """Integrate tables with a KB
 
@@ -410,10 +427,9 @@ class TableSet:
             tables: Tables to integrate
             pfd_threshold:
         """
-        kbs = {k.get("name", k.get("class")): Config(k) for k in kbs}
         from . import link
 
-        searcher_config = Config(searcher_config, **kbs)
+        searcher_config = Config(searcher_config, _kwargs.get("kbs"))
         log.info(f"Integrating with config {searcher_config}")
 
         return tables._pipe(
@@ -428,9 +444,8 @@ class TableSet:
             "class": "First",
             "searcher": {"class": "MediaWikiAPI"},
         },
-        kbs: typing.List[Config] = (),
         usecols: str = [],
-        **_,
+        **_kwargs,
     ):
         """Link table entities to KB
 
@@ -441,11 +456,10 @@ class TableSet:
             linker: Entity Linker config
             usecols: Columns to use
         """
-        kbs = {k.get("name", k.get("class")): Config(k) for k in kbs}
         from . import link
 
         if lookup_config:
-            lookup_config = Config(lookup_config, **kbs)
+            lookup_config = Config(lookup_config, _kwargs.get("kbs"))
             log.info(f"Looking up hyperlinks with config {lookup_config}")
             tables = tables._pipe(
                 link.lookup_hyperlinks,
@@ -454,7 +468,7 @@ class TableSet:
             )
 
         if linker_config:
-            linker_config = Config(linker_config, **kbs)
+            linker_config = Config(linker_config, _kwargs.get("kbs"))
             log.info(f"Linking with config {linker_config}")
             tables = tables._pipe(link.link, linker_config, usecols=usecols,)
 
@@ -463,12 +477,11 @@ class TableSet:
     def score(
         tables: TableSet,
         labels: Config,
-        assets: typing.List[Config] = (),
         datadir: Path = None,
         resourcedir: Path = None,
         report: typing.Dict = None,
         keycol_only: bool = False,
-        **_,
+        **_kwargs,
     ):
         """Calculate evaluation scores
 
@@ -477,18 +490,14 @@ class TableSet:
         Args:
             tables: Table with predictions to score
             labels: Annotated data config
-            assets: Asset specifications
             datadir: Data directory
             resourcedir: Resource directory
             report: Report config
             keycol_only: Only report results for key column
         """
-
-        assets = {a.get("name", a.get("class")): Config(a) for a in assets}
-
         from . import evaluate
 
-        annot = Config(labels, **assets)
+        annot = Config(labels, _kwargs.get("assets"))
         dset = evaluate.dataset.load(resourcedir=resourcedir, datadir=datadir, **annot)
         table_annot = dset.get_annotated_tables()
         log.info(f"Loaded {len(table_annot)} annotated tables")
@@ -496,16 +505,11 @@ class TableSet:
         return tables._pipe(evaluate.table_score, table_annot, keycol_only=keycol_only)
 
     def novelty(
-        tables: TableSet,
-        searcher_config: Config = None,
-        kbs: typing.List[Config] = (),
-        **_,
+        tables: TableSet, searcher_config: Config = None, **_kwargs,
     ):
         from . import evaluate
 
-        kbs = {k.get("name", k.get("class")): Config(k) for k in kbs}
-        searcher_config = Config(searcher_config, **kbs)
-
+        searcher_config = Config(searcher_config, _kwargs.get("kbs"))
         return tables._pipe(evaluate.table_novelty, searcher_config)
 
     def triples(tables: TableSet, include_type: bool = True):
@@ -514,7 +518,7 @@ class TableSet:
 
         return tables._pipe(evaluate.table_triples, include_type=include_type)
 
-    def report(tables: TableSet, keycol_only: bool = False):
+    def report(tables: TableSet, keycol_only: bool = False, curve: bool = False):
         from . import evaluate
 
         data = {}
@@ -549,6 +553,7 @@ class TableSet:
                             hs |= set(hashes)
 
         scores = {}
+        curves = {}
         for task in evaluate.task_flatten:
             gold, pred = all_gold.get(task, {}), all_pred.get(task, {})
             if pred:
@@ -559,8 +564,12 @@ class TableSet:
                 task_scores = evaluate.score.classification(gold, pred)
                 task_scores["predictions"] = len(pred)
                 scores[task] = task_scores
+                if curve:
+                    curves[task] = evaluate.score.pr_curve(gold, pred)
         if scores:
             data["scores"] = scores
+        if curves:
+            data["curves"] = curves
 
         if kb_kind_novelty_hashes:
             data["novelty"] = {}
@@ -578,13 +587,15 @@ class TableSet:
         workdir: Path = None,
         datadir: Path = None,
         resourcedir: Path = None,
-        assets: Config = (),
-        kbs: Config = (),
+        assets: typing.List[Config] = (),
+        kbs: typing.List[Config] = (),
+        executors: typing.List[Config] = (),
         force: bool = False,
         step_force: int = 0,
         cache: bool = False,
-        executor: str = None,
-        **_,
+        executor: Config = None,
+        x_executor: Config = None,
+        **_kwargs,
     ):
         """Run entire pipeline
 
@@ -598,6 +609,7 @@ class TableSet:
             force: Force execution of steps if cache files are already present
             step_force: Force execution of steps starting at this number
             cache: Cache intermediate results
+            executor: Executor engine
         """
         import shutil
 
@@ -610,15 +622,17 @@ class TableSet:
             name = "takco-run-" + str(datetime.datetime.now().isoformat())
 
         conf = {
-            "workdir": workdir or pipeline.get("workdir") or '.',
+            "workdir": workdir or pipeline.get("workdir") or ".",
             "datadir": datadir or pipeline.get("datadir"),
             "resourcedir": resourcedir or pipeline.get("resourcedir"),
             "assets": assets or pipeline.get("assets"),
             "kbs": kbs or pipeline.get("kbs"),
+            "executors": executors or pipeline.get("executors"),
             "cache": cache or pipeline.get("cache"),
-            "executor": executor or pipeline.get("executor"),
+            "executor": executor or x_executor or pipeline.get("executor"),
         }
-        executor = globals().get(conf["executor"], conf["executor"]) or HashBag
+        executor, executors = conf["executor"], conf["executors"]
+        executor, exkw = get_executor_kwargs(executor, executors)
 
         if conf["cache"]:
             if force:
@@ -642,7 +656,7 @@ class TableSet:
             if "step" in stepargs:
                 stepfuncname = stepargs.get("step")
                 stepname = f"{si}-{stepargs.get('name', stepfuncname)}"
-                stepdir = Path(conf['workdir']) / Path(stepname)
+                stepdir = Path(conf["workdir"]) / Path(stepname)
 
                 nodir = (not stepdir.exists()) or (not any(stepdir.iterdir()))
                 if force or (si >= step_force) or nodir:
@@ -657,7 +671,7 @@ class TableSet:
                     tables = wrap_step(stepfunc, stepargs, stepdir)
                 else:
                     log.warn(f"Skipping step {stepname}, using cache instead")
-                    tables = executor._load(str(stepdir) + "/*")
+                    tables = executor._load(str(stepdir) + "/*", **exkw)
             else:
                 log.warn(f"Pipeline step {si} has no step type!")
 
