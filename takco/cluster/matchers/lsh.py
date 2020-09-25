@@ -21,6 +21,7 @@ class LSHMatcher(Matcher):
     def __init__(
         self,
         fdir,
+        name=None,
         source="body",
         redis_dir=None,
         basename=None,
@@ -31,8 +32,8 @@ class LSHMatcher(Matcher):
         **kwargs,
     ):
         """MinHash-based jaccard similarity with LSH blocking"""
-
-        mdir = Path(fdir) / Path("LSHMatcher")
+        self.name = name or self.__class__.__name__
+        mdir = Path(fdir) / Path(self.name)
         if create:
             shutil.rmtree(mdir, ignore_errors=True)
         mdir.mkdir(parents=True, exist_ok=True)
@@ -126,6 +127,14 @@ class LSHMatcher(Matcher):
                 for r in table["tableHeaders"]
             )
         cols = list(zip(*rows))
+
+        if not table.get("numericColumns", []):
+
+            def isnum(col):
+                num = lambda x: x.translate(str.maketrans("", "", "-.,%")).isnumeric()
+                return sum(int(num(c)) for c in col) / len(col) > 0.5
+
+            table["numericColumns"] = [i for i, c in enumerate(zip(*rows)) if isnum(c)]
 
         ci_range = range(
             table["columnIndexOffset"], table["columnIndexOffset"] + table["numCols"]

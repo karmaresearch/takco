@@ -84,9 +84,10 @@ def make_blocked_matches_df(table_indices, dirpath, matcher_kwargs):
     for mi, indexes, score in matches:
         simdf[mi][indexes] = score
     simdf = pd.DataFrame.from_dict(simdf)
-    simdf.index.names = ["ti1", "ti2", "ci1", "ci2"]
-    simdf.columns = list(matcher_kwargs)
-    yield simdf
+    if len(simdf):
+        simdf.index.names = ["ti1", "ti2", "ci1", "ci2"]
+        simdf.columns = list(matcher_kwargs)
+        yield simdf
 
 
 def make_aggsim_df(similarity_dataframes):
@@ -119,7 +120,7 @@ def cluster_partition_columns(
             and not any(i in blocked_pairs.index for i in [(ti1, ti2), (ti2, ti1)])
         ]
         if len(partition_unblocked_pairs):
-            log.debug(f"Partition {pi}: {part} has unblocked pairs {unblocked_pairs}")
+            log.debug(f"Partition {pi} has {len(unblocked_pairs)} unblocked pairs")
             unblocked_pairs += partition_unblocked_pairs
             partition_has_unblocked_pairs[pi] = True
 

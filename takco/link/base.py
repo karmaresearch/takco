@@ -72,8 +72,12 @@ class SearchResult(dict):
         return f"SearchResult('{self.uri}', {dict(self)}, score={self.score})"
 
 
-class CellType(enum.Enum):
-    """Cell datatype enumeration"""
+class CellType:
+    def coltype(
+        cls, cell_ents: Iterator[Tuple[str, Container[URI]]],
+    ) -> Dict[str, int]:
+        """Find column type for cells and their entities"""
+        return {}
 
     @classmethod
     def literal_match(literal: Literal, surface: str) -> Iterator[LiteralMatchResult]:
@@ -81,6 +85,10 @@ class CellType(enum.Enum):
         score = float(bool(str(literal) == surface))
         if score:
             yield LiteralMatchResult(score, literal, None)
+
+    def is_literal_type(self) -> bool:
+        """Return whether this is a literal type"""
+        return None
 
 
 class Searcher:
@@ -127,6 +135,9 @@ class WikiLookup:
 
 class Database:
     """For querying a Knowledge Base."""
+
+    def get_prop_values(self, e: URI, prop: URI):
+        return self.about(e).get(prop, [])
 
     def about(self, e: URI) -> Dict[URI, List[Node]]:
         """Look up facts about an entity

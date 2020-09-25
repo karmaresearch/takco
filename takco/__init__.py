@@ -209,7 +209,9 @@ class TableSet:
             tables.persist()
             headers = tables._fold(reshape.table_get_headerId, lambda x, y: x)
             headers = headers._pipe(reshape.get_headerobjs)
+
             pivots = headers._pipe(reshape.yield_pivots, use_heuristics=upheur)
+
             headerId_pivot = {p["headerId"]: p for p in pivots}
             log.info(f"Found {len(headerId_pivot)} pivots")
 
@@ -242,10 +244,12 @@ class TableSet:
         workdir: Path = None,
         addcontext: typing.List[str] = (),
         headerunions: bool = True,
-        matchers: typing.List[Config] = ({"class": "CellJaccMatcher"}),
+        matchers: typing.List[Config] = (),
+        use_match_cache: bool = False,
         agg_func: str = "mean",
         agg_threshold: float = 0,
         edge_exp: float = 1,
+        agg_threshold_col: float = None,
         store_align_meta: typing.List[str] = ["tableHeaders"],
         **_kwargs,
     ):
@@ -263,18 +267,16 @@ class TableSet:
             agg_func: Matcher aggregation function
             agg_threshold: Matcher aggregation threshold
             edge_exp : Exponent of edge weight for Louvain modularity
+            agg_threshold_col: Matcher aggregation threshold (default: agg_threshold)
         """
         matcher_kwargs = {m.get("name", m.get("class")): Config(m) for m in matchers}
+        agg_threshold_col = agg_threshold_col or agg_threshold
 
         import tqdm
         import sqlite3
         import pandas as pd
         from . import cluster
         from .cluster import clustering
-
-        import copy  # TODO: get rid of root cause instead of this stupid hack
-
-        tables = tables._pipe(lambda x: [copy.deepcopy(v) for v in x])
 
         if addcontext:
             tables = tables._pipe(cluster.tables_add_context_rows, fields=addcontext)
@@ -298,30 +300,34 @@ class TableSet:
                 index.to_sql("indices", con, index_label="i", if_exists="replace")
                 con.execute("create index colOffset on indices(columnIndexOffset)")
 
-            # TODO: parallelize map_partition
-            log.info(f"Using matchers {matchers}")
-            matchers = tables._pipe(
-                clustering.matcher_add_tables, workdir, matcher_kwargs
-            )
-            for m in set(matchers):
-                m.index()
-
-            # Get blocked column match scores
-            log.info(f"Computing column similarities...")
             table_indices = set(t["tableIndex"] for t in tables)
-            simdfs = tables.__class__(table_indices)._pipe(
-                cluster.make_blocked_matches_df, workdir, matcher_kwargs
-            )
-            sims = pd.concat(list(simdfs)).fillna(0)
-            log.info(f"Computed {len(sims)} column similarities")
+            simpath = Path(workdir) / Path("sims.csv")
+            if use_match_cache and simpath.exists():
+                sims = pd.read_csv(simpath, index_col=[0, 1, 2, 3])
+            else:
+                log.info(f"Using matchers {matchers}")
+                matchers = tables._pipe(
+                    clustering.matcher_add_tables, workdir, matcher_kwargs
+                )
 
-            sims.to_csv(Path(workdir) / Path("sims.csv"))
+                for m in matchers._fold(lambda x: x.name, lambda a, b: a.merge(b)):
+                    log.info(f"Indexing {m}")
+                    m.index()
+
+                # Get blocked column match scores
+                log.info(f"Computing column similarities...")
+                simdfs = tables.__class__(table_indices)._pipe(
+                    cluster.make_blocked_matches_df, workdir, matcher_kwargs
+                )
+                sims = pd.concat(list(simdfs))
+                log.info(f"Computed {len(sims)} column similarities")
+
+                sims.to_csv(simpath)
 
             log.info(
                 f"Aggregating matcher results using `{agg_func} > {agg_threshold}` "
             )
             aggsim = clustering.aggregate_similarities(sims, agg_func)
-            aggsim = aggsim[aggsim > agg_threshold]
 
             # Compute soft column alignment jaccard
             import warnings
@@ -333,7 +339,8 @@ class TableSet:
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=FutureWarning)
                 tqdm.tqdm.pandas(desc="Aggregating column scores")
-            aligned_total = aggsim.groupby(level=[0, 1]).progress_aggregate(
+            threshold_sim = aggsim[aggsim > agg_threshold]
+            aligned_total = threshold_sim.groupby(level=[0, 1]).progress_aggregate(
                 clustering.max_align, return_total=True
             )
             j = (
@@ -367,7 +374,13 @@ class TableSet:
             iparts = list(enumerate(louvain_partition))
             ti_pi, pi_ncols, ci_pci = {}, {}, {}
             chunks = cluster.cluster_partition_columns(
-                iparts, clus, aggsim, agg_func, agg_threshold, workdir, matcher_kwargs
+                iparts,
+                clus,
+                aggsim,
+                agg_func,
+                agg_threshold_col,
+                workdir,
+                matcher_kwargs,
             )
             for chunk_ti_pi, chunk_pi_ncols, chunk_ci_pci in chunks:
                 ti_pi.update(chunk_ti_pi)
@@ -409,6 +422,21 @@ class TableSet:
 
         return tables
 
+    def coltypes(
+        tables: TableSet, typer_config: Config = {"class": "SimpleCellType"}, **_kwargs,
+    ):
+        """Find column types.
+        
+        Args:
+            tables: Tables to find column types
+            typer_config: Typer config
+        """
+
+        from . import link
+
+        typer_config = Config(typer_config, _kwargs.get("kbs"))
+        return tables._pipe(link.coltypes, typer_config=typer_config,)
+
     def integrate(
         tables: TableSet,
         searcher_config: Config = {
@@ -416,24 +444,32 @@ class TableSet:
             "statementURIprefix": "http://www.wikidata.org/entity/statement/",
             "store": {"class": "SparqlStore"},
         },
+        typer_config: Config = {"class": "SimpleCellType"},
         pfd_threshold: float = 0.9,
         **_kwargs,
     ):
-        """Integrate tables with a KB
+        """Integrate tables with KB properties and classes.
 
         See also: :meth:`takco.link.integrate`
 
         Args:
             tables: Tables to integrate
-            pfd_threshold:
+            searcher_config: Searcher config
+            typer_config: Typer config
+            pfd_threshold: Probabilistic Functional Dependency threshold for key column
+                prediction
         """
         from . import link
 
         searcher_config = Config(searcher_config, _kwargs.get("kbs"))
         log.info(f"Integrating with config {searcher_config}")
+        typer_config = Config(typer_config, _kwargs.get("kbs"))
 
         return tables._pipe(
-            link.integrate, searcher_config, pfd_threshold=pfd_threshold
+            link.integrate,
+            searcher_config=searcher_config,
+            typer_config=typer_config,
+            pfd_threshold=pfd_threshold,
         )
 
     def link(
@@ -447,8 +483,9 @@ class TableSet:
         usecols: str = [],
         **_kwargs,
     ):
-        """Link table entities to KB
-
+        """Link table entities to KB.
+        Depending on the Linker, also integrates table with KB classes and properties.
+        
         See also: :meth:`takco.link.link`
 
         Args:

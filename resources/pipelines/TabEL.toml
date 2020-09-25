@@ -13,9 +13,14 @@ fname = "tables.json.gz"
 [[step]]
 step = "dataset"
 params = "tabel"
-sample = 100
+sample = 1000
 
 [[step]]
 step = "reshape"
 split_compound_columns = false
 heuristics = [{class = "NumSuffix"}]
+
+[[step]]
+step = "cluster"
+addcontext = ["pgTitle"]
+headerunions = true

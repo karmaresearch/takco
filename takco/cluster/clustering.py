@@ -51,7 +51,7 @@ def yield_blocked_matches(table_indices, dirpath, matcher_kwargs):
     for ti1 in table_indices:
         block = set()
         for matcher in matchers:
-            block |= set(matcher.block(ti1))
+            block |= set(matcher.block(ti1) or [])
 
         log.debug(f"Found {len(block)} blocked candidates for table {ti1}")
 
@@ -85,6 +85,7 @@ def aggregate_similarities(sims, agg_func):
         "max": lambda *args: np.nanmax(args, axis=0),
         "min": lambda *args: np.nanmin(args, axis=0),
         "mean": lambda *args: np.nanmean(args, axis=0),
+        "pow": lambda a, b: a ** b,
     }
     if agg_func in funcs:
         agg = funcs[agg_func](*(sims[c] for c in sims))

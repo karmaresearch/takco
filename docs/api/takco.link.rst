@@ -13,7 +13,6 @@ Submodules
    :maxdepth: 4
 
    takco.link.base
-   takco.link.datatype
    takco.link.elasticsearch
    takco.link.external
    takco.link.integrate
@@ -22,3 +21,4 @@ Submodules
    takco.link.rdf
    takco.link.sqlite
    takco.link.trident
+   takco.link.types

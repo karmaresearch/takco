@@ -173,12 +173,12 @@ def unpivot_tables(
                         splitheaders.append(
                             (
                                 {
-                                    "text": head,
+                                    "text": head or "",
                                     "tdHtmlString": f"<td>{head}</td>",
                                     "surfaceLinks": links,  # TODO adjust link offsets
                                 },
                                 {
-                                    "text": cell,
+                                    "text": cell or "",
                                     "tdHtmlString": f"<td>{cell}</td>",
                                     "surfaceLinks": links,  # TODO adjust link offsets
                                 },

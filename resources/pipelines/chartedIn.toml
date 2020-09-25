@@ -17,17 +17,40 @@ split_compound_columns = true
 load_user = false
 heuristics = [{class = "NumSuffix"}]
 
-
 [[step]]
 step = "cluster"
 addcontext = ["pgTitle"]
 headerunions = true
-#matchers = []
-#agg_func = 'max'
-agg_func = '@mean(  @max(headjacc, headvec), @max(bodylsh, bodyvec) )'
-agg_threshold = 0.9
-edge_exp = 2
-store_align_meta = ["tableHeaders", "tableData"]
+
+[[step]]
+step = "link"
+linker_config = {}
+lookup_cells = true
+    [step.lookup_config]
+    class = 'SQLiteWikiLookup'
+    sqlitedb = 'data/wdid_wpname.sqlitedb'
+    baseuri = 'http://www.wikidata.org/entity/'
+    fallback = {class = 'MediaWikiAPI'}
+    
+[[step]]
+step = "coltypes"
+    [step.typer_config]
+    class = "EntityType"
+    db = {name = "wikidata-20200709-direct-prefLabel-en"}
+    type_prop = "http://www.wikidata.org/prop/direct/P31"
+    supertype_prop = "http://www.wikidata.org/prop/direct/P279"
+    cover_threshold = 0.333
+
+[[step]]
+step = "cluster"
+addcontext = []
+headerunions = false
+use_match_cache = false
+agg_func = '@mean(  @max(headjacc, @pow(headvec, 4)), @max(bodylsh, bodytype, @pow(bodyvec, 4) ) )'
+agg_threshold = 0.95
+edge_exp = 3
+agg_threshold_col = 0.5
+store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
     
     [[step.matchers]]
     name  = 'headjacc'
@@ -40,7 +63,6 @@ store_align_meta = ["tableHeaders", "tableData"]
     class = 'EmbeddingMatcher'
     source = 'head'
     wordvec_fname = "./data/glove.6B/glove.6B.50d.txt"
-    exp = 8
 
     [[step.matchers]]
     name  = 'bodylsh'
@@ -55,17 +77,10 @@ store_align_meta = ["tableHeaders", "tableData"]
     class = 'EmbeddingMatcher'
     source = 'body'
     wordvec_fname = "./data/glove.6B/glove.6B.50d.txt"
-    exp = 8
-
-[[step]]
-step = "link"
-linker_config = {}
-lookup_cells = true
-    [step.lookup_config]
-    class = 'SQLiteWikiLookup'
-    sqlitedb = 'data/wdid_wpname.sqlitedb'
-    baseuri = 'http://www.wikidata.org/entity/'
-    fallback = {class = 'MediaWikiAPI'}
+    
+    [[step.matchers]]
+    name  = 'bodytype'
+    class = 'TypeCosMatcher'
 
 #[[step]]
 #step = "integrate"

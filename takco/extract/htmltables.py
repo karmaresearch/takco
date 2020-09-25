@@ -186,51 +186,6 @@ def htmlrows_to_dataframe(htmlrows):
     return pd.DataFrame(body, columns=pd.MultiIndex.from_tuples(list(zip(*head))))
 
 
-def tableobj_to_dataframe(table):
-    import pandas as pd
-
-    body = [[c.get("text", "") for c in r] for r in table.get("tableData", [])]
-    head = [[c.get("text", "") for c in r] for r in table.get("tableHeaders", [])]
-    if any(head):
-        return pd.DataFrame(body, columns=pd.MultiIndex.from_tuples(list(zip(*head))))
-    else:
-        return pd.DataFrame(body)
-
-
-def tableobj_to_html(table, nrows=None, uniq=None, number=False):
-    tableData = table.get("tableData", [])
-    if uniq:
-        uniq_cols = set()
-        for row in table.get("tableHeaders", []):
-            for col, cell in enumerate(row):
-                if cell.get("text").lower() == uniq.lower():
-                    uniq_cols.add(col)
-        if uniq_cols:
-            tableData = []
-            uniqvals = set()
-            for row in table.get("tableData", []):
-                for uc in uniq_cols:
-                    if uc < len(row) and (row[uc].get("text", "") not in uniqvals):
-                        tableData.append(row)
-                        uniqvals.add(row[uc].get("text", ""))
-
-    tableData = tableData[:nrows]
-
-    body = [[c.get("tdHtmlString", "<td></td>") for c in r] for r in tableData]
-    body = [[c.replace("span=", "=") for c in row] for row in body]
-    body = "".join(f'<tr>{"".join(row)}</tr>' for row in body)
-
-    head = [
-        [c.get("tdHtmlString", "<th></th>") for c in r]
-        for r in table.get("tableHeaders", [])
-    ]
-    head = [[c.replace("span=", "=") for c in row] for row in head]
-    if number and head:
-        head = [[f"<th>{i}</th>" for i in range(len(head[0]))]] + head
-    head = "".join(f'<tr>{"".join(row)}</tr>' for row in head)
-    return "<table>" + head + body + "</table>"
-
-
 def indexify_header(df, level=1, cells=None):
     import pandas as pd
 

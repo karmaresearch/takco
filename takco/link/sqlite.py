@@ -52,10 +52,12 @@ class SQLiteWikiLookup(WikiLookup):
                         continue
                     if not uri:
                         return
+                    log.debug(f"Found Wikititle for {title}: {uri}")
                     return self.baseuri + str(uri)
 
                 if self.fallback:
                     uri = self.fallback.lookup_wikititle(title)
+                    log.debug(f"Fallback Wikititle for {title}: {uri}")
                     if str(uri) == "-1":
                         uri = None
                     q = "insert or replace into WikiLookup(title, uri) values (?,?)"

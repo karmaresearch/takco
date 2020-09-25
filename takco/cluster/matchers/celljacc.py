@@ -10,9 +10,16 @@ class CellJaccMatcher(Matcher):
     """Jaccard similarity of table cells from header and/or body"""
 
     def __init__(
-        self, fdir: Path, source="head", tokenize=True, create=False, **kwargs,
+        self,
+        fdir: Path,
+        name=None,
+        source="head",
+        tokenize=True,
+        create=False,
+        **kwargs,
     ):
-        mdir = Path(fdir) / Path("CellJaccMatcher")
+        self.name = name or self.__class__.__name__
+        mdir = Path(fdir) / Path(self.name)
         if create:
             shutil.rmtree(mdir, ignore_errors=True)
         mdir.mkdir(parents=True, exist_ok=True)

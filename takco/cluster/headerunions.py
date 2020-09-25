@@ -21,6 +21,26 @@ def combine_by_first_header(table1, table2):
 
     tableData = table1["tableData"] + table2["tableData"]
 
+    row_offset2 = len(table1["tableData"])
+
+    annotations = {}
+    if "entities" in table1:
+        annotations["entities"] = table1["entities"]
+    if "entities" in table2:
+        for ci, ri_ents in table2["entities"].items():
+            annotations.setdefault("entities", {}).setdefault(ci, {}).update(
+                {str(int(ri) + row_offset2): es for ri, es in ri_ents.items()}
+            )
+
+    for table in [table1, table2]:
+        for ci, classes in table.get("classes", {}).items():
+            annotations.setdefault("classes", {}).setdefault(ci, {}).update(classes)
+
+        for fromci, toci_props in table.get("properties", {}).items():
+            newprops = annotations.setdefault("properties", {}).setdefault(fromci, {})
+            for toci, props in toci_props:
+                newprops.setdefault(toci, {}).update(props)
+
     return {
         "_id": f"{headerId}-0",
         "pgId": headerId,
@@ -38,4 +58,5 @@ def combine_by_first_header(table1, table2):
         "tableData": tableData,
         "pivots": table1.get("pivots", [table1.get("pivot")])
         + table2.get("pivots", [table2.get("pivot")]),
+        **annotations,
     }

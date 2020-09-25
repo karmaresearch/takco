@@ -11,13 +11,35 @@ dashboard_address = ":8787"
 n_workers = 4
 threads_per_worker = 1
 
+[[executors]]
+name = "dask-local-big"
+class = "DaskHashBag"
+scheduler_port = 8786
+dashboard_address = ":8787"
+n_workers = 8
+threads_per_worker = 4
+
+[[executors]]
+name = "dask-cluster"
+class = "DaskHashBag"
+address = "tcp://192.168.62.207:8786"
+
+
+
+[[kbs]]
+name = "wikidata-20200709-direct-prefLabel-en"
+class = "RDFSearcher"
+typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
+    [kbs.store]
+    class = "Trident"
+    configuration = "../kb/wikidata/wikidata-20200709-direct-prefLabel-en-db/"
+
 [[kbs]]
 name = "wikidata2019-P31inf-wikibase-simple-qualifiers"
 class = "RDFSearcher"
 typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
 qualifierIDProperty = "http://www.wikidata.org/prop/direct/id"
 #wikiProp = "http://www.wikidata.org/entity/wikipediaId"
-
     [kbs.store]
     class = "Trident"
     configuration = "../kb/wikidata/wikidata2019-P31inf-wikibase-simple-qualifiers/"

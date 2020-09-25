@@ -17,7 +17,7 @@ from .base import (
     LiteralMatchResult,
     CellType,
 )
-from .datatype import SimpleCellType
+from .types import SimpleCellType
 
 
 def encode_wikidata(query):
@@ -35,6 +35,9 @@ class GraphDB(Database, rdflib.Graph):
 
     def triples(self, triplepattern, **kwargs):
         return rdflib.Graph.triples(self, triplepattern, **kwargs)
+
+    def get_prop_values(self, e, p):
+        return [o for _, _, o in self.triples([URIRef(e), URIRef(p), None])]
 
     def about(self, uri):
         about = {}

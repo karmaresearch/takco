@@ -138,9 +138,7 @@ class NumSuffix(RegexFinder):
 
     def __init__(self):
         self.find_regex = re.compile(".*\d[\W\s]*$")
-        self.split_regex = re.compile(
-            "(?P<head>.*?)[\W\s]*(?P<cell>[-\d–—\s]+)[\W\s]*$"
-        )
+        self.split_regex = re.compile("(?P<head>.*?)[\W\s]*(?P<cell>[\d\W]+?)[\W\s]*$")
 
 
 class NumPrefix(RegexFinder):
@@ -148,9 +146,7 @@ class NumPrefix(RegexFinder):
 
     def __init__(self):
         self.find_regex = re.compile("[\W\s]*\d")
-        self.split_regex = re.compile(
-            "(?P<cell>[-\d–—\s]+)[\W\s]*(?P<head>.*?)[\W\s]*$"
-        )
+        self.split_regex = re.compile("(?P<cell>[\d\W]+?)[\W\s]*(?P<head>.*?)[\W\s]*$")
 
 
 class SeqPrefix(PivotFinder):

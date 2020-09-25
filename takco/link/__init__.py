@@ -13,7 +13,7 @@ from .linkers import *
 
 from .integrate import *
 from .profile import *
-from .datatype import *
+from .types import *
 
 
 from rdflib import Graph, URIRef
@@ -117,7 +117,40 @@ def link(
         yield table
 
 
-def integrate(tables: List[dict], searcher_config: Dict, pfd_threshold=0.9):
+def get_col_cell_ents(table):
+    ents = table.get("entities", {})
+    for ci, col in enumerate(zip(*table.get("tableData", []))):
+        ri_ents = ents.get(str(ci), {})
+        yield [
+            (cell.get("text", ""), ri_ents.get(str(ri), {}))
+            for ri, cell in enumerate(col)
+        ]
+
+
+def coltypes(tables: List[dict], typer_config: Dict):
+    typer = typer_config.init_class(**globals())
+
+    for table in tables:
+
+        # Find column types
+        ci_classes = table.setdefault("classes", {})
+        for ci, cell_ents in enumerate(get_col_cell_ents(table)):
+            cell_ents = list(dict(cell_ents).items())
+
+            cls_score = typer.coltype(cell_ents)
+
+            ci_classes.setdefault(str(ci), {}).update(cls_score)
+        log.info(f"Got classes: {ci_classes}")
+
+        yield table
+
+
+def integrate(
+    tables: List[dict],
+    searcher_config: Dict,
+    pfd_threshold=0.9,
+    typer_config: Dict = None,
+):
     """Integrate tables with n-ary relations
 
     Args:
@@ -130,16 +163,8 @@ def integrate(tables: List[dict], searcher_config: Dict, pfd_threshold=0.9):
     assert isinstance(searcher, Searcher), f"{searcher} is not a Searcher"
     log.debug(f"Integrating with {searcher}")
 
-    from collections import Counter
-
-    def get_col_cell_ents(table):
-        ents = table.get("entities", {})
-        for ci, col in enumerate(zip(*table.get("tableData", []))):
-            ri_ents = ents.get(str(ci), {})
-            yield [
-                (cell.get("text", ""), ri_ents.get(str(ri), {}))
-                for ri, cell in enumerate(col)
-            ]
+    if typer_config:
+        tables = coltypes(tables, typer_config=typer_config)
 
     for table in tables:
         log.debug(
@@ -148,22 +173,16 @@ def integrate(tables: List[dict], searcher_config: Dict, pfd_threshold=0.9):
             len(table.get("tableData", [])),
         )
 
-        # Find column types
-        typer = SimpleCellType
-        ci_classes = table.setdefault("classes", {})
-        for ci, cell_ents in enumerate(get_col_cell_ents(table)):
-            cell_ents = list(dict(cell_ents).items())
-            n = len(cell_ents)
-            cls_score = {c.value: s / n for c, s in typer.coltype(cell_ents).items()}
-            ci_classes.setdefault(str(ci), {}).update(cls_score)
-        log.info(f"Got classes: {ci_classes}")
-
         # Find key column
         profiler = PFDProfiler()
+        ci_literal = {
+            int(ci): any(SimpleCellType().is_literal_type(t) for t in ts)
+            for ci,ts in table.get('classes', {}).items()
+        }
         usecols = [
             ci
-            for ci, ts in ci_classes.items()
-            if not any(is_literal_type(t) for t in ts)
+            for ci in range(table['numCols'])
+            if not ci_literal.get(ci)
         ]
         rows = [[c.get("text") for c in row] for row in table.get("tableData", [])]
         keycol = profiler.get_keycol(rows, usecols)

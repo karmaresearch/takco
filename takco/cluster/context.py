@@ -49,4 +49,19 @@ def tables_add_context_rows(tables, fields=()):
             ]
             table["numCols"] = len(table["tableData"][0])
 
+        n = len(fields)
+        if "entities" in table:
+            table["entities"] = {
+                str(int(ci) + n): x for ci, x in table["entities"].items()
+            }
+        if "classes" in table:
+            table["classes"] = {
+                str(int(ci) + n): x for ci, x in table["classes"].items()
+            }
+        if "properties" in table:
+            table["properties"] = {
+                str(int(fci) + n): {str(int(tci) + n): e for tci, e in te.items()}
+                for fci, te in table["properties"].items()
+            }
+
         yield table

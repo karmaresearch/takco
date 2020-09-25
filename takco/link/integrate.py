@@ -2,7 +2,7 @@ from typing import List, Dict
 import logging as log
 from collections import defaultdict, Counter
 
-from . import datatype
+from . import types
 
 
 class NaryIntegrator:

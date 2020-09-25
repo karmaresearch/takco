@@ -19,17 +19,17 @@ class EmbeddingMatcher(Matcher):
     def __init__(
         self,
         fdir: Path,
+        name=None,
         source="body",
         wordvec_fname: Path = None,
         topn=100,
-        exp=1,
         threshold=0,
         create=False,
         **kwargs,
     ):
         """Matcher based on embeddings and FAISS"""
-
-        mdir = Path(fdir) / Path("EmbeddingMatcher")
+        self.name = name or self.__class__.__name__
+        mdir = Path(fdir) / Path(self.name)
         if create:
             shutil.rmtree(mdir, ignore_errors=True)
         mdir.mkdir(parents=True, exist_ok=True)
@@ -37,7 +37,6 @@ class EmbeddingMatcher(Matcher):
         self.source = source
         self.wordvec_fname = str(wordvec_fname)
         self.topn = topn
-        self.exp = exp
         self.threshold = threshold
         self.config(Path(mdir) / Path("config.toml"))
         self.wordvec_fname = Path(self.wordvec_fname)
@@ -166,7 +165,7 @@ class EmbeddingMatcher(Matcher):
             D, I = faissindex.search(xq, self.topn)
 
             for ci1, qi in ci_qi.items():
-                indexes, similarities = I[qi], (0.5 + (D[qi] / 2)) ** self.exp
+                indexes, similarities = I[qi], np.maximum(D[qi], 0)
                 ti1 = ci_ti[ci1]
                 for qi2 in set(indexes[(similarities > self.threshold)]) - set([ci1]):
                     if qi2 in self.vi_ci:
@@ -178,10 +177,8 @@ class EmbeddingMatcher(Matcher):
         return self.ti_block.get(ti, set())
 
     def vecsim(self, a1, a2):
-        c = 0.5 + (
-            (a1.dot(a2) / (np.sqrt((a1 ** 2).sum()) * np.sqrt((a2 ** 2).sum()))) / 2
-        )
-        return np.round(c ** self.exp, 4)
+        c = a1.dot(a2) / (np.sqrt((a1 ** 2).sum()) * np.sqrt((a2 ** 2).sum()))
+        return np.round(max(c, 0), 5)
 
     def match(self, ti1: int, ti2: int):
         for ci1 in self.get_columns(ti1):
