@@ -662,9 +662,9 @@ class TableSet:
             "workdir": workdir or pipeline.get("workdir") or ".",
             "datadir": datadir or pipeline.get("datadir"),
             "resourcedir": resourcedir or pipeline.get("resourcedir"),
-            "assets": assets or pipeline.get("assets"),
-            "kbs": kbs or pipeline.get("kbs"),
-            "executors": executors or pipeline.get("executors"),
+            "assets": (assets or []) + pipeline.get("assets", []),
+            "kbs": (kbs or []) + pipeline.get("kbs", []),
+            "executors": (executors or []) + pipeline.get("executors", []),
             "cache": cache or pipeline.get("cache"),
             "executor": executor or x_executor or pipeline.get("executor"),
         }
