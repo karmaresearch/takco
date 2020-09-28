@@ -101,13 +101,15 @@ def warc(
 
 class TableSet:
     """A set of tables that can be clustered and linked."""
-
+    
     @classmethod
-    def _from_csvs(cls, *fnames):
+    def from_csvs(cls, fnames = (), executor: Config = None, **_kwargs,):
+        executor, exkw = get_executor_kwargs(executor, _kwargs.get("executors"))
+        
         log.info(f"Reading csv tables")
         import csv
 
-        return cls(
+        data = (
             {
                 "tableData": [
                     [{"text": c} for c in row] for row in csv.reader(Path(fname).open())
@@ -116,13 +118,15 @@ class TableSet:
             }
             for fname in fnames
         )
+        return executor(data, **exkw)
 
     @classmethod
-    def _load(cls, *vals):
+    def load(cls, vals = (), executor: Config = None, **_kwargs,):
         if all(str(val).endswith("csv") for val in vals):
-            return cls._from_csvs(*vals)
-        else:
-            return super()._load(*vals)
+            return cls.from_csvs(vals, executor=executor, **_kwargs)
+        
+        executor, exkw = get_executor_kwargs(executor, _kwargs.get("executors"))    
+        return executor._load(vals, **exkw)
 
     @classmethod
     def dataset(

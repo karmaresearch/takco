@@ -3,7 +3,7 @@ import logging as log
 import inspect
 import copy
 import typing
-
+import functools
 
 class Config(dict):
     """A wrapper for json or toml configuration hashes.
@@ -247,13 +247,16 @@ try:
             return iter(self.bag.compute())
 
         def _pipe(self, func, *args, desc=None, **kwargs):
-            def listified(x, *args, **kwargs):
+            
+            @functools.wraps(func)
+            def listify(x, *args, **kwargs):
                 return list(func(x, *args, **kwargs))
 
-            return DaskHashBag(self.bag.map_partitions(listified, *args, **kwargs))
+            return DaskHashBag(self.bag.map_partitions(listify, *args, **kwargs))
 
         def _fold(self, key, combine, exe=None, cast=False):
-            return DaskHashBag(self.bag.foldby(key, combine).map(lambda x: x[1]))
+            bag = self.bag.foldby(key, binop=combine).map(lambda x: x[1])
+            return DaskHashBag(bag)
 
         def _offset(self, get_attr, set_attr, default=0):
             df = self.bag.to_dataframe(columns=[get_attr])
@@ -345,17 +348,17 @@ def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
 
         ri_ann = {}
         hidden_rows = {}
-        for ci, res in table.get("gold", {}).get("entities", {}).items():
-            for ri, es in res.items():
-                if es:
-                    ri_ann[ri] = True
+        if hide_correct_rows:
+            for ci, res in table.get("gold", {}).get("entities", {}).items():
+                for ri, es in res.items():
+                    if es:
+                        ri_ann[ri] = True
 
-                    if hide_correct_rows:
                         predents = table.get("entities", {}).get(ci, {}).get(ri, {})
                         hide = all(e in predents for e in es)
                         hidden_rows[ri] = hidden_rows.get(ri, True) and hide
-                else:
-                    hidden_rows[ri] = hidden_rows.get(ri, True)
+                    else:
+                        hidden_rows[ri] = hidden_rows.get(ri, True)
 
         if nrows and any(hidden_rows.values()):
             n, nshow = 0, 0
@@ -366,11 +369,12 @@ def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
                     break
         else:
             n = nrows
-
-        rows = [[c.get("text") for c in r] for r in table.get("tableData", [])][:n]
-        table.setdefault("rows", rows)
+        
+        table["tableData"] = table.get("tableData", [])
+        rows = [[c.get("text") for c in r] for r in table.get("tableData", [])]
+        table['rows'] = rows[:n]
         headers = [[c.get("text") for c in r] for r in table.get("tableHeaders", [])]
-        table.setdefault("headers", headers)
+        table["headers"] = headers
 
         table.setdefault("entities", {})
         table.setdefault("classes", {})

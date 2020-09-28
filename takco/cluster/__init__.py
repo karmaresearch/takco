@@ -11,8 +11,13 @@ from . import clustering
 
 def table_get_headerId(table):
     """Get the hash for a table header (create it if it isn't set)"""
+
+    if not any(table["tableHeaders"]):
+        return table["_id"]
+        
     if "headerId" not in table:
         tableHeaders = table["tableHeaders"]
+            
         headerText = tuple(
             tuple([cell.get("text", "").lower() for cell in r]) for r in tableHeaders
         )
