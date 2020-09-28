@@ -10,10 +10,10 @@ download = [
 path = "data/TabEL"
 fname = "tables.json.gz"
 
+
 [[step]]
-step = "dataset"
-params = "tabel"
-sample = 1000
+step = "load"
+vals = "data/TabEL/part-*"
 
 [[step]]
 step = "reshape"
