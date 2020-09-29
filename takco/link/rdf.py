@@ -119,7 +119,7 @@ class RDFSearcher(Searcher, GraphDB):
 
         GraphDB.__init__(self, store=store)
 
-    def search_entities(self, query: str, limit=1, add_about=False):
+    def search_entities(self, query: str, context=(), limit=1, add_about=False):
         if self.encoding and (query != query.encode("ascii", errors="ignore").decode()):
             if self.encoding == "wikidata":
                 query = encode_wikidata(query)

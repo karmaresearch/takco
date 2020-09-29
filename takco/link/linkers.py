@@ -22,6 +22,7 @@ class First(Linker):
         self,
         searcher: Searcher,
         limit: int = 1,
+        contextual: bool = False, 
         search_limit: int = 10,
         majority_class: URI = None,
         exclude_about: Dict[URI, URI] = None,
@@ -29,6 +30,7 @@ class First(Linker):
     ):
         self.searcher = searcher
         self.limit = limit
+        self.contextual = contextual
         self.search_limit = search_limit
         self.majority_class = majority_class
         self.exclude_about = exclude_about
@@ -43,12 +45,11 @@ class First(Linker):
         existing: Dict = {},
     ) -> Dict[str, Dict[str, Dict[str, float]]]:
 
-        from rdflib import URIRef
-
         existing_entities = (existing or {}).get("entities", {})
         rowcol_results = self._rowcol_results(
             rows,
-            limit=self.search_limit,
+            limit=max(self.search_limit, self.limit),
+            contextual=self.contextual,
             usecols=usecols,
             skiprows=skiprows,
             existing_entities=existing_entities,
@@ -60,8 +61,8 @@ class First(Linker):
             # Keep track of the most frequent attribute of a certain predicate
             ci_att_count = {}
             for (_, ci), results in rowcol_results.items():
-                for result in results:
-                    for att in result.get(URIRef(self.majority_class), []):
+                for result in results[:1]:
+                    for att in result.get(self.majority_class, []):
                         ci_att_count.setdefault(ci, {}).setdefault(att, 0)
                         ci_att_count[ci][att] += 1
 
@@ -72,7 +73,7 @@ class First(Linker):
                 ci_classes[str(ci)] = {ci_majoratt[ci]: att_count[ci_majoratt[ci]]}
             log.debug(f"Got majority attribute {ci_majoratt}")
 
-            atts = lambda r: r.get(URIRef(self.majority_class), [])
+            atts = lambda r: r.get(self.majority_class, [])
             for (ri, ci), results in rowcol_results.items():
                 rowcol_results[(ri, ci)] = [
                     r for r in results if ci_majoratt.get(ci) in atts(r)
@@ -83,7 +84,7 @@ class First(Linker):
                 for p, os in self.exclude_about.items():
 
                     def isbad(r):
-                        return any(URIRef(o) in r.get(URIRef(p), []) for o in os)
+                        return any(o in r.get(p, []) for o in os)
 
                     results = [r for r in results if not isbad(r)]
                 rowcol_results[k] = results
@@ -134,6 +135,7 @@ class Salient(Linker):
         self,
         searcher: Searcher,
         limit: int = 10,
+        contextual: bool = False, 
         replace_class: Dict[URI, URI] = None,
         class_cover: float = 0.5,
         prop_cover: float = 0.5,
@@ -146,6 +148,7 @@ class Salient(Linker):
         self.replace_class = replace_class or {}
         self.class_cover = class_cover
         self.prop_cover = prop_cover
+        self.contextual = contextual
 
         self.expand = expand
         if not graph and isinstance(searcher, GraphDB):
@@ -166,6 +169,7 @@ class Salient(Linker):
         rowcol_results = self._rowcol_results(
             rows,
             limit=self.limit,
+            contextual=self.contextual,
             usecols=usecols,
             skiprows=skiprows,
             existing_entities=existing_entities,

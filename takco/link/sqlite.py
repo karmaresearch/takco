@@ -134,7 +134,7 @@ class SQLiteSearcher(Searcher):
                 sizes.append(con.execute("SELECT COUNT(*) FROM label").fetchone())
         log.debug(f"Using SQlite DBs with sizes {sizes}")
 
-    def search_entities(self, query: str, limit=1, add_about=False):
+    def search_entities(self, query: str, context=(), limit=1, add_about=False):
         if not query:
             return []
 

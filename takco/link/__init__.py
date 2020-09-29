@@ -45,7 +45,7 @@ def lookup_hyperlinks(tables: List[dict], lookup_config: Dict, lookup_cells=Fals
         hrefs = [
             [
                 [
-                    l.get("target", {}).get("href").rsplit("/", 1)[-1]
+                    l.get("target", {}).get("href", '').rsplit("/", 1)[-1]
                     for l in c.get("surfaceLinks", [])
                 ]
                 + ([c.get("text")] if lookup_cells and cell_ok(c) else [])

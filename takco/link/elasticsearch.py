@@ -20,11 +20,19 @@ SETTINGS = {
     "mappings": {
         "properties": {
             "id": {"type": "keyword"},
-            "score": {"type": "float"},
+            "type": {"type": "keyword"},
+            "context": {"type": "text", "norms": False},
+            "refs": {"type": "integer"},
             "surface": {
-                "analyzer": "standard",
-                "similarity": "only_idf",
-                "type": "text",
+                "type": "nested",
+                "properties": {
+                    "value": {
+                        "type": "text",
+                        "analyzer": "standard",
+                        "similarity": "only_idf",
+                    },
+                    "score": {"type": "float"},
+                },
             },
         }
     },
@@ -37,50 +45,80 @@ SETTINGS = {
     },
 }
 
-
-NOPUNCT = str.maketrans("", "", string.punctuation)
-
-
-def make_query_body(surface, limit=10):
-    surface = surface.lower()  # .translate(NOPUNCT)
+def make_query_body(q, context=[], types=[], limit=1, lenient=False):
+#     parts = {**dict(p for char in "([,:" for p in zip(q.split(char, 1),[.6,.3])), q:1}
     return {
+          "query": {
+              "function_score": {
+                    "query": {
+                        "bool" : {
+                            "must" : {
+                                "nested": {
+                                    "path": "surface",
+                                    "score_mode": "max",
+                                    "query": {
+                                        "function_score": {
+                                            "query": (
+                                                {"match":{"surface.value":q}}
+                                                if lenient else
+                                                {"match_phrase":{"surface.value":q}}
+                                            ),
+#                                             "query": {
+#                                                 "dis_max": {
+#                                                     "queries": [
+#                                                         s
+#                                                         for p, b in parts.items()
+#                                                         for s in [
+#                                                             {"match_phrase":{"surface.value":{"query": q, "boost": b}}},
+#                                                             {"match":{"surface.value":{"query": q, "boost": b/2}}},
+#                                                         ]
+#                                                     ],
+#                                                 },
+#                                             },
+                                            "functions": [
+                                                {
+                                                    "field_value_factor": {
+                                                        "field": "surface.score", 
+                                                        "modifier": "sqrt",
+                                                    },
+                                                },
+                                            ],
+                                            "boost_mode": "sum",
+                                            "boost":2,
+                                        },
+                                    },
+                                },
+                            },
+                            "should": [
+                                {"match_phrase": {"context": c}}
+                                for c in context
+                            ] + [
+                                {"match": {"context": c}}
+                                for c in context
+                            ] + [
+                                {"term": {"type": t}}
+                                for t in types
+                            ]
+                        },
+                    },
+                    "functions": [
+                        {
+                            "field_value_factor": {
+                                "field": "refs", 
+                                "modifier": "log2p",
+                            }
+                        }
+                    ],
+                    "boost_mode": "sum",
+              },
+          },
         "size": limit,
-        "query": {
-            "function_score": {
-                "query": {
-                    "dis_max": {
-                        "queries": [
-                            {
-                                "match_phrase": {
-                                    "surface": {
-                                        "query": surface,
-                                        "analyzer": "standard",
-                                    }
-                                }
-                            },
-                            {
-                                "match": {
-                                    "surface": {
-                                        "query": surface,
-                                        "analyzer": "standard",
-                                        "boost": 0.5,
-                                    }
-                                }
-                            },
-                        ],
-                    }
-                },
-                "functions": [
-                    {"field_value_factor": {"field": "score", "modifier": "log1p",}}
-                ],
-                "boost_mode": "sum",
-            }
-        },
     }
 
 
 class ElasticSearcher(Searcher):
-    def __init__(self, index, baseuri=None, es_kwargs=None, parts=True, **_):
+    def __init__(self, index, baseuri=None, es_kwargs=None, parts=True, 
+                 prop_uri=None, prop_baseuri=None, **_):
         from elasticsearch import Elasticsearch
 
         es_kwargs = es_kwargs or {}
@@ -88,40 +126,65 @@ class ElasticSearcher(Searcher):
         self.index = index
         self.baseuri = baseuri
         self.parts = parts
+        self.prop_uri = prop_uri or {}
+        self.prop_baseuri = prop_baseuri or {}
+        
 
-    def search_entities(self, query: str, limit=1, add_about=False):
-        body = make_query_body(query, limit=limit)
+    def search_entities(self, query: str, context=(), limit=1, add_about=False, lenient=False, ispart=False):
+        body = make_query_body(query, context=context, limit=limit, lenient=lenient)
         esresults = self.es.search(index=self.index, body=body)
 
         results = []
         for hit in esresults.get("hits", []).get("hits", []):
             uri = hit.get("_source", {}).get("id")
-            label = hit.get("_source", {}).get("surface")
             if self.baseuri:
                 uri = self.baseuri + uri
             score = hit.get("_score", 0)
-            sr = SearchResult(uri, {"label": [label]}, score=score)
+            
+            about = hit.get("_source", {})
+            for k,vs in list(about.items()):
+                baseuri = self.prop_baseuri.get(k, '')
+                k = self.prop_uri.get(k, k)
+                if isinstance(vs, list):
+                    about[k] = [(baseuri+v if isinstance(v, str) else v) for v in vs]
+            
+            sr = SearchResult(uri, about, score=score)
             results.append(sr)
 
         if not results:
-            if self.parts:
+            log.debug(f"No {self} results for {query}")
+            if self.parts and (not ispart):
                 for char in "([,:":
                     for qpart in query.split(char):
                         qpart = qpart.translate(str.maketrans("", "", ")]")).strip()
                         if qpart != query:
-                            results += self.search_entities(
-                                qpart, limit=limit, add_about=add_about
+                            more = self.search_entities(
+                                qpart, context=context,
+                                limit=limit, add_about=add_about,
+                                ispart=True,
                             )
+                            if more:
+                                return more
+                            else:
+                                log.debug(f"No {self} results for {qpart}")
+        
+        if (not results) and (not lenient) and (not ispart):
+            log.debug(f"No {self} STRICT results for {query}")
+            return self.search_entities(
+                query, context=context,
+                limit=limit, add_about=add_about,
+                lenient=True,
+            )
 
         return results
 
-    def labels(self, uri: str):
+    def about(self, uri: str):
         id = str(uri).replace(self.baseuri, "")
         esresults = self.es.search(
-            index="test-1", body={"query": {"match": {"id": id}}}
+            index=self.index, body={"query": {"match": {"id": id}}}
         )
-        hits = esresults.get("hits", []).get("hits", [])
-        return set([h.get("_source", {}).get("surface") for h in hits])
+        for h in esresults.get("hits", []).get("hits", []):
+            return h.get("_source", {})
 
     @classmethod
     def load_synonyms(cls, redirects_label: Path):
@@ -134,47 +197,132 @@ class ElasticSearcher(Searcher):
                 a, b = a.strip(), b.strip()
                 if a and b and (a != b):
                     yield b, a
+                    yield a, b
             except:
                 pass
 
     @classmethod
-    def tables2surface(
+    def yield_doc(cls, s, db, baseuris, prefLabel, 
+                  altLabel=None, p_type=None, ent_surface_scores=None, 
+                  unescape = False,
+                  normalize_scores=True,
+                  get_synonyms=None,
+                 ):
+        ent_surface_scores = ent_surface_scores or {}
+        plabel_score = { prefLabel: 1 }
+        if altLabel is not None:
+            plabel_score[altLabel] = .5
+        id = db.lookup_str(s)[1:-1]
+        for baseuri in baseuris:
+            id = id.replace(baseuri, '')
+
+        surface_score = ent_surface_scores.get(id, {})
+        if normalize_scores and surface_score:
+            top = max(surface_score.values())
+            surface_score = {
+                sur: score / top
+                for sur,score in surface_score.items()
+            }
+        
+        for plabel, score in plabel_score.items():
+            for l in db.o(s, plabel):
+                label = db.lookup_str(l)
+                if unescape:
+                    label = label.encode().decode('unicode-escape')
+                if label.endswith('@en'):
+                    label = label[1:-4].lower()
+                elif label.strip().endswith('"'):
+                    label = label[1:-1].lower()
+                else:
+                    continue
+                    
+                labels = get_synonyms(label) if get_synonyms else [label]
+                for label in labels:
+                    surface_score.setdefault(label, score)
+
+
+
+        if surface_score:
+            context = set()
+            for _,o in db.po(s):
+                for l in db.o(o, prefLabel):
+                    label = db.lookup_str(l)
+                    if unescape:
+                        label = label.encode().decode('unicode-escape')
+                    if label.endswith('@en'):
+                        context.add( label[1:-4] )
+                    elif label.strip().endswith('"'):
+                        context.add( label[1:-1] )
+            
+            types = set()
+            if p_type is not None:    
+                for t in db.o(s, p_type):
+                    t = db.lookup_str(t)[1:-1]
+                    for baseuri in baseuris:
+                        t = t.replace(baseuri, '')
+                    types.add(t)
+
+            yield {
+                'id': id,
+                'type': list(types),
+                'surface': [
+                    {'value':l, 'score':c}
+                    for l,c in surface_score.items()
+                ],
+                'context': list(context),
+                'refs': db.count_o(s),
+            }
+    
+    @classmethod
+    def docs(
         cls,
-        *tables: Path,
-        baseuri: str = "http://dbpedia.org/resource/",
-        skiprows: int = 4,
-        uricol: int = 0,
-        surfacecol: int = 1,
-        score: float = 1,
+        trident_path: Path,
+        baseuris: typing.List[str] = (),
+        uri_prefLabel: str = "http://www.w3.org/2004/02/skos/core#prefLabel",
+        uri_altLabel: str = "http://www.w3.org/2004/02/skos/core#altLabel",
+        uri_type: str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+        unescape: bool = False,
+        ntask: int = None,
+        tasktotal: int = None,
     ):
-        """Make SurfaceFormScores from kb tables """
-        import gzip, csv, tqdm
-
-        for fname in tqdm.tqdm(tables):
-            zipped = fname.name.endswith("gz")
-            with (gzip.open(fname, "rt") if zipped else fname.open()) as o:
-                for ri, row in enumerate(csv.reader(o)):
-                    if ri < skiprows:
-                        continue
-                    uri, surface = row[uricol], row[surfacecol]
-                    uri = uri.replace(baseuri, "")
-                    surface = surface.lower()
-                    if surface and (surface != "null"):
-                        print(uri, surface, score, sep="\t")
-
+        import trident, tqdm, json
+                
+        db = trident.Db(str(trident_path))
+        prefLabel = db.lookup_id(f"<{uri_prefLabel}>")
+        altLabel = db.lookup_id(f"<{uri_altLabel}>")
+        p_type = db.lookup_id(f"<{uri_type}>")
+        assert (prefLabel is not None) or (altLabel is not None)
+        
+        for s,_ in tqdm.tqdm(db.os(prefLabel)):
+            if ntotal and ((s % (tasktotal+1)) != ntask):
+                continue
+            docs = cls.yield_doc(s, db, baseuris, prefLabel,
+                altLabel, p_type, unescape=unescape)
+            for doc in docs:
+                print(json.dumps(doc))
+    
     @classmethod
     def create(
         cls,
-        surfaceFormsScores: Path,
+        trident_path: Path,
         index: str,
+        surfaceFormsScores: Path = None,
+        normalize_scores: bool = True,
         synonym_file: Path = None,
         recreate: bool = True,
         chunksize: int = 10 ** 4,
         limit: int = None,
         thread_count: int = 8,
+        baseuris: typing.List[str] = (),
+        uri_prefLabel: str = "http://www.w3.org/2004/02/skos/core#prefLabel",
+        uri_altLabel: str = "http://www.w3.org/2004/02/skos/core#altLabel",
+        uri_type: str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+        unescape: bool = False,
         es_kwargs: typing.Dict = None,
     ):
-        """Create Elasticsearch index from surfaceFormsScores file"""
+        """Create Elasticsearch index from surfaceFormsScores file
+        and optional trident db
+        """
         from elasticsearch import Elasticsearch, helpers
         import tqdm, time, sys
 
@@ -218,31 +366,46 @@ class ElasticSearcher(Searcher):
                 yield s
                 if s in check_syn:
                     yield from get_synonyms(syn.get(s), path + (s,))
-
+        
         def stream(chunksize=10 ** 4, limit=None):
-            with tqdm.tqdm(total=limit) as bar:
-                with Path(surfaceFormsScores).open() as fo:
-                    for i, line in enumerate(fo):
-                        try:
-                            id, surface, score = line.split("\t")
-                            score = float(score)
-                            surface = surface.encode().decode("unicode-escape")
+            import trident
 
-                            for s in get_synonyms(surface):
-                                yield {
-                                    **action,
-                                    "id": id,
-                                    "surface": s,
-                                    "score": score,
-                                }
-                        except Exception as e:
-                            pass
+            db = trident.Db(str(trident_path))
+            prefLabel = db.lookup_id(f"<{uri_prefLabel}>")
+            altLabel = db.lookup_id(f"<{uri_altLabel}>")
+            p_type = db.lookup_id(f"<{uri_type}>")
+            assert (prefLabel is not None) or (altLabel is not None)
 
-                        if not i % chunksize:
-                            bar.update(chunksize)
+            ent_surface_scores = {}
+            if surfaceFormsScores:
+                print("Loading surface forms from", surfaceFormsScores, file=sys.stderr)
+                with tqdm.tqdm(total=limit) as bar:
+                    with Path(surfaceFormsScores).open() as fo:
+                        for i, line in enumerate(fo):
+                            try:
+                                ent, surface, score = line.split("\t")
+                                score = float(score)
+                                surface = surface.encode().decode("unicode-escape")
+                                for val in get_synonyms(surface):
+                                    ss = ent_surface_scores.setdefault(ent, {})
+                                    ss[val] = max(ss.get(val, 0), score)
+                            except Exception as e:
+                                pass
 
-                        if limit and (i > limit):
-                            break
+                            if not i % chunksize:
+                                bar.update(chunksize)
+
+            for s in tqdm.tqdm(db.all_s()):
+                if db.count_s(s):
+                    
+                    docs = cls.yield_doc(
+                        s, db, baseuris, prefLabel,
+                        altLabel, p_type, ent_surface_scores, unescape,
+                        normalize_scores=normalize_scores,
+                        get_synonyms=get_synonyms,
+                    )
+                    for doc in docs:
+                        yield {**action, **doc}
 
         if (limit is None) and Path(surfaceFormsScores).is_file():
             try:
@@ -283,7 +446,7 @@ if __name__ == "__main__":
     log.getLogger().setLevel(getattr(log, os.environ.get("LOGLEVEL", "WARN")))
 
     r = defopt.run(
-        [ElasticSearcher.tables2surface, ElasticSearcher.create, ElasticSearcher.test,],
+        [ElasticSearcher.create, ElasticSearcher.test, ElasticSearcher.docs, ],
         strict_kwonly=False,
         show_types=True,
         parsers={typing.Dict: json.loads},

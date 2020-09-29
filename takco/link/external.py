@@ -241,6 +241,7 @@ class MediaWikiAPI(Searcher, WikiLookup):
     def search_entities(
         self,
         search: str,
+        context = (),
         limit: int = 1,
         add_about: bool = False,
         mainsnak: bool = True,
@@ -306,7 +307,7 @@ class DBpediaLookup(Searcher, WikiLookup):
         return str(redir).replace("/page/", "/resource/")
 
     def search_entities(
-        self, search: str, limit: int = 1, **kwargs,
+        self, search: str, context = (), limit: int = 1, **kwargs,
     ) -> typing.List[SearchResult]:
         """Searches for entities using the Keyword Search API.
         The Keyword Search API can be used to find related DBpedia resources for a
@@ -347,7 +348,7 @@ if __name__ == "__main__":
             query: Query string
             limit: Limit results
         """
-        result = kind.value().search_entities(query, limit=limit, add_about=add_about)
+        result = kind.value().search_entities(query, context = (), limit=limit, add_about=add_about)
         return result
 
     funcs = [test]
