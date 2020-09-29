@@ -23,6 +23,22 @@ try:
 except:
     log.info(f"Library rdflib_hdt is not available")
 
+def get_hrefs(datarows, lookup_cells=False):
+    def cell_ok(c):
+        return bool(c.get("text") and not c.get("text", "").isnumeric())
+    return [
+        [
+            [
+                target.get("href", target.get('title', '')).rsplit("/", 1)[-1]
+                for l in c.get("surfaceLinks", [])
+                for target in [l.get("target", {})]
+            ]
+            + ([c.get("text")] if lookup_cells and cell_ok(c) else [])
+            for c in row
+        ]
+        for row in datarows
+    ]
+    
 
 def lookup_hyperlinks(tables: List[dict], lookup_config: Dict, lookup_cells=False):
     """Lookup the (Wikipedia) hyperlinks inside cells for entity links
@@ -37,22 +53,9 @@ def lookup_hyperlinks(tables: List[dict], lookup_config: Dict, lookup_cells=Fals
     assert isinstance(lookup, WikiLookup)
     log.debug(f"Linking with {lookup}")
 
-    def cell_ok(c):
-        return bool(c.get("text") and not c.get("text", "").isnumeric())
-
     for table in tables:
         log.debug(f"Looking up hyperlinks of {table.get('_id')}")
-        hrefs = [
-            [
-                [
-                    l.get("target", {}).get("href", '').rsplit("/", 1)[-1]
-                    for l in c.get("surfaceLinks", [])
-                ]
-                + ([c.get("text")] if lookup_cells and cell_ok(c) else [])
-                for c in row
-            ]
-            for row in table.get("tableData", [])
-        ]
+        hrefs = get_hrefs(table.get("tableData", []), lookup_cells=lookup_cells)
         ents = table.setdefault("entities", {})
         for ci, ri_ents in lookup.lookup_cells(hrefs).items():
             for ri, es in ri_ents.items():

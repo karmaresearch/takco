@@ -174,10 +174,16 @@ class Linker:
         self, 
         rows, 
         contextual=False,
-        usecols=None, skiprows=None, existing_entities=None, **kwargs
+        usecols=None, 
+        skiprows=None, 
+        existing_entities=None, 
+        col_classes=None,
+        **kwargs
     ) -> Dict[Tuple[int, int], Container[SearchResult]]:
         
         existing_entities = existing_entities or {}
+        col_classes = col_classes or {}
+        
         rowcol_results = {}
         if contextual:
             for ri, row in enumerate(rows):
@@ -188,11 +194,13 @@ class Linker:
                             if not existing:
                                 
                                 results = self.searcher.search_entities(
-                                    cell, context=[
+                                    cell, 
+                                    context=[
                                         cell2
                                         for ci2, cell2 in enumerate(row)
                                         if ci != ci2
                                     ],
+                                    classes=col_classes.get(ci, []),
                                     **kwargs
                                 )
                                 rowcol_results[ (ri,ci) ] = results

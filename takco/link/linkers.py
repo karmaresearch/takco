@@ -27,12 +27,14 @@ class First(Linker):
         majority_class: URI = None,
         exclude_about: Dict[URI, URI] = None,
         normalize: bool = False,
+        majority_class_search: bool = False,
     ):
         self.searcher = searcher
         self.limit = limit
         self.contextual = contextual
         self.search_limit = search_limit
         self.majority_class = majority_class
+        self.majority_class_search = bool(majority_class_search)
         self.exclude_about = exclude_about
         self.add_about = bool(majority_class or exclude_about)
         self.normalize = normalize
@@ -42,19 +44,30 @@ class First(Linker):
         rows: List[List[str]],
         usecols: Container[int] = None,
         skiprows: Container[int] = None,
-        existing: Dict = {},
+        existing: Dict = None,
     ) -> Dict[str, Dict[str, Dict[str, float]]]:
 
         existing_entities = (existing or {}).get("entities", {})
-        rowcol_results = self._rowcol_results(
-            rows,
-            limit=max(self.search_limit, self.limit),
-            contextual=self.contextual,
-            usecols=usecols,
-            skiprows=skiprows,
-            existing_entities=existing_entities,
-            add_about=self.add_about,
-        )
+        existing_entities = {
+            int(ci):{int(ri):es for ri,es in res.items()}
+            for ci,res in existing_entities.items()
+        }
+        existing_classes = (existing or {}).get("classes", {})
+        existing_classes = {int(ci):cs for ci,cs in existing_classes.items()}
+        
+        def get_rowcol_results(col_classes):
+            return self._rowcol_results(
+                rows,
+                limit=max(self.search_limit, self.limit),
+                contextual=self.contextual,
+                usecols=usecols,
+                skiprows=skiprows,
+                existing_entities=existing_entities,
+                add_about=self.add_about,
+                col_classes=col_classes,
+            )
+        rowcol_results = get_rowcol_results(existing_classes)
+        
         # TODO: lookup facts about existing entities
 
         if self.majority_class:
@@ -67,18 +80,25 @@ class First(Linker):
                         ci_att_count[ci][att] += 1
 
             ci_majoratt = {}
-            ci_classes = {}
+            ci_classes = existing_classes
             for ci, att_count in ci_att_count.items():
                 ci_majoratt[ci] = max(att_count, key=att_count.get)
-                ci_classes[str(ci)] = {ci_majoratt[ci]: att_count[ci_majoratt[ci]]}
-            log.debug(f"Got majority attribute {ci_majoratt}")
-
-            atts = lambda r: r.get(self.majority_class, [])
-            for (ri, ci), results in rowcol_results.items():
-                rowcol_results[(ri, ci)] = [
-                    r for r in results if ci_majoratt.get(ci) in atts(r)
-                ]
-
+                ci_classes[ci] = {ci_majoratt[ci]: att_count[ci_majoratt[ci]]}
+            
+            if self.majority_class_search:
+                log.debug(f"Re-searching {self} with classes {ci_classes}")
+                rowcol_results = get_rowcol_results(ci_classes)
+            else:
+                log.debug(f"Filtering {self} with classes {ci_classes}")
+                atts = lambda r: r.get(self.majority_class, [])
+                for (ri, ci), results in rowcol_results.items():
+                    rowcol_results[(ri, ci)] = [
+                        r for r in results if ci_majoratt.get(ci) in atts(r)
+                    ]
+        
+            
+        
+        
         if self.exclude_about:
             for k, results in rowcol_results.items():
                 for p, os in self.exclude_about.items():
@@ -103,7 +123,8 @@ class First(Linker):
                 ents[r.uri] = r.score
 
         if self.majority_class:
-            return {"entities": entities, "classes": ci_classes}
+            classes = {str(ci):c for ci,c in ci_classes.items()}
+            return {"entities": entities, "classes": classes}
         else:
             return {"entities": entities}
 

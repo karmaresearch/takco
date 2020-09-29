@@ -9,7 +9,7 @@ import typing
 import logging as log
 from .base import Searcher, SearchResult
 from pathlib import Path
-import string
+import re
 
 ONLY_IDF = (
     "double idf = Math.log((field.docCount+1.0)/(term.docFreq+1.0)) + 1.0;"
@@ -45,8 +45,10 @@ SETTINGS = {
     },
 }
 
-def make_query_body(q, context=[], types=[], limit=1, lenient=False):
-#     parts = {**dict(p for char in "([,:" for p in zip(q.split(char, 1),[.6,.3])), q:1}
+def make_query_body(q, context=(), classes=(), limit=1, lenient=False):
+    
+    classes = [c.split('/')[-1] for c in classes]
+    
     return {
           "query": {
               "function_score": {
@@ -83,21 +85,21 @@ def make_query_body(q, context=[], types=[], limit=1, lenient=False):
                                                     },
                                                 },
                                             ],
-                                            "boost_mode": "sum",
+                                            "boost_mode": "multiply",
                                             "boost":2,
                                         },
                                     },
                                 },
                             },
                             "should": [
-                                {"match_phrase": {"context": c}}
+                                {"match_phrase": {"context": {"query":c, "boost": .2}}}
                                 for c in context
                             ] + [
-                                {"match": {"context": c}}
+                                {"match": {"context": {"query":c, "boost": .2}}}
                                 for c in context
                             ] + [
                                 {"term": {"type": t}}
-                                for t in types
+                                for t in classes
                             ]
                         },
                     },
@@ -105,7 +107,7 @@ def make_query_body(q, context=[], types=[], limit=1, lenient=False):
                         {
                             "field_value_factor": {
                                 "field": "refs", 
-                                "modifier": "log2p",
+                                "modifier": "log1p",
                             }
                         }
                     ],
@@ -117,6 +119,8 @@ def make_query_body(q, context=[], types=[], limit=1, lenient=False):
 
 
 class ElasticSearcher(Searcher):
+    NUM = re.compile('^[\d\W]+$')
+    
     def __init__(self, index, baseuri=None, es_kwargs=None, parts=True, 
                  prop_uri=None, prop_baseuri=None, **_):
         from elasticsearch import Elasticsearch
@@ -130,8 +134,13 @@ class ElasticSearcher(Searcher):
         self.prop_baseuri = prop_baseuri or {}
         
 
-    def search_entities(self, query: str, context=(), limit=1, add_about=False, lenient=False, ispart=False):
-        body = make_query_body(query, context=context, limit=limit, lenient=lenient)
+    def search_entities(self, query: str, context=(), classes=(), limit=1, 
+                        add_about=False, lenient=False, ispart=False):
+        
+        context = [c for c in context if not self.NUM.match(c)]
+        body = make_query_body(
+            query, context=context, classes=classes, limit=limit, lenient=lenient
+        )
         esresults = self.es.search(index=self.index, body=body)
 
         results = []

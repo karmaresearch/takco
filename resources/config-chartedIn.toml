@@ -48,7 +48,7 @@ qualifierIDProperty = "http://www.wikidata.org/prop/direct/id"
     ns = {skos = "http://www.w3.org/2004/02/skos/core#"}
 
 [[kbs]]
-name  = "wikidata-sparql"
+name  = "wikidata-live"
 class = "RDFSearcher"
 typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
     [kbs.store]
