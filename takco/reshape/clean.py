@@ -268,3 +268,18 @@ def process_rowspanning_body_cells(table):
         ]
 
         table["numDataRows"] = len(table["tableData"])
+
+
+def transpose(table, n_header_rows=0):
+
+    transposed = list(zip(*(table["tableHeaders"] + table["tableData"])))
+    n = min(n_header_rows, len(transposed))
+    table["tableHeaders"], table["tableData"] = transposed[:n], transposed[n:]
+
+    table["numDataRows"] = len(table["tableData"])
+    table["numCols"] = len(table["tableData"][0])
+
+
+def heuristic_transpose(table):
+    if (table["numDataRows"] == 1) and (table["numCols"] == 2):
+        transpose(table)

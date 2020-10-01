@@ -1,9 +1,7 @@
-datadir = "output/chartedIn/"
-workdir = "output/chartedIn/"
+datadir = "data"
 resourcedir = "resources"
-cache = true
 
-[[executors]]
+[[assets]]
 name = "dask-local"
 class = "DaskHashBag"
 scheduler_port = 8786
@@ -11,7 +9,7 @@ dashboard_address = ":8787"
 n_workers = 4
 threads_per_worker = 1
 
-[[executors]]
+[[assets]]
 name = "dask-local-big"
 class = "DaskHashBag"
 scheduler_port = 8786
@@ -19,67 +17,64 @@ dashboard_address = ":8787"
 n_workers = 8
 threads_per_worker = 4
 
-[[executors]]
+[[assets]]
 name = "dask-cluster"
 class = "DaskHashBag"
 address = "tcp://192.168.62.207:8786"
 
 
 
-[[kbs]]
+[[assets]]
 name = "wikidata-20200709-direct-prefLabel-en"
 class = "RDFSearcher"
 typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-    [kbs.store]
+    [assets.store]
     class = "Trident"
     configuration = "../kb/wikidata/wikidata-20200709-direct-prefLabel-en-db/"
 
-[[kbs]]
+[[assets]]
 name = "wikidata2019-P31inf-wikibase-simple-qualifiers"
 class = "RDFSearcher"
 typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
 qualifierIDProperty = "http://www.wikidata.org/prop/direct/id"
 #wikiProp = "http://www.wikidata.org/entity/wikipediaId"
-    [kbs.store]
+    [assets.store]
     class = "Trident"
     configuration = "../kb/wikidata/wikidata2019-P31inf-wikibase-simple-qualifiers/"
     ent_baseuri = "http://www.wikidata.org/entity/"
     prop_baseuri = "http://www.wikidata.org/prop/direct/"
     ns = {skos = "http://www.w3.org/2004/02/skos/core#"}
+    
+[[assets]]
+name = "wikidata-20200713-direct-skos"
+class = "RDFSearcher"
+encoding = "wikidata"
+typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
+    [assets.store]
+    class = "Trident"
+    configuration = "/scratch/kruit/kb/wikidata/20200713-direct-skos/"
 
-[[kbs]]
+
+[[assets]]
 name  = "wikidata-live"
 class = "RDFSearcher"
 typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-    [kbs.store]
+    [assets.store]
     class = "SparqlStore"
     configuration = "https://query.wikidata.org/sparql"
 
-[[kbs]]
+[[assets]]
 name  = "wikidata-hdt"
 class = "RDFSearcher"
 encoding = "wikidata"
 typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-    [kbs.store]
+    [assets.store]
     class = "HDTStore"
     path = "/export/scratch1/home/kruit/scratch/downloads/wikidata/wikidata20200309.hdt"
     
 [[assets]]
-name = "0-extract"
-class = "Annotation"
-
-[[assets]]
-name = "1-reshape"
-class = "Annotation"
-
-[[assets]]
-name = "2-cluster"
-class = "Annotation"
-
-[[assets]]
-name = "3-link"
-class = "Annotation"
-
-[[assets]]
-name = "4-integrate"
-class = "Annotation"
+name = 'wiki-lookup'
+class = 'SQLiteWikiLookup'
+sqlitedb = 'data/wdid_wpname.sqlitedb'
+baseuri = 'http://www.wikidata.org/entity/'
+fallback = {class = 'MediaWikiAPI'}

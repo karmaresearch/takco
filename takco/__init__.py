@@ -14,10 +14,10 @@ import logging as log
 from .util import *
 
 
-def get_executor_kwargs(conf: Config, executors):
+def get_executor_kwargs(conf: Config, context):
     """Get executor configuration"""
     if conf:
-        conf = Config(conf, executors)
+        conf = Config(conf, context)
 
         if isinstance(conf, dict):
             if "class" in conf:
@@ -41,7 +41,8 @@ def wiki(
     justurls: bool = False,
     encoding: str = None,
     executor: Config = None,
-    **_kwargs,
+    assets: typing.List[Config] = (),
+    **_,
 ):
     """
     Download Wikipedia articles
@@ -56,11 +57,11 @@ def wiki(
         localprefix: Wikipedia URL prefix for locally hosted pages
         encoding: Force encoding (use "guess" for guessing)
     """
-    executor, exkw = get_executor_kwargs(executor, _kwargs.get("executors"))
+    executor, exkw = get_executor_kwargs(executor, assets)
 
     from . import link
 
-    db = Config(dbconfig).init_class(**link.__dict__)
+    db = Config(dbconfig, assets).init_class(**link.__dict__)
 
     ent_abouturl = []
     for e, ps in db.pages_about([None, pred, obj]).items():
@@ -80,7 +81,8 @@ def warc(
     globstrings: typing.List[str] = (),
     datadir: Path = None,
     executor: Config = None,
-    **_kwargs,
+    assets: typing.List[Config] = (),
+    **_,
 ):
     """Load HTML pages from WARC files
 
@@ -89,7 +91,7 @@ def warc(
         datadir: Data directory
 
     """
-    executor, exkw = get_executor_kwargs(executor, _kwargs.get("executors"))
+    executor, exkw = get_executor_kwargs(executor, assets)
 
     fnames = [fname for g in globstrings for fname in Path(".").glob(g)]
     assert len(fnames), f"No glob results for {globstrings}"
@@ -101,11 +103,13 @@ def warc(
 
 class TableSet:
     """A set of tables that can be clustered and linked."""
-    
+
     @classmethod
-    def from_csvs(cls, fnames = (), executor: Config = None, **_kwargs,):
-        executor, exkw = get_executor_kwargs(executor, _kwargs.get("executors"))
-        
+    def from_csvs(
+        cls, fnames=(), executor: Config = None, assets: typing.List[Config] = (), **_,
+    ):
+        executor, exkw = get_executor_kwargs(executor, assets)
+
         log.info(f"Reading csv tables")
         import csv
 
@@ -121,11 +125,14 @@ class TableSet:
         return executor(data, **exkw)
 
     @classmethod
-    def load(cls, vals = (), executor: Config = None, **_kwargs,):
+    def load(
+        cls, vals=(), executor: Config = None, assets: typing.List[Config] = (), **_,
+    ):
+        log.debug(f"Loading tables {vals} using executor {executor}")
         if all(str(val).endswith("csv") for val in vals):
-            return cls.from_csvs(vals, executor=executor, **_kwargs)
-        
-        executor, exkw = get_executor_kwargs(executor, _kwargs.get("executors"))    
+            return cls.from_csvs(vals, executor=executor, assets=assets)
+
+        executor, exkw = get_executor_kwargs(executor, assets)
         return executor._load(vals, **exkw)
 
     @classmethod
@@ -137,7 +144,8 @@ class TableSet:
         sample: int = None,
         withgold: bool = False,
         executor: Config = None,
-        **_kwargs,
+        assets: typing.List[Config] = (),
+        **_,
     ):
         """Load tables from a dataset
 
@@ -149,19 +157,23 @@ class TableSet:
             resourcedir: Resource directory
             sample: Sample N tables
         """
-        executor, exkw = get_executor_kwargs(executor, _kwargs.get("executors"))
+        executor, exkw = get_executor_kwargs(executor, assets)
 
         import itertools
         from . import evaluate
 
-        params = Config(params, _kwargs.get("assets"))
+        params = Config(params, assets)
         log.info(f"Loading dataset {params}")
         ds = evaluate.dataset.load(resourcedir=resourcedir, datadir=datadir, **params)
         return executor(itertools.islice(ds.get_unannotated_tables(), sample), **exkw)
 
     @classmethod
     def extract(
-        cls, source: typing.Union[Config, HashBag], executor: Config = None, **_kwargs
+        cls,
+        source: typing.Union[Config, HashBag],
+        executor: Config = None,
+        assets: typing.List[Config] = (),
+        **_,
     ):
         """Collect tables from HTML files
 
@@ -173,7 +185,7 @@ class TableSet:
         """
         if isinstance(source, dict):
             for k, v in source.items():
-                htmlpages = globals()[k](**v, executor=executor, **_kwargs)
+                htmlpages = globals()[k](**v, executor=executor, assets=assets)
                 break
         elif isinstance(source, HashBag):
             htmlpages = source
@@ -189,9 +201,11 @@ class TableSet:
         tables: TableSet,
         workdir: Path = None,
         restructure: bool = True,
-        unpivot_heuristics: typing.List[Config] = ({"class": "NumSuffix"},),
+        unpivot_heuristics: typing.List[Config] = (),
+        centralize_pivots: bool = False,
         split_compound_columns: bool = False,
-        **_kwargs,
+        assets: typing.List[Config] = (),
+        **_,
     ):
         """Reshape tables
 
@@ -207,22 +221,29 @@ class TableSet:
         if restructure:
             tables = tables._pipe(reshape.restructure, desc="Restructure")
 
-        upheur = {h.get("name", h.get("class")): Config(h) for h in unpivot_heuristics}
-        if upheur:
-            log.info(f"Reshaping with heuristics: {', '.join(upheur)}")
-            tables.persist()
-            headers = tables._fold(reshape.table_get_headerId, lambda x, y: x)
-            headers = headers._pipe(reshape.get_headerobjs)
+        unpivot_heuristics = {
+            h.get("name", h.get("class")): Config(h, assets) for h in unpivot_heuristics
+        }
+        if unpivot_heuristics:
+            log.info(f"Reshaping with heuristics: {', '.join(unpivot_heuristics)}")
 
-            pivots = headers._pipe(reshape.yield_pivots, use_heuristics=upheur)
+            headerId_pivot = None
+            if centralize_pivots:
+                tables.persist()
+                headers = tables._fold(reshape.table_get_headerId, lambda x, y: x)
+                headers = headers._pipe(reshape.get_headerobjs)
 
-            headerId_pivot = {p["headerId"]: p for p in pivots}
-            log.info(f"Found {len(headerId_pivot)} pivots")
+                pivots = headers._pipe(
+                    reshape.yield_pivots, use_heuristics=unpivot_heuristics
+                )
+
+                headerId_pivot = {p["headerId"]: p for p in pivots}
+                log.info(f"Found {len(headerId_pivot)} pivots")
 
             tables = tables._pipe(
                 reshape.unpivot_tables,
                 headerId_pivot,
-                use_heuristics=upheur,
+                use_heuristics=unpivot_heuristics,
                 desc="Unpivoting",
             )
 
@@ -255,7 +276,8 @@ class TableSet:
         edge_exp: float = 1,
         agg_threshold_col: float = None,
         store_align_meta: typing.List[str] = ["tableHeaders"],
-        **_kwargs,
+        assets: typing.List[Config] = (),
+        **_,
     ):
         """Cluster tables
 
@@ -273,7 +295,9 @@ class TableSet:
             edge_exp : Exponent of edge weight for Louvain modularity
             agg_threshold_col: Matcher aggregation threshold (default: agg_threshold)
         """
-        matcher_kwargs = {m.get("name", m.get("class")): Config(m) for m in matchers}
+        matcher_kwargs = {
+            m.get("name", m.get("class")): Config(m, assets) for m in matchers
+        }
         agg_threshold_col = agg_threshold_col or agg_threshold
 
         import tqdm
@@ -427,7 +451,10 @@ class TableSet:
         return tables
 
     def coltypes(
-        tables: TableSet, typer_config: Config = {"class": "SimpleCellType"}, **_kwargs,
+        tables: TableSet,
+        typer_config: Config = {"class": "SimpleCellType"},
+        assets: typing.List[Config] = (),
+        **_,
     ):
         """Find column types.
         
@@ -438,7 +465,7 @@ class TableSet:
 
         from . import link
 
-        typer_config = Config(typer_config, _kwargs.get("kbs"))
+        typer_config = Config(typer_config, assets)
         return tables._pipe(link.coltypes, typer_config=typer_config,)
 
     def integrate(
@@ -450,7 +477,8 @@ class TableSet:
         },
         typer_config: Config = {"class": "SimpleCellType"},
         pfd_threshold: float = 0.9,
-        **_kwargs,
+        assets: typing.List[Config] = (),
+        **_,
     ):
         """Integrate tables with KB properties and classes.
 
@@ -465,9 +493,9 @@ class TableSet:
         """
         from . import link
 
-        searcher_config = Config(searcher_config, _kwargs.get("kbs"))
+        searcher_config = Config(searcher_config, assets)
         log.info(f"Integrating with config {searcher_config}")
-        typer_config = Config(typer_config, _kwargs.get("kbs"))
+        typer_config = Config(typer_config, assets)
 
         return tables._pipe(
             link.integrate,
@@ -485,7 +513,8 @@ class TableSet:
             "searcher": {"class": "MediaWikiAPI"},
         },
         usecols: str = [],
-        **_kwargs,
+        assets: typing.List[Config] = (),
+        **_,
     ):
         """Link table entities to KB.
         Depending on the Linker, also integrates table with KB classes and properties.
@@ -500,7 +529,7 @@ class TableSet:
         from . import link
 
         if lookup_config:
-            lookup_config = Config(lookup_config, _kwargs.get("kbs"))
+            lookup_config = Config(lookup_config, assets)
             log.info(f"Looking up hyperlinks with config {lookup_config}")
             tables = tables._pipe(
                 link.lookup_hyperlinks,
@@ -509,7 +538,7 @@ class TableSet:
             )
 
         if linker_config:
-            linker_config = Config(linker_config, _kwargs.get("kbs"))
+            linker_config = Config(linker_config, assets)
             log.info(f"Linking with config {linker_config}")
             tables = tables._pipe(link.link, linker_config, usecols=usecols,)
 
@@ -522,7 +551,8 @@ class TableSet:
         resourcedir: Path = None,
         report: typing.Dict = None,
         keycol_only: bool = False,
-        **_kwargs,
+        assets: typing.List[Config] = (),
+        **_,
     ):
         """Calculate evaluation scores
 
@@ -538,7 +568,7 @@ class TableSet:
         """
         from . import evaluate
 
-        annot = Config(labels, _kwargs.get("assets"))
+        annot = Config(labels, assets)
         dset = evaluate.dataset.load(resourcedir=resourcedir, datadir=datadir, **annot)
         table_annot = dset.get_annotated_tables()
         log.info(f"Loaded {len(table_annot)} annotated tables")
@@ -546,11 +576,14 @@ class TableSet:
         return tables._pipe(evaluate.table_score, table_annot, keycol_only=keycol_only)
 
     def novelty(
-        tables: TableSet, searcher_config: Config = None, **_kwargs,
+        tables: TableSet,
+        searcher_config: Config = None,
+        assets: typing.List[Config] = (),
+        **_,
     ):
         from . import evaluate
 
-        searcher_config = Config(searcher_config, _kwargs.get("kbs"))
+        searcher_config = Config(searcher_config, assets)
         return tables._pipe(evaluate.table_novelty, searcher_config)
 
     def triples(tables: TableSet, include_type: bool = True):
@@ -628,15 +661,12 @@ class TableSet:
         workdir: Path = None,
         datadir: Path = None,
         resourcedir: Path = None,
-        assets: typing.List[Config] = (),
-        kbs: typing.List[Config] = (),
-        executors: typing.List[Config] = (),
         force: bool = False,
         step_force: int = 0,
         cache: bool = False,
         executor: Config = None,
-        x_executor: Config = None,
-        **_kwargs,
+        assets: typing.List[Config] = (),
+        **_,
     ):
         """Run entire pipeline
 
@@ -646,7 +676,6 @@ class TableSet:
             datadir: Data directory
             resourcedir: Resource directory
             assets: Asset definitions
-            kbs: Knowledge Base definitions
             force: Force execution of steps if cache files are already present
             step_force: Force execution of steps starting at this number
             cache: Cache intermediate results
@@ -666,14 +695,11 @@ class TableSet:
             "workdir": workdir or pipeline.get("workdir") or ".",
             "datadir": datadir or pipeline.get("datadir"),
             "resourcedir": resourcedir or pipeline.get("resourcedir"),
-            "assets": (assets or []) + pipeline.get("assets", []),
-            "kbs": (kbs or []) + pipeline.get("kbs", []),
-            "executors": (executors or []) + pipeline.get("executors", []),
+            "assets": list(assets or []) + list(pipeline.get("assets", [])),
             "cache": cache or pipeline.get("cache"),
-            "executor": executor or x_executor or pipeline.get("executor"),
+            "executor": executor or pipeline.get("executor"),
         }
-        executor, executors = conf["executor"], conf["executors"]
-        executor, exkw = get_executor_kwargs(executor, executors)
+        executor, exkw = get_executor_kwargs(conf["executor"], conf["assets"])
 
         if conf["cache"]:
             if force:

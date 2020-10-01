@@ -273,8 +273,17 @@ def hack_annoying_layouts(all_htmlrows):
     return all_htmlrows
 
 
-def page_extract_tables(htmlpage, aboutURI=None, pgTitle=None, pgId=None):
-    """Extract tables from html in Baghavatula's json format"""
+def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None):
+    """Extract tables from html in Baghavatula's json format
+    
+    Also vertically splits tables on rows that are all ``th`` elements (subheaders).
+    
+    Args:
+        htmlpage: HTML string
+        aboutURI: URI of page subject entity
+        pgTitle: Page title
+        pgId: Page ID
+    """
     from bs4 import BeautifulSoup
 
     if not htmlpage:

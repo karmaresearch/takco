@@ -12,6 +12,7 @@ from .clean import (
     restack_horizontal_schema_repeats,
     remove_empty_rows,
     process_rowspanning_body_cells,
+    heuristic_transpose,
 )
 
 
@@ -93,11 +94,13 @@ def unpivot(
     return [list(row) for row in head], [list(row) for row in body]
 
 
-def yield_pivots(headerobjs, use_heuristics: Dict = None):
+def yield_pivots(headerobjs, use_heuristics: Dict[str, Dict] = None, heuristics=None):
     """Detect headers that should be unpivoted using heuristics."""
-    heuristics = {
-        hname: h.init_class(**findpivot.__dict__) for hname, h in use_heuristics.items()
-    }
+    if not heuristics:
+        heuristics = {
+            hname: h.init_class(**findpivot.__dict__)
+            for hname, h in use_heuristics.items()
+        }
 
     for headerobj in headerobjs:
 
@@ -107,7 +110,7 @@ def yield_pivots(headerobjs, use_heuristics: Dict = None):
 
             pivot_size = Counter()
             for hname, h in heuristics.items():
-                for level, colfrom, colto in h.find_longest_pivots(headertext):
+                for level, colfrom, colto in h.find_longest_pivots(headerobj):
                     pivot_size[(level, colfrom, colto, hname)] = colto - colfrom
 
             # Get longest pivot
@@ -133,8 +136,8 @@ def yield_pivots(headerobjs, use_heuristics: Dict = None):
 
 def unpivot_tables(
     tables: Iterator[Dict],
-    headerId_pivot: Dict[str, Dict],
-    use_heuristics: List[Dict] = (),
+    headerId_pivot: Dict[str, Dict] = None,
+    use_heuristics: Dict[str, Dict] = (),
 ):
     """Unpivot tables."""
 
@@ -150,7 +153,14 @@ def unpivot_tables(
         if "headerId" not in table:
             table["headerId"] = get_headerId(headerText)
 
-        pivot = headerId_pivot.get(table["headerId"])
+        pivot = None
+        if headerId_pivot is not None:
+            pivot = headerId_pivot.get(table["headerId"])
+        else:
+            headers = [table.get("tableHeaders", [])]
+            for p in yield_pivots(headers, heuristics=heuristics):
+                pivot = p
+
         if pivot and headerText:
 
             log.debug(f"Unpivoting {table.get('_id')}")
@@ -312,6 +322,7 @@ def restructure(tables: Iterator[Dict]) -> Iterator[Dict]:
         # Analyze body
         remove_empty_rows(table)
         process_rowspanning_body_cells(table)
+        heuristic_transpose(table)
 
         if table["tableData"]:
             yield table

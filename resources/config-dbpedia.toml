@@ -1,41 +1,41 @@
 datadir = "data"
 resourcedir = "resources"
 
-[[kbs]]
+[[assets]]
 name = "dbpedia_t2ksubset" # 
 class = "RDFSearcher"
 labelProperties = ["http://dbpedia.org/ontology/title"]
 store = {class = "Trident", configuration = 'kb/dbpedia_t2ksubset/db/'}
 
-[[kbs]]
+[[assets]]
 name = "dbpedia_2014_part2"
 class = "RDFSearcher"
 labelProperties = ["http://dbpedia.org/ontology/title"]
 store = {class = "Trident", configuration = 'kb/dbpedia/2014_part2/'}
 
-[[kbs]]
+[[assets]]
 name = "dbpedia_2016"
 class = "RDFSearcher"
 labelProperties = ["http://dbpedia.org/ontology/title"]
 store = {class = "Trident", configuration = 'kb/dbpedia/2016-10/'}
 
-[[kbs]]
+[[assets]]
 name = "dbpedia_t2ksubset_extralabels"
 class = "SQLiteSearcher"
 files = "data/dbpedia-t2ksubset-label-sqlitedbs-2/*"
 baseuri = "http://dbpedia.org/resource/"
-    [kbs.graph]
+    [assets.graph]
     class = "RDFSearcher"
     labelProperties = ["http://dbpedia.org/ontology/title"]
     store = {class = "Trident", configuration = 'kb/dbpedia_t2ksubset/db+extralabels/'}
 
-[[kbs]]
+[[assets]]
 name = "dbpedialookup_t2ksubset"
 class = "SQLiteSearcher"
 files = "data/dbpedia-lookup-sqlitedbs/*"
 baseuri = "http://dbpedia.org/resource/"
 fallback = {class = "DBpediaLookup"}
-    [kbs.graph]
+    [assets.graph]
     name = "dbpedia_t2ksubset"
     class = "RDFSearcher"
     labelProperties = ["http://dbpedia.org/ontology/title"]

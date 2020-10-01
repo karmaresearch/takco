@@ -1,54 +1,6 @@
 datadir = "data"
 resourcedir = "resources"
 
-[[kbs]]
-name = "wikidata-20200709-direct-prefLabel-en-db"
-class = "RDFSearcher"
-encoding = "wikidata"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-    [kbs.store]
-    class = "Trident"
-    configuration = "../kb/wikidata/wikidata-20200709-direct-prefLabel-en-db/"
-
-[[kbs]]
-name = "wikidata-20200713-direct-skos"
-class = "RDFSearcher"
-encoding = "wikidata"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-    [kbs.store]
-    class = "Trident"
-    configuration = "/scratch/kruit/kb/wikidata/20200713-direct-skos/"
-
-[[kbs]]
-name = "wikidata2019-P31inf-wikibase-simple-qualifiers"
-class = "RDFSearcher"
-encoding = "wikidata"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-    [kbs.store]
-    class = "Trident"
-    configuration = "../kb/wikidata/wikidata2019-P31inf-wikibase-simple-qualifiers/"
-    ent_baseuri = "http://www.wikidata.org/entity/"
-    prop_baseuri = "http://www.wikidata.org/prop/direct/"
-    ns = {skos = "http://www.w3.org/2004/02/skos/core#"}
-
-[[kbs]]
-name = "wikidata-sparql"
-class = "RDFSearcher"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-    [kbs.store]
-    class = "SparqlStore"
-    configuration = "https://query.wikidata.org/sparql"
-
-[[kbs]]
-name = "wikidata-hdt"
-class = "RDFSearcher"
-encoding = "wikidata"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-    [kbs.store]
-    class = "HDTStore"
-    path = "/export/scratch1/home/kruit/scratch/downloads/wikidata/wikidata20200309.hdt"
-
-
 [[assets]]
 name  = "semtab-r1-sample"
 class = "Annotation"

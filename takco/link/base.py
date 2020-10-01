@@ -171,19 +171,19 @@ class Linker:
         self.limit = limit
 
     def _rowcol_results(
-        self, 
-        rows, 
+        self,
+        rows,
         contextual=False,
-        usecols=None, 
-        skiprows=None, 
-        existing_entities=None, 
+        usecols=None,
+        skiprows=None,
+        existing_entities=None,
         col_classes=None,
-        **kwargs
+        **kwargs,
     ) -> Dict[Tuple[int, int], Container[SearchResult]]:
-        
+
         existing_entities = existing_entities or {}
         col_classes = col_classes or {}
-        
+
         rowcol_results = {}
         if contextual:
             for ri, row in enumerate(rows):
@@ -192,22 +192,22 @@ class Linker:
                         if (not usecols) or (ci in usecols):
                             existing = existing_entities.get(ci, {}).get(ri, {})
                             if not existing:
-                                
+
                                 results = self.searcher.search_entities(
-                                    cell, 
+                                    cell,
                                     context=[
                                         cell2
                                         for ci2, cell2 in enumerate(row)
                                         if ci != ci2
                                     ],
                                     classes=col_classes.get(ci, []),
-                                    **kwargs
+                                    **kwargs,
                                 )
-                                rowcol_results[ (ri,ci) ] = results
+                                rowcol_results[(ri, ci)] = results
                             else:
-                                rowcol_results[ (ri,ci) ] = [
+                                rowcol_results[(ri, ci)] = [
                                     SearchResult(e, score=score)
-                                    for e,score in existing.items()
+                                    for e, score in existing.items()
                                 ]
         else:
             cell_rowcols = {}
@@ -219,12 +219,11 @@ class Linker:
                             if not existing:
                                 cell_rowcols.setdefault(cell, set()).add((ri, ci))
                             else:
-                                rowcol_results[ (ri,ci) ] = [
+                                rowcol_results[(ri, ci)] = [
                                     SearchResult(e, score=score)
-                                    for e,score in existing.items()
+                                    for e, score in existing.items()
                                 ]
 
-            
             for cell, rowcols in cell_rowcols.items():
                 results = self.searcher.search_entities(cell, **kwargs)
                 for rowcol in rowcols:

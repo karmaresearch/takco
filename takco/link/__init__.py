@@ -23,13 +23,15 @@ try:
 except:
     log.info(f"Library rdflib_hdt is not available")
 
+
 def get_hrefs(datarows, lookup_cells=False):
     def cell_ok(c):
         return bool(c.get("text") and not c.get("text", "").isnumeric())
+
     return [
         [
             [
-                target.get("href", target.get('title', '')).rsplit("/", 1)[-1]
+                target.get("href", target.get("title", "")).rsplit("/", 1)[-1]
                 for l in c.get("surfaceLinks", [])
                 for target in [l.get("target", {})]
             ]
@@ -38,7 +40,7 @@ def get_hrefs(datarows, lookup_cells=False):
         ]
         for row in datarows
     ]
-    
+
 
 def lookup_hyperlinks(tables: List[dict], lookup_config: Dict, lookup_cells=False):
     """Lookup the (Wikipedia) hyperlinks inside cells for entity links
@@ -180,13 +182,9 @@ def integrate(
         profiler = PFDProfiler()
         ci_literal = {
             int(ci): any(SimpleCellType().is_literal_type(t) for t in ts)
-            for ci,ts in table.get('classes', {}).items()
+            for ci, ts in table.get("classes", {}).items()
         }
-        usecols = [
-            ci
-            for ci in range(table['numCols'])
-            if not ci_literal.get(ci)
-        ]
+        usecols = [ci for ci in range(table["numCols"]) if not ci_literal.get(ci)]
         rows = [[c.get("text") for c in row] for row in table.get("tableData", [])]
         keycol = profiler.get_keycol(rows, usecols)
         table["keycol"] = keycol

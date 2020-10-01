@@ -5,6 +5,7 @@ import copy
 import typing
 import functools
 
+
 class Config(dict):
     """A wrapper for json or toml configuration hashes.
     Reads a file or a string.
@@ -16,11 +17,13 @@ class Config(dict):
         import logging as log
         import toml, json
 
+        if not val:
+            return
+
         context = {c.get("name", c.get("class")): Config(c) for c in (context or [])}
 
         if isinstance(val, dict):
             if context and ("name" in val) and (val["name"] in context):
-                self["name"] = val["name"]
                 self.update(context[val.get("name")])
             self.update(
                 {
@@ -66,17 +69,25 @@ class Config(dict):
 
     def init_class(self, force=True, **context):
         if isinstance(self, dict) and "class" in self:
-            self = dict(self)
+            self = Config(self)
             if inspect.isclass(context.get(self["class"])):
                 cls = context[self.pop("class")]
+                cls_params = inspect.signature(cls).parameters
+                cls_has_kwargs = any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD for p in cls_params.values()
+                )
+
                 kwargs = {
                     k: Config.init_class(v, force=False, **context)
                     for k, v in self.items()
+                    if (k in cls_params) or cls_has_kwargs
                 }
                 obj = cls(**kwargs)
                 if "name" in self:
                     obj.name = self["name"]
                 return obj
+            else:
+                return self
         else:
             return self
 
@@ -92,7 +103,6 @@ class HashBag:
         self.it = list(self.wrap(self.it))
 
     def __iter__(self):
-        self.persist()
         return iter(self.it)
 
     def _pipe(self, func, *args, desc=None, **kwargs):
@@ -127,7 +137,7 @@ class HashBag:
 
         return self.__class__(offset_it(it, default))
 
-    def _dump(self, f, force=False):
+    def _dump(self, f):
         import sys
         from io import TextIOBase
         from pathlib import Path
@@ -139,18 +149,16 @@ class HashBag:
                 fw = f
             else:
                 if "*" in str(f):
-                    f = Path(str(f).replace("*", "0"))
+                    f = Path(str(f).replace("*", "output.jsonl"))
                 fw = open(f, "w")
             for r in it:
                 if r:
                     print(json.dumps(r), file=fw)
+                    fw.flush()
                     yield r
             fw.close()
 
-        if force:
-            return self.__class__(list(dumped_it(f)))
-        else:
-            return self.__class__(dumped_it(f))
+        return self.__class__(dumped_it(f))
 
     @classmethod
     def _load(cls, files, **kwargs):
@@ -173,7 +181,9 @@ class HashBag:
 
                     yield from cls._load(sys.stdin)
                 elif Path(f).exists() and Path(f).is_file():
-                    yield from cls._load(Path(f).open())
+                    log.debug(f"Opening {f}")
+                    with Path(f).open() as o:
+                        yield from cls._load(o)
                 elif "*" in str(f):
                     import glob
 
@@ -247,7 +257,6 @@ try:
             return iter(self.bag.compute())
 
         def _pipe(self, func, *args, desc=None, **kwargs):
-            
             @functools.wraps(func)
             def listify(x, *args, **kwargs):
                 return list(func(x, *args, **kwargs))
@@ -286,8 +295,15 @@ except Exception as e:
     log.debug(e)
 
 
-def pages_download(ent_abouturl, encoding=None):
-    """Download html pages from urls"""
+def pages_download(
+    ent_abouturl: typing.Collection[typing.Tuple[str, str]], encoding=None
+):
+    """Download html pages from urls
+    
+    Args:
+        ent_abouturl: A ``[(uri,url)]`` list of entitu URIs and page URLs
+        encoding: Page encoding (use "guess" to use requests' apparent encoding)
+    """
     import requests
 
     for e, url in ent_abouturl:
@@ -369,10 +385,10 @@ def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
                     break
         else:
             n = nrows
-        
+
         table["tableData"] = table.get("tableData", [])
         rows = [[c.get("text") for c in r] for r in table.get("tableData", [])]
-        table['rows'] = rows[:n]
+        table["rows"] = rows[:n]
         headers = [[c.get("text") for c in r] for r in table.get("tableHeaders", [])]
         table["headers"] = headers
 

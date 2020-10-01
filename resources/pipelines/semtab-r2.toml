@@ -1,7 +1,7 @@
 name = 'semtab-r2'
-datadir = 'data'
+executor = "dask"
 
-[executor]
+[[assets]]
 name="dask"
 n_workers=8
 threads_per_worker=2

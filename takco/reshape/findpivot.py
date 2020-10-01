@@ -1,6 +1,7 @@
-from typing import List, Container, Tuple, NamedTuple, Iterator
+from typing import List, Container, Tuple, NamedTuple, Iterator, Dict
 from collections import defaultdict, Counter
 import re
+import logging as log
 
 
 def get_colspan_repeats(
@@ -91,7 +92,7 @@ class PivotFinder:
         """Yield positions of pivoted cells"""
         return
 
-    def find_longest_pivots(self, headerrows: List[List[str]]) -> Iterator[Pivot]:
+    def find_longest_pivots(self, headerrows: List[List[Dict]]) -> Iterator[Pivot]:
         """Yield longest pivots"""
         row_cols = defaultdict(set)
         for ri, ci in self.find_pivot_cells(headerrows):
@@ -105,17 +106,30 @@ class PivotFinder:
 
     def split_header(self, headrow: List[str], colfrom: int, colto: int):
         """Split the header containing the pivot"""
-        return
+        for ci, cell in enumerate(headrow):
+            if ci in range(colfrom, colto + 1):
+                yield "", cell
+            else:
+                yield cell, cell
 
 
 class RegexFinder(PivotFinder):
-    def __init__(self, find_regex, split_regex):
-        self.find_regex = re.compile(find_regex)
-        self.split_regex = re.compile(split_regex)
+    """Find pivots based on a regex
+    
+    Args:
+        find_regex: Unpivot cell if this regex matches
+        split_regex: Regex that returns groupdict with ``cell`` and ``head``
+    """
+    def __init__(self, find_regex=None, split_regex = None):
+        if find_regex:
+            self.find_regex = re.compile(find_regex)
+        if split_regex:
+            self.split_regex = re.compile(split_regex)
 
     def find_pivot_cells(self, headerrows):
         for ri, hrow in enumerate(headerrows):
-            for ci, cell in enumerate(hrow):
+            for ci, c in enumerate(hrow):
+                cell = c.get("text", "")
                 if cell and self.find_regex.match(cell.strip()):
                     yield ri, ci
 
@@ -135,18 +149,14 @@ class RegexFinder(PivotFinder):
 
 class NumSuffix(RegexFinder):
     """Find cells with a numeric suffix"""
-
-    def __init__(self):
-        self.find_regex = re.compile(".*\d[\W\s]*$")
-        self.split_regex = re.compile("(?P<head>.*?)[\W\s]*(?P<cell>[\d\W]+?)[\W\s]*$")
+    find_regex = re.compile(".*\d[\W\s]*$")
+    split_regex = re.compile("(?P<head>.*?)[\W\s]*(?P<cell>[\d\W]+?)[\W\s]*$")
 
 
 class NumPrefix(RegexFinder):
     """Find cells with a numeric prefix"""
-
-    def __init__(self):
-        self.find_regex = re.compile("[\W\s]*\d")
-        self.split_regex = re.compile("(?P<cell>[\d\W]+?)[\W\s]*(?P<head>.*?)[\W\s]*$")
+    find_regex = re.compile("[\W\s]*\d")
+    split_regex = re.compile("(?P<cell>[\d\W]+?)[\W\s]*(?P<head>.*?)[\W\s]*$")
 
 
 class SeqPrefix(PivotFinder):
@@ -157,7 +167,8 @@ class SeqPrefix(PivotFinder):
 
         for ri, row in enumerate(headerrows):
             prefixes = []
-            for cell in row:
+            for c in row:
+                cell = c.get("text", "")
                 p = (cell or "").strip().split()[0]
                 if p:
                     prefixes.append(p)
@@ -195,7 +206,8 @@ class SpannedRepeat(PivotFinder):
                 header_fromto[ri],
             )
             cols = []
-            for ci, cell in enumerate(row):
+            for ci, c in enumerate(row):
+                cell = c.get("text", "")
                 f, t = fromto[ci]
                 if colspan[ci] > 1:
                     # This cell is spanning
@@ -205,3 +217,51 @@ class SpannedRepeat(PivotFinder):
                                 if header_repeats[rj][cspan] > 1:
                                     # There's a repeating cell in another row
                                     yield ri, ci
+
+
+class AgentLikeHyperlink(PivotFinder):
+    """Find cells with links to entities that seem agent-like
+    
+    Rules for agent-like entities:
+    
+    - Not used as class
+    - Don't have bad types (e.g. disambiguation pages, list pages, units)
+    - Don't have bad properties (e.g. has associated property)
+    
+    Args:
+        lookup_config: :mod:`takco.util.Config` for :mod:`takco.link.base.WikiLookup`
+        kb_config: :mod:`takco.util.Config` for :mod:`takco.link.rdf.GraphDB`
+        bad_types: URIs for bad types
+        bad_props: URIs for bad props
+    """
+
+    def __init__(self, lookup_config=None, kb_config=None, bad_types=(), bad_props=()):
+        from .. import link
+
+        self.lookup = lookup_config.init_class(**link.__dict__)
+        self.kb = kb_config.init_class(**link.__dict__)
+        self.bad_types = [link.URIRef(b) for b in bad_types]
+        self.bad_props = [link.URIRef(b) for b in bad_props]
+
+    def find_pivot_cells(self, headerrows):
+        from .. import link
+
+        tps = self.kb.typeProperties
+        kb = self.kb
+        ents = self.lookup.lookup_cells(link.get_hrefs(headerrows))
+
+        for ri, hrow in enumerate(headerrows):
+            for ci, hcell in enumerate(hrow):
+                for e in ents.get(str(ci), {}).get(str(ri), {}):
+                    e = link.URIRef(e)
+
+                    if any(any(kb.triples([None, tp, e])) for tp in tps):
+                        continue  # is type
+
+                    if any(((e, tp, t) in kb) for tp in tps for t in self.bad_types):
+                        continue  # has bad type
+
+                    if any(any(kb.triples([e, p, None])) for p in self.bad_props):
+                        continue  # has bad prop
+
+                    yield ri, ci

@@ -14,10 +14,10 @@ def table_get_headerId(table):
 
     if not any(table["tableHeaders"]):
         return table["_id"]
-        
+
     if "headerId" not in table:
         tableHeaders = table["tableHeaders"]
-            
+
         headerText = tuple(
             tuple([cell.get("text", "").lower() for cell in r]) for r in tableHeaders
         )

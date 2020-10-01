@@ -22,7 +22,7 @@ class First(Linker):
         self,
         searcher: Searcher,
         limit: int = 1,
-        contextual: bool = False, 
+        contextual: bool = False,
         search_limit: int = 10,
         majority_class: URI = None,
         exclude_about: Dict[URI, URI] = None,
@@ -49,12 +49,12 @@ class First(Linker):
 
         existing_entities = (existing or {}).get("entities", {})
         existing_entities = {
-            int(ci):{int(ri):es for ri,es in res.items()}
-            for ci,res in existing_entities.items()
+            int(ci): {int(ri): es for ri, es in res.items()}
+            for ci, res in existing_entities.items()
         }
         existing_classes = (existing or {}).get("classes", {})
-        existing_classes = {int(ci):cs for ci,cs in existing_classes.items()}
-        
+        existing_classes = {int(ci): cs for ci, cs in existing_classes.items()}
+
         def get_rowcol_results(col_classes):
             return self._rowcol_results(
                 rows,
@@ -66,8 +66,9 @@ class First(Linker):
                 add_about=self.add_about,
                 col_classes=col_classes,
             )
+
         rowcol_results = get_rowcol_results(existing_classes)
-        
+
         # TODO: lookup facts about existing entities
 
         if self.majority_class:
@@ -84,7 +85,7 @@ class First(Linker):
             for ci, att_count in ci_att_count.items():
                 ci_majoratt[ci] = max(att_count, key=att_count.get)
                 ci_classes[ci] = {ci_majoratt[ci]: att_count[ci_majoratt[ci]]}
-            
+
             if self.majority_class_search:
                 log.debug(f"Re-searching {self} with classes {ci_classes}")
                 rowcol_results = get_rowcol_results(ci_classes)
@@ -95,10 +96,7 @@ class First(Linker):
                     rowcol_results[(ri, ci)] = [
                         r for r in results if ci_majoratt.get(ci) in atts(r)
                     ]
-        
-            
-        
-        
+
         if self.exclude_about:
             for k, results in rowcol_results.items():
                 for p, os in self.exclude_about.items():
@@ -123,7 +121,7 @@ class First(Linker):
                 ents[r.uri] = r.score
 
         if self.majority_class:
-            classes = {str(ci):c for ci,c in ci_classes.items()}
+            classes = {str(ci): c for ci, c in ci_classes.items()}
             return {"entities": entities, "classes": classes}
         else:
             return {"entities": entities}
@@ -156,7 +154,7 @@ class Salient(Linker):
         self,
         searcher: Searcher,
         limit: int = 10,
-        contextual: bool = False, 
+        contextual: bool = False,
         replace_class: Dict[URI, URI] = None,
         class_cover: float = 0.5,
         prop_cover: float = 0.5,

@@ -11,11 +11,12 @@ import os, sys, defopt, json, toml, types, argparse
 from . import *
 from .util import *
 
+config = {}
+
 
 def load_tables(s):
-    global executor
-    log.debug(f"Loading tables {s} using executor {executor}")
-    return TableSet(executor._load(s))
+    global config
+    return TableSet.load(s, **config)
 
 
 class SetConfig(argparse.Action):
@@ -23,6 +24,7 @@ class SetConfig(argparse.Action):
         super(SetConfig, self).__init__(option_strings, dest, nargs="?", **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None):
+        global config
         config = {}
         if self.dest and values:
             conf = Config(values)
@@ -38,6 +40,17 @@ class SetConfig(argparse.Action):
 
         for k, v in config.items():
             setattr(namespace, k, v)
+
+
+class SetExecutor(argparse.Action):
+    def __init__(self, option_strings, dest, nargs=1, **kwargs):
+        super(SetExecutor, self).__init__(option_strings, dest, nargs=1, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        global config
+        config = config or {}
+        if self.dest and values:
+            config["executor"] = values
 
 
 class SetVerbosity(argparse.Action):
@@ -119,10 +132,15 @@ def main():
             for _, subparser in action.choices.items():
                 subparser.add_argument(
                     "-C",
-                    "--conf",
                     action=SetConfig,
-                    metavar="X",
+                    metavar="CONFIG",
                     help="Use global configuration (see docs)",
+                )
+                subparser.add_argument(
+                    "-X",
+                    action=SetExecutor,
+                    metavar="EXECUTOR",
+                    help="Use executor (see docs)",
                 )
                 subparser.add_argument(
                     "-O", "--out", help="Write output to file(s)",
@@ -144,11 +162,13 @@ def main():
         try:
             if isinstance(result, HashBag):
                 if hasattr(args, "out") and args.out:
-                    log.info(f"Writing result to {args.out}")
-                    result._dump(args.out, force=True)
+                    log.info(f"Writing {result} to {args.out}")
+                    for line in result._dump(args.out):
+                        pass
                 else:
-                    log.info(f"Writing result to stdout")
-                    result._dump(sys.stdout, force=True)
+                    log.info(f"Writing {result} to stdout")
+                    for line in result._dump(sys.stdout):
+                        pass
             elif isinstance(result, (types.GeneratorType, map, filter)):
                 for r in result:
                     print(json.dumps(r))
