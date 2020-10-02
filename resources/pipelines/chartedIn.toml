@@ -29,11 +29,7 @@ headerunions = true
 step = "link"
 linker_config = {}
 lookup_cells = true
-    [step.lookup_config]
-    class = 'SQLiteWikiLookup'
-    sqlitedb = 'data/wdid_wpname.sqlitedb'
-    baseuri = 'http://www.wikidata.org/entity/'
-    fallback = {class = 'MediaWikiAPI'}
+lookup_config = {name = 'wiki-lookup'}
     
 [[step]]
 step = "coltypes"

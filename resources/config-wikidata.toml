@@ -17,11 +17,6 @@ dashboard_address = ":8787"
 n_workers = 8
 threads_per_worker = 4
 
-[[assets]]
-name = "dask-cluster"
-class = "DaskHashBag"
-address = "tcp://192.168.62.207:8786"
-
 
 
 [[assets]]
@@ -78,3 +73,17 @@ class = 'SQLiteWikiLookup'
 sqlitedb = 'data/wdid_wpname.sqlitedb'
 baseuri = 'http://www.wikidata.org/entity/'
 fallback = {class = 'MediaWikiAPI'}
+
+
+[[assets]]
+name = "dask-cluster"
+class = "DaskHashBag"
+address = "tcp://192.168.62.207:8786"
+
+[[assets]]
+name  = "wikidata-cluster"
+class = "RDFSearcher"
+typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
+    [assets.store]
+    class = "SparqlStore"
+    configuration = "http://192.168.62.207:8811/sparql"

@@ -742,5 +742,8 @@ class TableSet:
             else:
                 log.warn(f"Pipeline step {si} has no step type!")
 
-        if not cache:
+        if cache:
+            for _ in tables:
+                pass
+        else:
             return tables

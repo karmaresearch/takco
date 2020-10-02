@@ -4,6 +4,7 @@ executor = "dask"
 
 [[assets]]
 name="dask"
+class = "DaskHashBag"
 n_workers=8
 threads_per_worker=2
 memory_target_fraction = 0.85

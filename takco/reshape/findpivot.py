@@ -169,9 +169,9 @@ class SeqPrefix(PivotFinder):
             prefixes = []
             for c in row:
                 cell = c.get("text", "")
-                p = (cell or "").strip().split()[0]
+                p = (cell or "").strip().split()
                 if p:
-                    prefixes.append(p)
+                    prefixes.append(p[0])
 
             for p, pcount in Counter(prefixes).most_common(1):
                 if pcount > 1:
@@ -182,9 +182,9 @@ class SeqPrefix(PivotFinder):
     def split_header(headrow, colfrom, colto):
         prefixes = []
         for cell in row:
-            p = (cell or "").strip().split()[0]
+            p = (cell or "").strip().split()
             if p:
-                prefixes.append(p)
+                prefixes.append(p[0])
 
         for p, pcount in Counter(prefixes).most_common(1):
             for ci in range(colfrom, colto + 1):

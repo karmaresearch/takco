@@ -13,15 +13,24 @@ fname = "tables.json.gz"
 
 [[step]]
 step = "load"
-vals = "data/TabEL/part-*a"
+vals = "data/TabEL/part-*"
 
 [[step]]
 step = "reshape"
 restructure = true
     [[step.unpivot_heuristics]]
+    class = "NumSuffix"
+    
+    [[step.unpivot_heuristics]]
+    class = "SeqPrefix"
+    
+    [[step.unpivot_heuristics]]
+    class = "SpannedRepeat"
+    
+    [[step.unpivot_heuristics]]
     class = "AgentLikeHyperlink"
     lookup_config = {name = 'wiki-lookup'}
-    kb_config = {name = "wikidata2019-P31inf-wikibase-simple-qualifiers"}
+    kb_config = {name = "wikidata-cluster"}
     bad_types = [
         'http://www.wikidata.org/entity/Q4167410',
         'http://www.wikidata.org/entity/Q13406463',

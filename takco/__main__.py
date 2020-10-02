@@ -51,6 +51,7 @@ class SetExecutor(argparse.Action):
         config = config or {}
         if self.dest and values:
             config["executor"] = values
+            setattr(namespace, "executor", values[0])
 
 
 class SetVerbosity(argparse.Action):
