@@ -13,7 +13,7 @@ fname = "tables.json.gz"
 
 [[step]]
 step = "load"
-vals = "data/TabEL/part-*"
+vals = "data/TabEL/10k-part-*"
 
 [[step]]
 step = "reshape"
@@ -40,7 +40,12 @@ restructure = true
         'http://www.wikidata.org/prop/direct/P1687',
     ]
 
-#[[step]]
-#step = "cluster"
-#addcontext = ["pgTitle"]
-#headerunions = true
+[[step]]
+step = "link"
+lookup_config = {name = 'wiki-lookup'}
+linker_config = {}
+
+[[step]]
+step = "cluster"
+addcontext = ["pgTitle"]
+headerunions = true

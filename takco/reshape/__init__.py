@@ -185,7 +185,6 @@ def unpivot_tables(
                                 {
                                     "text": head or "",
                                     "tdHtmlString": f"<td>{head}</td>",
-                                    "surfaceLinks": links,  # TODO adjust link offsets
                                 },
                                 {
                                     "text": cell or "",
