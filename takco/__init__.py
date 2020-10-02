@@ -333,7 +333,7 @@ class TableSet:
             if use_match_cache and simpath.exists():
                 sims = pd.read_csv(simpath, index_col=[0, 1, 2, 3])
             else:
-                log.info(f"Using matchers {matchers}")
+                log.info(f"Using matchers: {', '.join(matchers)}")
                 matchers = tables._pipe(
                     clustering.matcher_add_tables, workdir, matcher_kwargs
                 )
@@ -530,7 +530,6 @@ class TableSet:
 
         if lookup_config:
             lookup_config = Config(lookup_config, assets)
-            log.info(f"Looking up hyperlinks with config {lookup_config}")
             tables = tables._pipe(
                 link.lookup_hyperlinks,
                 lookup_config=lookup_config,
@@ -734,7 +733,7 @@ class TableSet:
 
                     stepargs["tables"] = tables
                     stepargs.update(conf)
-                    log.info(f"Chaining pipeline step {stepname}: {stepargs}")
+                    log.info(f"Chaining pipeline step {stepname}")
                     tables = wrap_step(stepfunc, stepargs, stepdir)
                 else:
                     log.warn(f"Skipping step {stepname}, using cache instead")

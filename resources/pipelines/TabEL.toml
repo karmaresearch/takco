@@ -13,15 +13,18 @@ fname = "tables.json.gz"
 
 [[step]]
 step = "load"
-vals = "data/TabEL/part-*a"
+vals = "data/TabEL/10k-part-*"
 
 [[step]]
 step = "reshape"
 restructure = true
     [[step.unpivot_heuristics]]
+    class = "NumSuffix"
+    
+    [[step.unpivot_heuristics]]
     class = "AgentLikeHyperlink"
     lookup_config = {name = 'wiki-lookup'}
-    kb_config = {name = "wikidata2019-P31inf-wikibase-simple-qualifiers"}
+    kb_config = {name = "wikidata-hdt"}
     bad_types = [
         'http://www.wikidata.org/entity/Q4167410',
         'http://www.wikidata.org/entity/Q13406463',
@@ -31,7 +34,12 @@ restructure = true
         'http://www.wikidata.org/prop/direct/P1687',
     ]
 
-#[[step]]
-#step = "cluster"
-#addcontext = ["pgTitle"]
-#headerunions = true
+[[step]]
+step = "link"
+lookup_config = {name = 'wiki-lookup'}
+linker_config = {}
+
+[[step]]
+step = "cluster"
+addcontext = ["pgTitle"]
+headerunions = true
