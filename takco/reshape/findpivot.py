@@ -120,7 +120,8 @@ class RegexFinder(PivotFinder):
         find_regex: Unpivot cell if this regex matches
         split_regex: Regex that returns groupdict with ``cell`` and ``head``
     """
-    def __init__(self, find_regex=None, split_regex = None):
+
+    def __init__(self, find_regex=None, split_regex=None):
         if find_regex:
             self.find_regex = re.compile(find_regex)
         if split_regex:
@@ -149,12 +150,14 @@ class RegexFinder(PivotFinder):
 
 class NumSuffix(RegexFinder):
     """Find cells with a numeric suffix"""
+
     find_regex = re.compile(".*\d[\W\s]*$")
     split_regex = re.compile("(?P<head>.*?)[\W\s]*(?P<cell>[\d\W]+?)[\W\s]*$")
 
 
 class NumPrefix(RegexFinder):
     """Find cells with a numeric prefix"""
+
     find_regex = re.compile("[\W\s]*\d")
     split_regex = re.compile("(?P<cell>[\d\W]+?)[\W\s]*(?P<head>.*?)[\W\s]*$")
 
@@ -235,19 +238,30 @@ class AgentLikeHyperlink(PivotFinder):
         bad_props: URIs for bad props
     """
 
-    def __init__(self, lookup_config=None, kb_config=None, bad_types=(), bad_props=()):
+    def __init__(
+        self,
+        lookup_config=None,
+        kb_config=None,
+        bad_types=(),
+        bad_props=(),
+        type_props=(),
+    ):
         from .. import link
 
         self.lookup = lookup_config.init_class(**link.__dict__)
         self.kb = kb_config.init_class(**link.__dict__)
         self.bad_types = [link.URIRef(b) for b in bad_types]
         self.bad_props = [link.URIRef(b) for b in bad_props]
+        if hasattr(self.kb, "typeProperties"):
+            self.typeProperties = self.kb.typeProperties
+        else:
+            self.typeProperties = type_props
 
     def find_pivot_cells(self, headerrows):
         from .. import link
 
-        tps = self.kb.typeProperties
         kb = self.kb
+        tps = self.typeProperties
         ents = self.lookup.lookup_cells(link.get_hrefs(headerrows))
 
         for ri, hrow in enumerate(headerrows):
@@ -255,13 +269,17 @@ class AgentLikeHyperlink(PivotFinder):
                 for e in ents.get(str(ci), {}).get(str(ri), {}):
                     e = link.URIRef(e)
 
-                    if any(any(kb.triples([None, tp, e])) for tp in tps):
+                    if any(kb.count([None, tp, e]) for tp in tps):
                         continue  # is type
 
-                    if any(((e, tp, t) in kb) for tp in tps for t in self.bad_types):
+                    if any(
+                        ((e, tp, t) in set(kb.triples([e, tp, None])))
+                        for tp in tps
+                        for t in self.bad_types
+                    ):
                         continue  # has bad type
 
-                    if any(any(kb.triples([e, p, None])) for p in self.bad_props):
+                    if any(kb.count([e, p, None]) for p in self.bad_props):
                         continue  # has bad prop
 
                     yield ri, ci

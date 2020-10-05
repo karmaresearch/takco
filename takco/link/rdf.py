@@ -9,6 +9,7 @@ import re
 from .base import (
     Searcher,
     Database,
+    NaryDB,
     SearchResult,
     Triple,
     Node,
@@ -68,7 +69,7 @@ class GraphDB(Database, rdflib.Graph):
             return s_pages
 
 
-class RDFSearcher(Searcher, GraphDB):
+class RDFSearcher(Searcher, GraphDB, NaryDB):
     """Entity Searcher model based on an RDF graph database.
 
     Args:
@@ -212,6 +213,8 @@ class RDFSearcher(Searcher, GraphDB):
                         if e2 in set(os):
                             mainprop, qmatches = None, []
                             for p, o in zip(ps, os):
+                                if o == e1:
+                                    continue
                                 if o == e2:
                                     mainprop = p
                                     continue

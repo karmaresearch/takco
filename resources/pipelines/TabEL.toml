@@ -10,6 +10,18 @@ download = [
 path = "data/TabEL"
 fname = "tables.json.gz"
 
+[[assets]]
+name = 'lookup'
+#resolve = 'wikidata-elastic'
+#resolve = "wiki-lookup"
+resolve = 'wiki-pickle'
+
+[[assets]]
+name = 'linker'
+resolve = 'wikidata-elastic'
+#resolve = "wikidata-20200709-direct-prefLabel-en"
+#resolve = "wikidata-cluster"
+
 
 [[step]]
 step = "load"
@@ -29,8 +41,8 @@ restructure = true
     
     [[step.unpivot_heuristics]]
     class = "AgentLikeHyperlink"
-    lookup_config = {name = 'wiki-lookup'}
-    kb_config = {name = "wikidata-cluster"}
+    lookup_config = {resolve = "lookup"}
+    kb_config = {resolve = "linker"}
     bad_types = [
         'http://www.wikidata.org/entity/Q4167410',
         'http://www.wikidata.org/entity/Q13406463',
@@ -42,10 +54,20 @@ restructure = true
 
 [[step]]
 step = "link"
-lookup_config = {name = 'wiki-lookup'}
+lookup_cells = true
+lookup_config = {resolve = "lookup"}
 linker_config = {}
 
 [[step]]
-step = "cluster"
-addcontext = ["pgTitle"]
-headerunions = true
+step = "coltypes"
+    [step.typer_config]
+    class = "EntityType"
+    db = {resolve = "linker"}
+    type_prop = "http://www.wikidata.org/prop/direct/P31"
+    supertype_prop = '' #"http://www.wikidata.org/prop/direct/P279"
+    cover_threshold = 0.333
+
+#[[step]]
+#step = "cluster"
+#addcontext = ["pgTitle"]
+#headerunions = true

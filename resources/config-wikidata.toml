@@ -68,12 +68,25 @@ typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
     path = "/var/scratch/bbkruit/wikidata20200309.hdt"
     
 [[assets]]
-name = 'wiki-lookup'
+name = 'wiki-sqlite'
 class = 'SQLiteWikiLookup'
 sqlitedb = 'data/wdid_wpname.sqlitedb'
 baseuri = 'http://www.wikidata.org/entity/'
-fallback = {class = 'MediaWikiAPI'}
+#fallback = {class = 'MediaWikiAPI'}
 
+[[assets]]
+name = 'wikidata-elastic'
+class = 'ElasticDB'
+cache = true
+es_kwargs.hosts = ['bricks07:9200']
+index='test-wd-statements,test-wd-wikilookup'
+baseuri='http://www.wikidata.org/entity/Q'
+propbaseuri='http://www.wikidata.org/prop/direct/P'
+
+[[assets]]
+name = 'wiki-pickle'
+class = 'PickleWikiLookup'
+file = 'data/wdid_wpname.pickle'
 
 [[assets]]
 name = "dask-cluster"

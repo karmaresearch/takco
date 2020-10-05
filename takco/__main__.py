@@ -83,6 +83,7 @@ def main():
         TableSet.cluster,
         TableSet.integrate,
         TableSet.link,
+        TableSet.coltypes,
         TableSet.score,
         TableSet.triples,
     )

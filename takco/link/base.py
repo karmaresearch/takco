@@ -150,12 +150,13 @@ class Database:
             about.setdefault(p, []).append(o)
         return about
 
-    def pages_about(self, triplepattern=None) -> Iterator[Tuple[URI, str]]:
-        """Yield URLs of webpages about subjects of a triple pattern
 
-        Args:
-            triplepattern: A 3-tuple of None or URI
-        """
+class NaryDB(Database):
+    """For querying a KB with qualifiers."""
+
+    def get_rowfacts(
+        self, celltexts: List[str], entsets: List[Container[str]]
+    ) -> Iterator[MatchResult]:
         return
 
 

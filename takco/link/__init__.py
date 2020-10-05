@@ -6,6 +6,7 @@ from .base import *
 from .external import *
 from .trident import *
 from .sqlite import *
+from .pickle import *
 from .elasticsearch import *
 from .rdf import *
 

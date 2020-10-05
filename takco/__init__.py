@@ -690,11 +690,12 @@ class TableSet:
 
             name = "takco-run-" + str(datetime.datetime.now().isoformat())
 
+        pipeline_assets = [Config(a, assets) for a in pipeline.get("assets", [])]
         conf = {
             "workdir": workdir or pipeline.get("workdir") or ".",
             "datadir": datadir or pipeline.get("datadir"),
             "resourcedir": resourcedir or pipeline.get("resourcedir"),
-            "assets": list(assets or []) + list(pipeline.get("assets", [])),
+            "assets": list(assets or []) + pipeline_assets,
             "cache": cache or pipeline.get("cache"),
             "executor": executor or pipeline.get("executor"),
         }

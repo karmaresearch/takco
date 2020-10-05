@@ -23,8 +23,13 @@ class Config(dict):
         context = {c.get("name", c.get("class")): Config(c) for c in (context or [])}
 
         if isinstance(val, dict):
-            if context and ("name" in val) and (val["name"] in context):
-                self.update(context[val.get("name")])
+            if context and ("resolve" in val):
+                if val["resolve"] in context:
+                    self.update(context[val.pop("resolve")])
+                else:
+                    raise Exception(
+                        f'Error resolving config: cannot find {val["resolve"]} in {context}'
+                    )
             self.update(
                 {
                     k: Config(v, context=context.values()) if isinstance(v, dict) else v
@@ -45,19 +50,19 @@ class Config(dict):
                 log.error(e)
                 raise e
         else:
-            config_parsers = [
-                lambda val: {
+            config_parsers = {
+                "json-file": lambda val: {
                     "name": Path(val).name.split(".")[0],
                     **json.load(Path(val).open()),
                 },
-                lambda val: {
+                "toml-file": lambda val: {
                     "name": Path(val).name.split(".")[0],
                     **toml.load(Path(val).open()),
                 },
-                json.loads,
-                toml.loads,
-            ]
-            for cpi, config_parse in enumerate(config_parsers):
+                "json-string": json.loads,
+                "toml-string": toml.loads,
+            }
+            for cpi, config_parse in config_parsers.items():
                 try:
                     self.__init__(config_parse(val), **context)
                     break

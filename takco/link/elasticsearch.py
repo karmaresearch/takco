@@ -7,9 +7,21 @@ warnings.filterwarnings("ignore")
 
 import typing
 import logging as log
-from .base import Searcher, SearchResult
 from pathlib import Path
 import re
+import datetime
+
+from .base import (
+    Searcher,
+    SearchResult,
+    NaryDB,
+    CellType,
+    MatchResult,
+    QualifierMatchResult,
+    WikiLookup,
+)
+from .rdf import GraphDB, URIRef, Literal
+from .types import SimpleCellType
 
 ONLY_IDF = (
     "double idf = Math.log((field.docCount+1.0)/(term.docFreq+1.0)) + 1.0;"
@@ -66,18 +78,6 @@ def make_query_body(q, context=(), classes=(), limit=1, lenient=False):
                                             if lenient
                                             else {"match_phrase": {"surface.value": q}}
                                         ),
-                                        #                                             "query": {
-                                        #                                                 "dis_max": {
-                                        #                                                     "queries": [
-                                        #                                                         s
-                                        #                                                         for p, b in parts.items()
-                                        #                                                         for s in [
-                                        #                                                             {"match_phrase":{"surface.value":{"query": q, "boost": b}}},
-                                        #                                                             {"match":{"surface.value":{"query": q, "boost": b/2}}},
-                                        #                                                         ]
-                                        #                                                     ],
-                                        #                                                 },
-                                        #                                             },
                                         "functions": [
                                             {
                                                 "field_value_factor": {
@@ -120,6 +120,7 @@ class ElasticSearcher(Searcher):
         self,
         index,
         baseuri=None,
+        propbaseuri=None,
         es_kwargs=None,
         parts=True,
         prop_uri=None,
@@ -132,9 +133,19 @@ class ElasticSearcher(Searcher):
         self.es = Elasticsearch(**es_kwargs)
         self.index = index
         self.baseuri = baseuri
+        self.propbaseuri = propbaseuri or baseuri
         self.parts = parts
         self.prop_uri = prop_uri or {}
         self.prop_baseuri = prop_baseuri or {}
+
+    def _about(self, source):
+        about = {}
+        for k, vs in list(source.items()):
+            baseuri = self.prop_baseuri.get(k, "")
+            k = self.prop_uri.get(k, k)
+            if isinstance(vs, list):
+                about[k] = [(baseuri + v if isinstance(v, str) else v) for v in vs]
+        return about
 
     def search_entities(
         self,
@@ -159,13 +170,7 @@ class ElasticSearcher(Searcher):
             if self.baseuri:
                 uri = self.baseuri + uri
             score = hit.get("_score", 0)
-
-            about = hit.get("_source", {})
-            for k, vs in list(about.items()):
-                baseuri = self.prop_baseuri.get(k, "")
-                k = self.prop_uri.get(k, k)
-                if isinstance(vs, list):
-                    about[k] = [(baseuri + v if isinstance(v, str) else v) for v in vs]
+            about = self._about(hit.get("_source", {}))
 
             sr = SearchResult(uri, about, score=score)
             results.append(sr)
@@ -465,13 +470,257 @@ class ElasticSearcher(Searcher):
         return json.dumps(es.search_entities(query, limit=limit))
 
 
+class ElasticDB(ElasticSearcher, GraphDB, NaryDB, WikiLookup):
+    INIT = {
+        "mappings": {
+            "properties": {
+                "statements": {
+                    "type": "nested",
+                    "properties": {"qualifiers": {"type": "nested"}},
+                }
+            }
+        }
+    }
+
+    def __init__(
+        self, cellType: CellType = SimpleCellType, cache=False, *args, **kwargs
+    ):
+        self.cellType = cellType
+        self.cache = {} if cache else None
+        ElasticSearcher.__init__(self, *args, **kwargs)
+        GraphDB.__init__(self)
+
+    def _hit_triples(self, hit):
+        s = self._tonode(hit.get("_source", {}).get("id"), self.baseuri)
+        for st in hit.get("_source", {}).get("statements", []):
+            p = self._tonode(st.pop("prop"), self.propbaseuri)
+            if "id" in st:
+                o = self._tonode(st.pop("id"), self.baseuri)
+                yield s, p, o
+            # todo literals
+
+    def _tonode(self, n, baseuri):
+        if baseuri and (not str(n).startswith(baseuri)):
+            return URIRef(baseuri + str(n))
+        else:
+            return URIRef(str(n))
+
+    def _fromnode(self, n, baseuri):
+        if baseuri and str(n).startswith(baseuri):
+            return str(n).replace(baseuri, "")
+        else:
+            return str(n)
+
+    def get_prop_values(self, e, p):
+        # it's faster for ES to ignore p first
+        return self.about(e).get(self._tonode(p, self.propbaseuri), [])
+
+    def _triple_body(self, pattern):
+        s, p, o = pattern
+        must = []
+        nest = []
+        if s:
+            s_id = self._fromnode(s, self.baseuri)
+            must.append({"match": {"id": s_id}})
+        if p:
+            p_id = self._fromnode(p, self.propbaseuri)
+            nest.append({"match": {"statements.prop": p_id}})
+        if o:
+            o_id = self._fromnode(o, self.baseuri)
+            nest.append({"match": {"statements.id": o_id}})
+
+        if nest:
+            must.append(
+                {"nested": {"path": "statements", "query": {"bool": {"must": nest}}}}
+            )
+        if must:
+            return {"query": {"bool": {"must": must}}}
+
+    def _nary_body(self, e1, e2):
+        return {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"match": {"id": self._fromnode(e1, self.baseuri)}},
+                        {
+                            "nested": {
+                                "path": "statements",
+                                "query": {
+                                    "match": {
+                                        "statements.id": self._fromnode(
+                                            e2, self.baseuri
+                                        )
+                                    }
+                                },
+                            }
+                        },
+                    ]
+                }
+            }
+        }
+
+    def triples(self, triplepattern, **kwargs):
+        triplepattern = tuple(triplepattern)
+        if self.cache is not None:
+            if triplepattern in self.cache:
+                return self.cache[triplepattern]
+        s, p, o = triplepattern
+        body = self._triple_body(triplepattern)
+        try:
+            result = self.es.search(index=self.index, body=body)
+        except Exception as e:
+            result = {}
+            log.error(e)
+
+        for hit in result.get("hits", {}).get("hits", []):
+            for s_, p_, o_ in self._hit_triples(hit):
+                s_ok = (not s) or (str(s) == str(s_))
+                p_ok = (not p) or (str(p) == str(p_))
+                o_ok = (not o) or (str(o) == str(o_))
+                if s_ok and p_ok and o_ok:
+                    triple = s_, p_, o_
+                    yield triple
+                    if self.cache is not None:
+                        self.cache.setdefault(triplepattern, set()).add(triple)
+
+    def count(self, triplepattern):
+        s, p, o = triplepattern
+        body = self._triple_body(triplepattern)
+        try:
+            result = self.es.count(index=self.index, body=body)
+        except Exception as e:
+            result = {}
+            log.error(e)
+        return result.get("count", 0)
+
+    def __len__(self):
+        return 0
+
+    def lookup_wikititle(self, title):
+        title = title.replace(" ", "_")
+        body = {"query": {"match_phrase": {"wiki": title}}}
+        res = self.es.search(index=self.index, body=body)
+        for hit in res.get("hits", {}).get("hits", []):
+            return self._tonode(hit.get("_source", {}).get("id"), self.baseuri)
+
+    def get_rowfacts(self, celltexts, entsets):
+        for ci1, ents1 in enumerate(entsets):
+            for ci2, ents2 in enumerate(entsets):
+                if ci1 == ci2:
+                    pass
+
+                for e1, e2 in ((e1, e2) for e1 in ents1 for e2 in ents2 if e1 != e2):
+                    body = self._nary_body(e1, e2)
+                    try:
+                        result = self.es.search(index=self.index, body=body)
+                    except Exception as e:
+                        result = {}
+                        log.error(e)
+
+                    for hit in result.get("hits", {}).get("hits", []):
+                        for st in hit.get("_source", {}).get("statements", []):
+                            if not st.get("id"):
+                                continue
+
+                            id = self._tonode(st.get("id"), self.baseuri)
+                            if str(id) != str(e2):
+                                continue
+
+                            mainprop = st.get("prop")
+                            mainprop = self._tonode(mainprop, self.propbaseuri)
+                            qmatches = []
+                            for q in st.get("qualifiers", []):
+                                p = self._tonode(q.get("prop"), self.propbaseuri)
+
+                                if "id" in q:
+                                    o = q.get("id")
+                                    for ci, es in enumerate(entsets):
+                                        if o in es:
+                                            qm = QualifierMatchResult(
+                                                ci, (None, p, o), None
+                                            )
+                                            qmatches.append(qm)
+                                else:
+                                    for dt in ["str", "decimal", "dateTime"]:
+                                        if dt not in q:
+                                            continue
+                                        o = q[dt]
+                                        if dt == "decimal":
+                                            o = float(o)
+                                        if dt == "dateTime":
+                                            o = datetime.datetime.fromisoformat(o[:-1])
+
+                                        o = Literal(o)
+                                        for ci, txt in enumerate(celltexts):
+                                            for lm in self.cellType.literal_match(
+                                                o, txt
+                                            ):
+                                                qm = QualifierMatchResult(
+                                                    ci, (None, p, o), lm
+                                                )
+                                                qmatches.append(qm)
+
+                            yield MatchResult((ci1, ci2), (e1, mainprop, e2), qmatches)
+
+    @staticmethod
+    def _wd_att(snak):
+        att = {"prop": snak.get("property")}
+        val = snak.get("datavalue", {}).get("value", {})
+        if isinstance(val, dict):
+            if "id" in val:
+                att["id"] = val.get("id")
+            if "time" in val:
+                att["dateTime"] = val.get("time")
+            if "amount" in val:
+                att["decimal"] = val.get("amount")
+        else:
+            att["str"] = val
+        return att
+
+    @classmethod
+    def db_docs(cls, file: Path):
+        import json
+
+        for line in Path(file).open():
+            line = line.strip()
+            if line[0] == "[":
+                continue
+            try:
+                if line[-1] == ",":
+                    line = line[:-1]
+
+                indoc = json.loads(line)
+                doc = {"id": indoc.get("id")}
+                statements = []
+                for claims in indoc.get("claims", {}).values():
+                    for claim in claims:
+                        st = cls._wd_att(claim.get("mainsnak", {}))
+                        qualifiers = []
+                        for qs in claim.get("qualifiers", {}).values():
+                            for q in qs:
+                                qualifiers.append(cls._wd_att(q))
+                        if qualifiers:
+                            st["qualifiers"] = qualifiers
+                        statements.append(st)
+                if statements:
+                    doc["statements"] = statements
+                print(json.dumps(doc))
+            except Exception as e:
+                raise e
+
+
 if __name__ == "__main__":
     import defopt, json, os
 
     log.getLogger().setLevel(getattr(log, os.environ.get("LOGLEVEL", "WARN")))
 
     r = defopt.run(
-        [ElasticSearcher.create, ElasticSearcher.test, ElasticSearcher.docs,],
+        [
+            ElasticSearcher.create,
+            ElasticSearcher.test,
+            ElasticSearcher.docs,
+            ElasticDB.db_docs,
+        ],
         strict_kwonly=False,
         show_types=True,
         parsers={typing.Dict: json.loads},

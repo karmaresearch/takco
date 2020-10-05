@@ -17,6 +17,7 @@ Submodules
    takco.link.external
    takco.link.integrate
    takco.link.linkers
+   takco.link.pickle
    takco.link.profile
    takco.link.rdf
    takco.link.sqlite

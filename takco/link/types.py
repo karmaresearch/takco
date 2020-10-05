@@ -123,11 +123,13 @@ class SimpleCellType(CellType):
                         except:
                             s = cls._dateparse(surface).timestamp()
                     if s:
-                        score = max(0, 1 - (abs(s - l) / max(abs(s), abs(l))))
+                        score = max(0, 1 - (abs(s - l) / (60 * 60 * 24 * 365)))
 
-                        if score > 0.95:
+                        if score:
                             yield LiteralMatchResult(score, literal, dtype)
                             return
+                #                         else:
+                #                             log.debug(f"No date match ({l},{s}) = {score}")
                 except Exception as e:
                     pass
             else:

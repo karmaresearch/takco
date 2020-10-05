@@ -18,11 +18,11 @@ usecols = "non_numeric_cols"
 lookup_config = {}
     [step.linker_config]
     class = "Salient"
-    graph = {name = "dbpedia_t2ksubset"}
+    graph = {resolve = "dbpedia_t2ksubset"}
     prop_cover = 0.2
     class_cover = 0.2
     #only_majority = "@type"
-    searcher = {name = "dbpedia_t2ksubset_extralabels"}
+    searcher = {resolve = "dbpedia_t2ksubset_extralabels"}
     
     #[step.linker_config]
     #class = "First"
@@ -42,4 +42,4 @@ step = "triples"
 
 [[step]]
 step = "novelty"
-searcher_config = {name = "dbpedia_t2ksubset"}
+searcher_config = {resolve = "dbpedia_t2ksubset"}

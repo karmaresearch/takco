@@ -21,7 +21,7 @@ lookup_config = {}
 
     [step.linker_config]
     class = "Salient"
-    searcher = {name = "wikidata-20200713-direct-skos", stringmatch = "levenshtein", datematch = "dateparser"}
+    searcher = {resolve = "wikidata-20200713-direct-skos", stringmatch = "levenshtein", datematch = "dateparser"}
     prop_cover = 0.1
     expand = true
     max_backlink = 250

@@ -21,21 +21,21 @@ load_user = false
 unpivot_heuristics = [{class = "NumSuffix"}]
 
 [[step]]
-step = "cluster"
-addcontext = ["pgTitle"]
-headerunions = true
-
-[[step]]
 step = "link"
 linker_config = {}
 lookup_cells = true
-lookup_config = {name = 'wiki-lookup'}
+lookup_config = {resolve = 'wiki-lookup'}
+
+[[step]]
+step = "cluster"
+addcontext = ["pgTitle"]
+headerunions = true
     
 [[step]]
 step = "coltypes"
     [step.typer_config]
     class = "EntityType"
-    db = {name = "wikidata-20200709-direct-prefLabel-en"}
+    db = {resolve = "wikidata-20200709-direct-prefLabel-en"}
     type_prop = "http://www.wikidata.org/prop/direct/P31"
     supertype_prop = "http://www.wikidata.org/prop/direct/P279"
     cover_threshold = 0.333
@@ -84,5 +84,5 @@ store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
 #[[step]]
 #step = "integrate"
 #pfd_threshold = 0.95
-#searcher_config = {name = "wikidata-hdt"}
-#searcher_config = {name = "wikidata2019-P31inf-wikibase-simple-qualifiers"}
+#searcher_config = {resolve = "wikidata-hdt"}
+#searcher_config = {resolve = "wikidata2019-P31inf-wikibase-simple-qualifiers"}

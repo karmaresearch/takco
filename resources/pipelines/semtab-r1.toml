@@ -22,7 +22,7 @@ lookup_config = {}
 
     [step.linker_config]
     class = "Salient"
-    searcher = {name = "wikidata-20200709-direct-prefLabel-en-db"}
+    searcher = {resolve = "wikidata-20200709-direct-prefLabel-en-db"}
     #limit = 10
     #only_majority = "@type"
     
