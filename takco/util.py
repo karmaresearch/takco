@@ -72,7 +72,7 @@ class Config(dict):
                 self["name"] = val
                 log.info(f"Skipped config: {val} (context: {context})")
 
-    def init_class(self, force=True, **context):
+    def init_class(self, **context):
         if isinstance(self, dict) and "class" in self:
             self = Config(self)
             if inspect.isclass(context.get(self["class"])):
@@ -83,7 +83,7 @@ class Config(dict):
                 )
 
                 kwargs = {
-                    k: Config.init_class(v, force=False, **context)
+                    k: Config.init_class(v, **context)
                     for k, v in self.items()
                     if (k in cls_params) or cls_has_kwargs
                 }
@@ -92,7 +92,7 @@ class Config(dict):
                     obj.name = self["name"]
                 return obj
             else:
-                return self
+                raise Exception(f'CONFIG ERROR: Cannot find class "{self["class"]}" !')
         else:
             return self
 
@@ -270,7 +270,7 @@ try:
 
         def _fold(self, key, combine, exe=None, cast=False):
             bag = self.bag.foldby(key, binop=combine).map(lambda x: x[1])
-            return DaskHashBag(bag)
+            return DaskHashBag(bag.repartition(self.bag.npartitions))
 
         def _offset(self, get_attr, set_attr, default=0):
             df = self.bag.to_dataframe(columns=[get_attr])

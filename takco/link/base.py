@@ -16,6 +16,14 @@ Literal = str
 Node = Union[URI, Literal]
 
 
+class Asset:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
 class Annotation(dict):
     """A table annotation object. """
 
@@ -72,7 +80,7 @@ class SearchResult(dict):
         return f"SearchResult('{self.uri}', {dict(self)}, score={self.score})"
 
 
-class CellType:
+class CellType(Asset):
     def coltype(
         cls, cell_ents: Iterator[Tuple[str, Container[URI]]],
     ) -> Dict[str, int]:
@@ -91,7 +99,7 @@ class CellType:
         return None
 
 
-class Searcher:
+class Searcher(Asset):
     """For searching and matching for Knowledge Base entities."""
 
     def search_entities(
@@ -107,7 +115,7 @@ class Searcher:
         return
 
 
-class WikiLookup:
+class WikiLookup(Asset):
     def lookup_wikititle(self, title: str) -> str:
         """Lookup Wikipedia title in KB
 
@@ -133,7 +141,7 @@ class WikiLookup:
         return ci_ri_ents
 
 
-class Database:
+class Database(Asset):
     """For querying a Knowledge Base."""
 
     def get_prop_values(self, e: URI, prop: URI):
@@ -160,7 +168,7 @@ class NaryDB(Database):
         return
 
 
-class Linker:
+class Linker(Asset):
     """For linking tables to a Knowledge Base
 
     Args:

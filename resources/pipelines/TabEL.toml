@@ -13,14 +13,24 @@ fname = "tables.json.gz"
 [[assets]]
 name = 'lookup'
 #resolve = 'wikidata-elastic'
-#resolve = "wiki-lookup"
-resolve = 'wiki-pickle'
+resolve = "wiki-sqlite"
+#sqlitedb = 'data/wdid_wpname.sqlitedb'
+sqlitedb = "/export/scratch1/home/kruit/data/wdid_wpname.sqlitedb"
+#fallback = {class = 'MediaWikiAPI'}
 
 [[assets]]
 name = 'linker'
-resolve = 'wikidata-elastic'
+#resolve = 'wikidata-elastic'
 #resolve = "wikidata-20200709-direct-prefLabel-en"
 #resolve = "wikidata-cluster"
+#resolve = 'wikidata-cache'
+#sqlitedb = 'data/wikidata-cache.sqlitedb'
+#fallback = {resolve = "wikidata-20200709-direct-prefLabel-en"}
+class = "RDFSearcher"
+typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
+    [assets.store]
+    class = "Trident"
+    configuration = "/export/scratch1/home/kruit/20200713-prop-skos"
 
 
 [[step]]
@@ -42,7 +52,7 @@ restructure = true
     [[step.unpivot_heuristics]]
     class = "AgentLikeHyperlink"
     lookup_config = {resolve = "lookup"}
-    kb_config = {resolve = "linker"}
+    kb_config = {resolve = "wikidata-cache"}
     bad_types = [
         'http://www.wikidata.org/entity/Q4167410',
         'http://www.wikidata.org/entity/Q13406463',
@@ -54,7 +64,7 @@ restructure = true
 
 [[step]]
 step = "link"
-lookup_cells = true
+lookup_cells = false
 lookup_config = {resolve = "lookup"}
 linker_config = {}
 
@@ -67,7 +77,7 @@ step = "coltypes"
     supertype_prop = '' #"http://www.wikidata.org/prop/direct/P279"
     cover_threshold = 0.333
 
-#[[step]]
-#step = "cluster"
-#addcontext = ["pgTitle"]
-#headerunions = true
+[[step]]
+step = "cluster"
+addcontext = ["pgTitle"]
+headerunions = true

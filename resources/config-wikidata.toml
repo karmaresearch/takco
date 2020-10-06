@@ -1,6 +1,8 @@
 datadir = "data"
 resourcedir = "resources"
 
+## Executors ##
+
 [[assets]]
 name = "dask-local"
 class = "DaskHashBag"
@@ -17,7 +19,13 @@ dashboard_address = ":8787"
 n_workers = 8
 threads_per_worker = 4
 
+[[assets]]
+name = "dask-cluster"
+class = "DaskHashBag"
+address = "tcp://192.168.62.207:8786"
 
+
+## Knowledge Bases ##
 
 [[assets]]
 name = "wikidata-20200709-direct-prefLabel-en"
@@ -49,7 +57,6 @@ typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
     class = "Trident"
     configuration = "/scratch/kruit/kb/wikidata/20200713-direct-skos/"
 
-
 [[assets]]
 name  = "wikidata-live"
 class = "RDFSearcher"
@@ -70,9 +77,9 @@ typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
 [[assets]]
 name = 'wiki-sqlite'
 class = 'SQLiteWikiLookup'
+sqlite_kwargs = {timeout = 60.0}
 sqlitedb = 'data/wdid_wpname.sqlitedb'
 baseuri = 'http://www.wikidata.org/entity/'
-#fallback = {class = 'MediaWikiAPI'}
 
 [[assets]]
 name = 'wikidata-elastic'
@@ -84,14 +91,18 @@ baseuri='http://www.wikidata.org/entity/Q'
 propbaseuri='http://www.wikidata.org/prop/direct/P'
 
 [[assets]]
+name = 'wikidata-cache'
+class = "SQLiteDB"
+sqlite_kwargs = {timeout = 60.0}
+sqlitedb = 'data/wikidata-cache.sqlitedb'
+baseuri='http://www.wikidata.org/entity/Q'
+propbaseuri='http://www.wikidata.org/prop/direct/P'
+
+[[assets]]
 name = 'wiki-pickle'
 class = 'PickleWikiLookup'
 file = 'data/wdid_wpname.pickle'
 
-[[assets]]
-name = "dask-cluster"
-class = "DaskHashBag"
-address = "tcp://192.168.62.207:8786"
 
 [[assets]]
 name  = "wikidata-cluster"

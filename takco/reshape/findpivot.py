@@ -86,6 +86,12 @@ class Pivot(NamedTuple):
 
 
 class PivotFinder:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
     def find_pivot_cells(
         self, headerrows: List[List[str]]
     ) -> Iterator[Tuple[int, int]]:
@@ -256,6 +262,15 @@ class AgentLikeHyperlink(PivotFinder):
             self.typeProperties = self.kb.typeProperties
         else:
             self.typeProperties = type_props
+
+    def __enter__(self):
+        self.lookup.__enter__()
+        self.kb.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        self.lookup.__exit__(*args)
+        self.kb.__exit__(*args)
 
     def find_pivot_cells(self, headerrows):
         from .. import link

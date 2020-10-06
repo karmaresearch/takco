@@ -110,8 +110,9 @@ def yield_pivots(headerobjs, use_heuristics: Dict[str, Dict] = None, heuristics=
 
             pivot_size = Counter()
             for hname, h in heuristics.items():
-                for level, colfrom, colto in h.find_longest_pivots(headerobj):
-                    pivot_size[(level, colfrom, colto, hname)] = colto - colfrom
+                with h:
+                    for level, colfrom, colto in h.find_longest_pivots(headerobj):
+                        pivot_size[(level, colfrom, colto, hname)] = colto - colfrom
 
             # Get longest pivot
             for (level, colfrom, colto, hname), _ in pivot_size.most_common(1):
@@ -142,7 +143,8 @@ def unpivot_tables(
     """Unpivot tables."""
 
     heuristics = {
-        hname: h.init_class(**findpivot.__dict__) for hname, h in use_heuristics.items()
+        hname: h.init_class(**findpivot.__dict__).__enter__()
+        for hname, h in use_heuristics.items()
     }
 
     for table in tables:
@@ -253,6 +255,9 @@ def unpivot_tables(
                 log.debug(f"Cannot pivot table {table.get('_id')} due to {e}")
 
         yield table
+
+    for hname, h in heuristics.items():
+        h.__exit__()
 
 
 def split_compound_columns(tables, **kwargs):

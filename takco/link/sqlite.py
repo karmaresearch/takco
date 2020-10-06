@@ -11,11 +11,83 @@ import glob
 import rdflib
 import logging as log
 import sqlite3
+import time
 
-from .base import Searcher, SearchResult, WikiLookup
+from .base import Searcher, SearchResult, WikiLookup, Database
 
 
-class SQLiteWikiLookup(WikiLookup):
+class SQLiteCache:
+    def __init__(self, files, fallback=None, sqlite_kwargs=None):
+        if not isinstance(files, list):
+            if "*" in files:
+                if any(Path(f).exists() for f in glob.glob(files)):
+                    files = glob.glob(files)
+                else:
+                    files = [files.replace("*", "index.sqlitedb")]
+            else:
+                files = [files]
+        self.files = files
+        self.cons = []
+        self.cache = None
+        self.sqlite_kwargs = sqlite_kwargs or {}
+        self.fallback = fallback
+
+    def __enter__(self):
+        for file in self.files + [":memory:"]:
+            if file != ":memory:":
+                Path(file).parent.mkdir(parents=True, exist_ok=True)
+
+            con = sqlite3.connect(file, **self.sqlite_kwargs).__enter__()
+
+            if file == ":memory:":
+                self.cache = con
+            else:
+                self.cons.append(con)
+
+            try:
+                con.execute(self._COUNTDB).fetchall()
+            except:
+                try:
+                    con.executescript(self._INITDB)
+                    con.commit()
+                except:
+                    pass
+        if self.fallback is not None:
+            self.fallback.__enter__()
+
+        return self
+
+    def _write_cache(self):
+        l = len(self.cons)
+        for ci, con in enumerate(self.cons):
+            cache = self.cache.execute(self._SELECTDB).fetchall()
+            if cache:
+                log.debug(f"Writing cache of size {len(cache)} to {con} ({ci+1}/{l})")
+
+                con.executemany(self._INSERTDB, cache)
+                con.commit()
+
+    def _addcache(self, new):
+        if self.cache is None:
+            raise Exception(f"no cache for {self}! Have you used __enter__?")
+
+        self.cache.executemany(self._INSERTDB, new)
+        self.cache.commit()
+
+    def __exit__(self, *args):
+        self._write_cache()
+
+        for con in self.cons:
+            con.__exit__(*args)
+        self.cons = []
+
+        self.cache.__exit__(*args)
+        if self.fallback is not None:
+            self.fallback.__exit__(*args)
+
+
+class SQLiteWikiLookup(SQLiteCache, WikiLookup):
+    _COUNTDB = "select count(*) from WikiLookup"
     _INITDB = """
         CREATE TABLE WikiLookup(
             title TEXT,
@@ -24,53 +96,153 @@ class SQLiteWikiLookup(WikiLookup):
         CREATE INDEX IF NOT EXISTS WikiLookup_uri ON WikiLookup(uri);
         CREATE INDEX IF NOT EXISTS WikiLookup_title ON WikiLookup(title);
     """
+    _INSERTDB = "insert or replace into WikiLookup(title, uri) values (?,?)"
+    _SELECTDB = "select title, uri from WikiLookup"
 
-    def __init__(self, sqlitedb: Path, baseuri="", fallback: WikiLookup = None):
-        self.sqlitedb = sqlitedb
-        try:
-            with sqlite3.connect(self.sqlitedb) as con:
-                con.execute("select count(*) from WikiLookup").fetchall()
-        except:
-            try:
-                with sqlite3.connect(self.sqlitedb) as con:
-                    con.executescript(self._INITDB)
-                    con.commit()
-            except:
-                pass
-
+    def __init__(
+        self,
+        sqlitedb: typing.List[Path],
+        baseuri="",
+        fallback: WikiLookup = None,
+        sqlite_kwargs=None,
+    ):
         self.baseuri = baseuri
-        self.fallback = fallback
+        SQLiteCache.__init__(
+            self, files=sqlitedb, fallback=fallback, sqlite_kwargs=sqlite_kwargs
+        )
+
+    def __enter__(self):
+        return SQLiteCache.__enter__(self)
+
+    def __exit__(self, *args):
+        return SQLiteCache.__exit__(self, *args)
 
     def lookup_wikititle(self, title: str) -> str:
         """Gets the URI for a DBpedia entity based on wikipedia title."""
         title = title.replace(" ", "_")
         try:
-            with sqlite3.connect(self.sqlitedb) as con:
+            for con in self.cons:
                 q = "select uri from WikiLookup where title=:q"
                 for uri in con.execute(q, {"q": title}).fetchone() or []:
                     if str(uri) == "-1":
                         continue
                     if not uri:
                         return
-                    log.debug(f"Found Wikititle for {title}: {uri}")
+                    #                     log.debug(f"Found Wikititle for {title}: {uri}")
                     return self.baseuri + str(uri)
 
-                if self.fallback:
-                    uri = self.fallback.lookup_wikititle(title)
-                    log.debug(f"Fallback Wikititle for {title}: {uri}")
-                    if str(uri) == "-1":
-                        uri = None
-                    q = "insert or replace into WikiLookup(title, uri) values (?,?)"
-                    con.execute(
-                        q, [title, uri.replace(self.baseuri, "") if uri else None]
-                    )
-                    con.commit()
-                    return uri
+            if self.fallback is not None:
+                uri = self.fallback.lookup_wikititle(title)
+                if str(uri) == "-1":
+                    uri = None
+
+                new = (title, uri.replace(self.baseuri, "") if uri else None)
+                self._addcache([new])
+                log.debug(f"Found Wikititle fallback for {title}: {uri}")
+                return uri
         except Exception as e:
             log.error(e)
 
 
-class SQLiteSearcher(Searcher):
+class SQLiteDB(SQLiteCache, Database):
+    _COUNTDB = "select count(*) from Triples"
+    _INITDB = """
+        CREATE TABLE Triples(
+            s TEXT,
+            p TEXT,
+            o TEXT
+        );
+        CREATE INDEX IF NOT EXISTS Triples_s ON Triples(s);
+        CREATE INDEX IF NOT EXISTS Triples_po ON Triples(p,o);
+    """
+    _INSERTDB = "insert or replace into Triples(s,p,o) values (?,?,?)"
+    _SELECTDB = "select s,p,o from Triples"
+
+    def __init__(
+        self,
+        sqlitedb: Path,
+        baseuri="",
+        propbaseuri="",
+        fallback: Database = None,
+        sqlite_kwargs=None,
+    ):
+        self.baseuri = baseuri
+        self.propbaseuri = propbaseuri or baseuri
+        SQLiteCache.__init__(
+            self, files=sqlitedb, fallback=fallback, sqlite_kwargs=sqlite_kwargs
+        )
+
+    def __enter__(self):
+        return SQLiteCache.__enter__(self)
+
+    def __exit__(self, *args):
+        return SQLiteCache.__exit__(self, *args)
+
+    def get_prop_values(self, e, p):
+        eid = str(e).replace(self.baseuri, "")
+        pid = str(p).replace(self.propbaseuri, "")
+        vals = []
+        try:
+            for con in self.cons:
+                q = "select o from Triples where s=:s"
+                for (o,) in con.execute(q, {"s": eid}).fetchall() or []:
+                    if o is None:
+                        return []
+                    o = (self.baseuri or "") + o
+                    vals.append(o)
+
+            if (not vals) and (self.fallback is not None):
+                vals = self.fallback.get_prop_values(e, p) or [None]
+                triples = [
+                    (
+                        eid,
+                        pid,
+                        str(o).replace(self.baseuri, "") if o is not None else None,
+                    )
+                    for o in vals
+                ]
+                self._addcache(triples)
+                log.debug(f"Found SQLiteDB fallback for {e}")
+
+        except Exception as e:
+            log.error(e)
+
+        return vals
+
+    def about(self, uri):
+        s = uri.replace(self.baseuri, "")
+        doc = {}
+        try:
+            for con in self.cons:
+                q = "select p,o from Triples where s=:s"
+                for (p, o) in con.execute(q, {"s": s}).fetchall() or []:
+                    p = (self.propbaseuri or "") + p
+                    o = (self.baseuri or "") + o
+                    doc.setdefault(p, []).append(o)
+
+            if (not doc) and (self.fallback is not None):
+                doc = self.fallback.about(uri) or {}
+
+                q = "insert or replace into Triples(s,p,o) values (?,?,?)"
+                triples = [
+                    (
+                        s,
+                        str(p).replace(self.propbaseuri, ""),
+                        str(o).replace(self.baseuri, ""),
+                    )
+                    for p, os in doc.items()
+                    for o in os
+                ]
+                self._addcache(triples)
+                log.debug(f"Found SQLiteDB fallback for {uri}")
+
+        except Exception as e:
+            log.error(e)
+
+        return doc
+
+
+class SQLiteSearcher(SQLiteCache, Searcher):
     _INITDB = """
         CREATE TABLE label(
             uri TEXT,
@@ -80,6 +252,9 @@ class SQLiteSearcher(Searcher):
         CREATE INDEX IF NOT EXISTS label_uri ON label(uri);
         CREATE INDEX IF NOT EXISTS label_txt ON label(txt);
     """
+    _INSERTDB = "insert or replace into label(uri, txt, score) values (?,?,?)"
+    _SELECTDB = "select uri, txt, score from label"
+
     _DEFAULT_SCORES = {
         "http://www.w3.org/2000/01/rdf-schema#label": 1,
         "http://schema.org/name": 1,
@@ -103,36 +278,25 @@ class SQLiteSearcher(Searcher):
         baseuri=None,
         fallback=None,
         refsort=True,
+        sqlite_kwargs=None,
         **_,
     ):
         self.graph = graph
-        if "*" in files:
-            if any(Path(f).exists() for f in glob.glob(files)):
-                files = glob.glob(files)
-            else:
-                files = [files.replace("*", "index.sqlitedb")]
-
-        for f in files:
-            if not Path(f).exists():
-                Path(f).parent.mkdir(parents=True, exist_ok=True)
-                with sqlite3.connect(f) as con:
-                    cur = con.cursor()
-                    cur.executescript(SQLiteSearcher._INITDB)
-                    con.commit()
-
-        self.files = files
         self.baseuri = baseuri or ""
-        self.fallback = fallback
         self.exact = exact
         self.lower = lower
         self.parts = parts
         self.refsort = refsort
 
-        sizes = []
-        for fname in self.files:
-            with sqlite3.connect(fname) as con:
-                sizes.append(con.execute("SELECT COUNT(*) FROM label").fetchone())
-        log.debug(f"Using SQlite DBs with sizes {sizes}")
+        SQLiteCache.__init__(
+            self, files=files, fallback=fallback, sqlite_kwargs=sqlite_kwargs
+        )
+
+    def __enter__(self):
+        return SQLiteCache.__enter__(self)
+
+    def __exit__(self, *args):
+        return SQLiteCache.__exit__(self, *args)
 
     def search_entities(self, query: str, context=(), limit=1, add_about=False):
         if not query:
@@ -145,45 +309,40 @@ class SQLiteSearcher(Searcher):
 
         all_results = []
         knownempty = False
-        for fname in self.files:
-            with sqlite3.connect(fname) as con:
-                cur = con.cursor()
-                params = {"query": query, "limit": limit}
-                q = self._EXACTQUERY if self.exact else self._LIKEQUERY
+        for con in self.cons:
+            cur = con.cursor()
+            params = {"query": query, "limit": limit}
+            q = self._EXACTQUERY if self.exact else self._LIKEQUERY
 
-                results = cur.execute(q, params).fetchall()
-                for uri, txt, score in results:
-                    if uri == "-1":
-                        query_knownempty = True
-                    else:
-                        if self.baseuri:
-                            uri = self.baseuri + uri
-                        if self.refsort:
-                            c = self.graph.count([None, None, rdflib.URIRef(uri)])
-                            log.debug(f"{uri} scored {score} * {1-1/(5+c):.4f}")
-                            score *= 1 - 1 / (5 + c)
-                        sr = SearchResult(uri, score=score)
-                        all_results.append(sr)
+            results = cur.execute(q, params).fetchall()
+            for uri, txt, score in results:
+                if uri == "-1":
+                    query_knownempty = True
+                else:
+                    if self.baseuri:
+                        uri = self.baseuri + uri
+                    if self.refsort:
+                        c = self.graph.count([None, None, rdflib.URIRef(uri)])
+                        log.debug(f"{uri} scored {score} * {1-1/(5+c):.4f}")
+                        score *= 1 - 1 / (5 + c)
+                    sr = SearchResult(uri, score=score)
+                    all_results.append(sr)
 
         n = len(all_results)
         log.debug(f"{self.__class__.__name__} got {n} results for {query}")
 
         q = "insert or replace into label(uri, txt, score) values (?,?,?)"
-        if self.fallback and not (knownempty or all_results):
+        if (self.fallback is not None) and not (knownempty or all_results):
             all_results += list(self.fallback.search_entities(query, limit=None))
             if all_results:
-                for fname in self.files:
-                    with sqlite3.connect(fname) as con:
-                        for sr in all_results:
-                            uri = sr.uri.replace(self.baseuri, "") if sr.uri else "-1"
-                            con.execute(q, [uri, query, sr.score])
-                        con.commit()
+                new = []
+                for sr in all_results:
+                    uri = sr.uri.replace(self.baseuri, "") if sr.uri else "-1"
+                    new.append((uri, query, sr.score))
+                self._addcache(new)
             else:
-                for fname in self.files:
-                    with sqlite3.connect(fname) as con:
-                        con.execute(q, ["-1", query, 1])
-                        con.commit()
-                log.debug(f"Added empty-result-value for '{query}' ")
+                self._addcache([("-1", query, 1)])
+                log.debug(f"Added SQLiteSearcher empty-result-value for '{query}' ")
 
         if add_about and self.graph:
             all_results = [

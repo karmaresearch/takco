@@ -46,21 +46,21 @@ def table_novelty(tables, searcher_config):
     from .. import link
     from . import novelty
 
-    searcher = searcher_config.init_class(**link.__dict__)
-    for table in tables:
+    with searcher_config.init_class(**link.__dict__) as searcher:
+        for table in tables:
 
-        triples = table.get("triples", [])
-        noveltyhashes = novelty.get_cell_noveltyhashes(triples, searcher)
+            triples = table.get("triples", [])
+            noveltyhashes = novelty.get_cell_noveltyhashes(triples, searcher)
 
-        kbnovelty = {
-            "hashes": noveltyhashes,
-            "counts": novelty.count_noveltyhashes(noveltyhashes),
-        }
+            kbnovelty = {
+                "hashes": noveltyhashes,
+                "counts": novelty.count_noveltyhashes(noveltyhashes),
+            }
 
-        kbname = searcher.name
-        table.setdefault("novelty", {}).setdefault(kbname, kbnovelty)
+            kbname = searcher.name
+            table.setdefault("novelty", {}).setdefault(kbname, kbnovelty)
 
-        yield table
+            yield table
 
 
 def table_triples(tables, include_type=True):

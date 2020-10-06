@@ -202,14 +202,6 @@ class ElasticSearcher(Searcher):
 
         return results
 
-    def about(self, uri: str):
-        id = str(uri).replace(self.baseuri, "")
-        esresults = self.es.search(
-            index=self.index, body={"query": {"match": {"id": id}}}
-        )
-        for h in esresults.get("hits", []).get("hits", []):
-            return h.get("_source", {})
-
     @classmethod
     def load_synonyms(cls, redirects_label: Path):
         import urllib.parse as ul

@@ -61,20 +61,20 @@ def wiki(
 
     from . import link
 
-    db = Config(dbconfig, assets).init_class(**link.__dict__)
+    with Config(dbconfig, assets).init_class(**link.__dict__) as db:
 
-    ent_abouturl = []
-    for e, ps in db.pages_about([None, pred, obj]).items():
-        for pageurl in ps:
-            if localurlprefix:
-                pageurl = pageurl.replace(urlprefix, localurlprefix)
-            ent_abouturl.append((e, pageurl))
-    ent_abouturl = ent_abouturl[:sample]
-    if justurls:
-        return ({"entity": e, "page": url} for e, url in ent_abouturl)
+        ent_abouturl = []
+        for e, ps in db.pages_about([None, pred, obj]).items():
+            for pageurl in ps:
+                if localurlprefix:
+                    pageurl = pageurl.replace(urlprefix, localurlprefix)
+                ent_abouturl.append((e, pageurl))
+        ent_abouturl = ent_abouturl[:sample]
+        if justurls:
+            return ({"entity": e, "page": url} for e, url in ent_abouturl)
 
-    log.info(f"Downloading {len(ent_abouturl)} pages with executor {executor}")
-    return executor(ent_abouturl, **exkw)._pipe(pages_download, encoding=encoding)
+        log.info(f"Downloading {len(ent_abouturl)} pages with executor {executor}")
+        return executor(ent_abouturl, **exkw)._pipe(pages_download, encoding=encoding)
 
 
 def warc(

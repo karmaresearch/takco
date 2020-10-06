@@ -30,6 +30,9 @@ class SimpleCellType(CellType):
     TEXT = "http://www.w3.org/2001/XMLSchema#string"
     DATETIME = "http://www.w3.org/2001/XMLSchema#dateTime"
 
+    def __init__(self, use_dateparser="dateutil"):
+        self.use_dateparser = use_dateparser
+
     def nodes(self, cellvalue, links=[]):
         if self == self.NUMBER:
             try:
@@ -60,21 +63,34 @@ class SimpleCellType(CellType):
         except:
             pass
 
-    @staticmethod
-    def _dateparse(x):
-        import dateparser
+    def _dateparse(self, x):
+        if self.use_dateparser == "dateparser":
+            import dateparser
 
-        try:
-            return dateparser.parse(x)
-        except:
-            return None
+            try:
+                return dateparser.parse(x)
+            except:
+                pass
+        elif self.use_dateparser == "dateutil":
+            import dateutil
+
+            try:
+                return dateutil.parser.parse(x)
+            except:
+                pass
+        else:
+            import datetime
+
+            try:
+                return datetime.datetime.fromisoformat(x)
+            except:
+                pass
 
     def is_literal_type(self, typ):
         return str(typ).startswith("http://www.w3.org/2001/XMLSchema#")
 
-    @classmethod
     def coltype(
-        cls, cell_ents: List[Tuple[CellValue, List[URI]]],
+        self, cell_ents: List[Tuple[CellValue, List[URI]]],
     ) -> Dict[CellType, int]:
 
         n = len(cell_ents)
@@ -83,15 +99,15 @@ class SimpleCellType(CellType):
             # This is a simple cell typing hierarchy
             # The first pattern to match gives the cell a type
             if YEAR_PATTERN.match(c):
-                counts[cls.DATETIME] += 1
-            elif cls._try_cast_float(c):
-                counts[cls.NUMBER] += 1
+                counts[self.DATETIME] += 1
+            elif self._try_cast_float(c):
+                counts[self.NUMBER] += 1
             elif l and not hasattr(l, "datatype"):
-                counts[cls.ENTITY] += 1
-            elif cls._dateparse(c):
-                counts[cls.DATETIME] += 1
+                counts[self.ENTITY] += 1
+            elif self._dateparse(c):
+                counts[self.DATETIME] += 1
             else:
-                counts[cls.TEXT] += 1
+                counts[self.TEXT] += 1
 
         # Return a type if it covers half of the cells in the column
         for t in counts:
@@ -172,12 +188,21 @@ class EntityType(SimpleCellType):
         supertype_prop=RDFSUBCLASS,
         cover_threshold=0.5,
         topn=None,
+        use_dateparser=False,
     ):
         self.db = db
         self.type_prop = str(type_prop)
         self.supertype_prop = str(supertype_prop) if supertype_prop else None
         self.cover_threshold = float(cover_threshold)
         self.topn = int(topn) if topn else None
+        self.use_dateparser = use_dateparser
+
+    def __enter__(self):
+        self.db.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        self.db.__exit__(*args)
 
     def supertypes(self, e):
         # Don't recurse, because broad types are never useful anyway
