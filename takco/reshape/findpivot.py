@@ -238,7 +238,7 @@ class AgentLikeHyperlink(PivotFinder):
     - Don't have bad properties (e.g. has associated property)
     
     Args:
-        lookup_config: :mod:`takco.util.Config` for :mod:`takco.link.base.WikiLookup`
+        lookup_config: :mod:`takco.util.Config` for :mod:`takco.link.base.Lookup`
         kb_config: :mod:`takco.util.Config` for :mod:`takco.link.rdf.GraphDB`
         bad_types: URIs for bad types
         bad_props: URIs for bad props
@@ -246,16 +246,16 @@ class AgentLikeHyperlink(PivotFinder):
 
     def __init__(
         self,
-        lookup_config=None,
-        kb_config=None,
+        lookup=None,
+        kb=None,
         bad_types=(),
         bad_props=(),
         type_props=(),
     ):
         from .. import link
 
-        self.lookup = lookup_config.init_class(**link.__dict__)
-        self.kb = kb_config.init_class(**link.__dict__)
+        self.lookup = lookup
+        self.kb = kb
         self.bad_types = [link.URIRef(b) for b in bad_types]
         self.bad_props = [link.URIRef(b) for b in bad_props]
         if hasattr(self.kb, "typeProperties"):

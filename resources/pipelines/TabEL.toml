@@ -12,26 +12,13 @@ fname = "tables.json.gz"
 
 [[assets]]
 name = 'lookup'
-#resolve = 'wikidata-elastic'
 resolve = "wiki-sqlite"
-#sqlitedb = 'data/wdid_wpname.sqlitedb'
-sqlitedb = "/export/scratch1/home/kruit/data/wdid_wpname.sqlitedb"
+sqlitedb = 'data/wdid_wpname.sqlitedb'
 #fallback = {class = 'MediaWikiAPI'}
 
 [[assets]]
 name = 'linker'
-#resolve = 'wikidata-elastic'
-#resolve = "wikidata-20200709-direct-prefLabel-en"
-#resolve = "wikidata-cluster"
-#resolve = 'wikidata-cache'
-#sqlitedb = 'data/wikidata-cache.sqlitedb'
-#fallback = {resolve = "wikidata-20200709-direct-prefLabel-en"}
-class = "RDFSearcher"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-    [assets.store]
-    class = "Trident"
-    configuration = "/export/scratch1/home/kruit/20200713-prop-skos"
-
+resolve = "wikidata-trident"
 
 [[step]]
 step = "load"
@@ -40,19 +27,19 @@ vals = "data/TabEL/10k-part-*"
 [[step]]
 step = "reshape"
 restructure = true
-    [[step.unpivot_heuristics]]
+    [[step.unpivot_configs]]
     class = "NumSuffix"
     
-    [[step.unpivot_heuristics]]
+    [[step.unpivot_configs]]
     class = "SeqPrefix"
     
-    [[step.unpivot_heuristics]]
+    [[step.unpivot_configs]]
     class = "SpannedRepeat"
     
-    [[step.unpivot_heuristics]]
+    [[step.unpivot_configs]]
     class = "AgentLikeHyperlink"
-    lookup_config = {resolve = "lookup"}
-    kb_config = {resolve = "wikidata-cache"}
+    lookup = {resolve = "lookup"}
+    kb = {resolve = "wikidata-cache"}
     bad_types = [
         'http://www.wikidata.org/entity/Q4167410',
         'http://www.wikidata.org/entity/Q13406463',
@@ -63,21 +50,26 @@ restructure = true
     ]
 
 [[step]]
+step = "cluster"
+addcontext = ["pgTitle"]
+headerunions = true
+
+[[step]]
 step = "link"
-lookup_cells = false
+lookup_cells = true
 lookup_config = {resolve = "lookup"}
 linker_config = {}
 
 [[step]]
 step = "coltypes"
     [step.typer_config]
-    class = "EntityType"
+    class = "EntityTyper"
     db = {resolve = "linker"}
     type_prop = "http://www.wikidata.org/prop/direct/P31"
     supertype_prop = '' #"http://www.wikidata.org/prop/direct/P279"
-    cover_threshold = 0.333
+    cover_threshold = 0.2
 
 [[step]]
-step = "cluster"
-addcontext = ["pgTitle"]
-headerunions = true
+step = "integrate"
+pfd_threshold = 0.95
+db_config = {resolve = "linker"}

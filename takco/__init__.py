@@ -201,7 +201,7 @@ class TableSet:
         tables: TableSet,
         workdir: Path = None,
         restructure: bool = True,
-        unpivot_heuristics: typing.List[Config] = (),
+        unpivot_configs: typing.List[Config] = (),
         centralize_pivots: bool = False,
         split_compound_columns: bool = False,
         assets: typing.List[Config] = (),
@@ -213,17 +213,26 @@ class TableSet:
 
         Args:
             workdir: Working Directory
-            heuristics: Use a subset of available heuristics
+            restructure: Whether to restructure tables heuristically
+            unpivot_configs: Use a subset of available heuristics
+            centralize_pivots: If True, find pivots on unique headers instead of tables
+            split_compound_columns: Whether to split compound columns (with NER)
 
         """
         from . import reshape
+        from . import link
 
         if restructure:
             tables = tables._pipe(reshape.restructure, desc="Restructure")
 
-        unpivot_heuristics = {
-            h.get("name", h.get("class")): Config(h, assets) for h in unpivot_heuristics
-        }
+        unpivot_heuristics = {}
+        for h in unpivot_configs:
+            name = h.get("name", h.get("class"))
+            unpivot_heuristics[name] = Config(h, assets).init_class(
+                **{**reshape.__dict__, **link.__dict__}
+            )
+            
+        
         if unpivot_heuristics:
             log.info(f"Reshaping with heuristics: {', '.join(unpivot_heuristics)}")
 
@@ -234,7 +243,7 @@ class TableSet:
                 headers = headers._pipe(reshape.get_headerobjs)
 
                 pivots = headers._pipe(
-                    reshape.yield_pivots, use_heuristics=unpivot_heuristics
+                    reshape.yield_pivots, heuristics=unpivot_heuristics
                 )
 
                 headerId_pivot = {p["headerId"]: p for p in pivots}
@@ -243,7 +252,7 @@ class TableSet:
             tables = tables._pipe(
                 reshape.unpivot_tables,
                 headerId_pivot,
-                use_heuristics=unpivot_heuristics,
+                heuristics=unpivot_heuristics,
                 desc="Unpivoting",
             )
 
@@ -269,7 +278,7 @@ class TableSet:
         workdir: Path = None,
         addcontext: typing.List[str] = (),
         headerunions: bool = True,
-        matchers: typing.List[Config] = (),
+        matcher_configs: typing.List[Config] = (),
         use_match_cache: bool = False,
         agg_func: str = "mean",
         agg_threshold: float = 0,
@@ -289,14 +298,15 @@ class TableSet:
 
             addcontext: Add these context types
             headerunions: make header unions
-            matchers: Use only these matchers
+            matcher_configs: Use only these matchers
             agg_func: Matcher aggregation function
             agg_threshold: Matcher aggregation threshold
             edge_exp : Exponent of edge weight for Louvain modularity
             agg_threshold_col: Matcher aggregation threshold (default: agg_threshold)
         """
         matcher_kwargs = {
-            m.get("name", m.get("class")): Config(m, assets) for m in matchers
+            m.get("name", m.get("class")): Config(m, assets)
+            for m in matcher_configs
         }
         agg_threshold_col = agg_threshold_col or agg_threshold
 
@@ -314,7 +324,7 @@ class TableSet:
                 cluster.table_get_headerId, cluster.combine_by_first_header
             )
 
-        if matchers:
+        if matcher_kwargs:
 
             # Collect index
             tables, index = TableSet.get_tables_index(tables)
@@ -333,7 +343,7 @@ class TableSet:
             if use_match_cache and simpath.exists():
                 sims = pd.read_csv(simpath, index_col=[0, 1, 2, 3])
             else:
-                log.info(f"Using matchers: {', '.join(matchers)}")
+                log.info(f"Using matchers: {', '.join(matcher_kwargs)}")
                 matchers = tables._pipe(
                     clustering.matcher_add_tables, workdir, matcher_kwargs
                 )
@@ -452,7 +462,7 @@ class TableSet:
 
     def coltypes(
         tables: TableSet,
-        typer_config: Config = {"class": "SimpleCellType"},
+        typer_config: Config = {"class": "SimpleTyper"},
         assets: typing.List[Config] = (),
         **_,
     ):
@@ -465,17 +475,17 @@ class TableSet:
 
         from . import link
 
-        typer_config = Config(typer_config, assets)
-        return tables._pipe(link.coltypes, typer_config=typer_config,)
+        typer = Config(typer_config, assets).init_class(**link.__dict__)
+        return tables._pipe(link.coltypes, typer=typer)
 
     def integrate(
         tables: TableSet,
-        searcher_config: Config = {
+        db_config: Config = {
             "class": "RDFSearcher",
             "statementURIprefix": "http://www.wikidata.org/entity/statement/",
             "store": {"class": "SparqlStore"},
         },
-        typer_config: Config = {"class": "SimpleCellType"},
+        typer_config: Config = {"class": "SimpleTyper"},
         pfd_threshold: float = 0.9,
         assets: typing.List[Config] = (),
         **_,
@@ -486,21 +496,26 @@ class TableSet:
 
         Args:
             tables: Tables to integrate
-            searcher_config: Searcher config
+            db_config: Nary DB config
             typer_config: Typer config
             pfd_threshold: Probabilistic Functional Dependency threshold for key column
                 prediction
         """
         from . import link
 
-        searcher_config = Config(searcher_config, assets)
-        log.info(f"Integrating with config {searcher_config}")
-        typer_config = Config(typer_config, assets)
+        db = Config(db_config, assets).init_class(**link.__dict__)
+        log.info(f"Integrating with {db}")
+        
+        typer = None
+        if typer_config:
+            typer = Config(typer_config, assets).init_class(**link.__dict__)
+            log.info(f"Typing with {typer}")
+        
 
         return tables._pipe(
             link.integrate,
-            searcher_config=searcher_config,
-            typer_config=typer_config,
+            db=db,
+            typer=typer,
             pfd_threshold=pfd_threshold,
         )
 
@@ -527,19 +542,21 @@ class TableSet:
             usecols: Columns to use
         """
         from . import link
+        
 
         if lookup_config:
-            lookup_config = Config(lookup_config, assets)
+            lookup = Config(lookup_config, assets).init_class(**link.__dict__)
+            log.debug(f"Lookup with {lookup}")
             tables = tables._pipe(
                 link.lookup_hyperlinks,
-                lookup_config=lookup_config,
+                lookup=lookup,
                 lookup_cells=lookup_cells,
             )
 
         if linker_config:
-            linker_config = Config(linker_config, assets)
-            log.info(f"Linking with config {linker_config}")
-            tables = tables._pipe(link.link, linker_config, usecols=usecols,)
+            linker = Config(linker_config, assets).init_class(**link.__dict__)
+            log.info(f"Linking with {linker}")
+            tables = tables._pipe(link.link, linker, usecols=usecols,)
 
         return tables
 
@@ -581,9 +598,10 @@ class TableSet:
         **_,
     ):
         from . import evaluate
+        from . import link
 
-        searcher_config = Config(searcher_config, assets)
-        return tables._pipe(evaluate.table_novelty, searcher_config)
+        searcher = Config(searcher_config, assets).init_class(**link.__dict__)
+        return tables._pipe(evaluate.table_novelty, searcher)
 
     def triples(tables: TableSet, include_type: bool = True):
         """Make triples for predictions"""

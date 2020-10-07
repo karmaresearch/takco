@@ -10,17 +10,17 @@ from pathlib import Path
 import logging as log
 import pickle
 
-from .base import WikiLookup
+from .base import Lookup
 
 
-class PickleWikiLookup(WikiLookup):
-    def __init__(self, file: Path, baseuri="", fallback: WikiLookup = None):
+class PickleLookup(Lookup):
+    def __init__(self, file: Path, baseuri="", fallback: Lookup = None):
         self.file = file
         self.baseuri = baseuri
         self.index = pickle.load(open(self.file, "rb"))
         self.fallback = fallback
 
-    def lookup_wikititle(self, title: str) -> str:
+    def lookup_title(self, title: str) -> str:
         """Gets the URI for a DBpedia entity based on wikipedia title."""
         title = title.replace(" ", "_").lower()
         try:
@@ -30,7 +30,7 @@ class PickleWikiLookup(WikiLookup):
                     return self.baseuri + str(uri)
             else:
                 if self.fallback:
-                    uri = sself.fallback.lookup_wikititle(title)
+                    uri = sself.fallback.lookup_title(title)
                     log.debug(f"Fallback Wikititle for {title}: {uri}")
                     if str(uri) == "-1":
                         uri = None
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     log.getLogger().setLevel(getattr(log, os.environ.get("LOGLEVEL", "WARN")))
 
     r = defopt.run(
-        [PickleWikiLookup.create],
+        [PickleLookup.create],
         strict_kwonly=False,
         show_types=True,
         parsers={typing.Dict: json.loads},

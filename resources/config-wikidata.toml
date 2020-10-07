@@ -28,34 +28,13 @@ address = "tcp://192.168.62.207:8786"
 ## Knowledge Bases ##
 
 [[assets]]
-name = "wikidata-20200709-direct-prefLabel-en"
-class = "RDFSearcher"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-    [assets.store]
-    class = "Trident"
-    configuration = "../kb/wikidata/wikidata-20200709-direct-prefLabel-en-db/"
-
-[[assets]]
-name = "wikidata2019-P31inf-wikibase-simple-qualifiers"
-class = "RDFSearcher"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-qualifierIDProperty = "http://www.wikidata.org/prop/direct/id"
-#wikiProp = "http://www.wikidata.org/entity/wikipediaId"
-    [assets.store]
-    class = "Trident"
-    configuration = "../kb/wikidata/wikidata2019-P31inf-wikibase-simple-qualifiers/"
-    ent_baseuri = "http://www.wikidata.org/entity/"
-    prop_baseuri = "http://www.wikidata.org/prop/direct/"
-    ns = {skos = "http://www.w3.org/2004/02/skos/core#"}
-    
-[[assets]]
-name = "wikidata-20200713-direct-skos"
+name = "wikidata-trident"
 class = "RDFSearcher"
 encoding = "wikidata"
 typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
     [assets.store]
     class = "Trident"
-    configuration = "/scratch/kruit/kb/wikidata/20200713-direct-skos/"
+    configuration = "data/wikidata.tridentdb"
 
 [[assets]]
 name  = "wikidata-live"
@@ -74,12 +53,13 @@ typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
     class = "HDTStore"
     path = "/var/scratch/bbkruit/wikidata20200309.hdt"
     
+
 [[assets]]
 name = 'wiki-sqlite'
-class = 'SQLiteWikiLookup'
+class = 'SQLiteLookup'
 sqlite_kwargs = {timeout = 60.0}
 sqlitedb = 'data/wdid_wpname.sqlitedb'
-baseuri = 'http://www.wikidata.org/entity/'
+baseuri = 'http://www.wikidata.org/entity/Q'
 
 [[assets]]
 name = 'wikidata-elastic'
@@ -97,17 +77,3 @@ sqlite_kwargs = {timeout = 60.0}
 sqlitedb = 'data/wikidata-cache.sqlitedb'
 baseuri='http://www.wikidata.org/entity/Q'
 propbaseuri='http://www.wikidata.org/prop/direct/P'
-
-[[assets]]
-name = 'wiki-pickle'
-class = 'PickleWikiLookup'
-file = 'data/wdid_wpname.pickle'
-
-
-[[assets]]
-name  = "wikidata-cluster"
-class = "RDFSearcher"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
-    [assets.store]
-    class = "SparqlStore"
-    configuration = "http://192.168.62.207:8811/sparql"

@@ -42,11 +42,10 @@ def table_score(tables, table_annot, keycol_only=False):
         yield table
 
 
-def table_novelty(tables, searcher_config):
-    from .. import link
+def table_novelty(tables, searcher):
     from . import novelty
 
-    with searcher_config.init_class(**link.__dict__) as searcher:
+    with searcher:
         for table in tables:
 
             triples = table.get("triples", [])

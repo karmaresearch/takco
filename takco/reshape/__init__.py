@@ -2,7 +2,7 @@ import logging as log
 
 from .headers import table_get_headerId, get_headerId, get_headerobjs
 from .compound import SpacyCompoundSplitter
-from . import findpivot
+from .findpivot import *
 from .clean import (
     init_captions,
     remove_empty_columns,
@@ -94,13 +94,8 @@ def unpivot(
     return [list(row) for row in head], [list(row) for row in body]
 
 
-def yield_pivots(headerobjs, use_heuristics: Dict[str, Dict] = None, heuristics=None):
+def yield_pivots(headerobjs: Iterator[Dict], heuristics: Dict[str, PivotFinder]):
     """Detect headers that should be unpivoted using heuristics."""
-    if not heuristics:
-        heuristics = {
-            hname: h.init_class(**findpivot.__dict__)
-            for hname, h in use_heuristics.items()
-        }
 
     for headerobj in headerobjs:
 
@@ -137,15 +132,10 @@ def yield_pivots(headerobjs, use_heuristics: Dict[str, Dict] = None, heuristics=
 
 def unpivot_tables(
     tables: Iterator[Dict],
-    headerId_pivot: Dict[str, Dict] = None,
-    use_heuristics: Dict[str, Dict] = (),
+    headerId_pivot: Dict[str, Dict],
+    heuristics: Dict[str, PivotFinder],
 ):
     """Unpivot tables."""
-
-    heuristics = {
-        hname: h.init_class(**findpivot.__dict__).__enter__()
-        for hname, h in use_heuristics.items()
-    }
 
     for table in tables:
 
@@ -160,7 +150,7 @@ def unpivot_tables(
             pivot = headerId_pivot.get(table["headerId"])
         else:
             headers = [table.get("tableHeaders", [])]
-            for p in yield_pivots(headers, heuristics=heuristics):
+            for p in yield_pivots(headerobjs=headers, heuristics=heuristics):
                 pivot = p
 
         if pivot and headerText:
@@ -255,9 +245,6 @@ def unpivot_tables(
                 log.debug(f"Cannot pivot table {table.get('_id')} due to {e}")
 
         yield table
-
-    for hname, h in heuristics.items():
-        h.__exit__()
 
 
 def split_compound_columns(tables, **kwargs):

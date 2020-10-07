@@ -52,22 +52,6 @@ class LiteralMatchResult(NamedTuple):
     datatype: Optional[Node]  #:
 
 
-class QualifierMatchResult(NamedTuple):
-    """The result of matching a qualified statement in the Knowledge Base"""
-
-    column: int  #: Table column where this match was found
-    triple: Triple  #: Statement qualifier triple
-    match: Optional[LiteralMatchResult]  #: Match metadata
-
-
-class MatchResult(NamedTuple):
-    """The result of matching a Knowledge Base statement"""
-
-    columns: Tuple[int, int]  #: Pair of (head, tail) table columns
-    triple: Triple  #: Statement triple
-    qualifiers: Container[QualifierMatchResult]  #: Statement qualifier matches
-
-
 class SearchResult(dict):
     def __init__(self, uri: URI, about: Dict[URI, List[URI]] = None, score: int = 1):
         """An entity search result with optional score"""
@@ -80,7 +64,7 @@ class SearchResult(dict):
         return f"SearchResult('{self.uri}', {dict(self)}, score={self.score})"
 
 
-class CellType(Asset):
+class Typer(Asset):
     def coltype(
         cls, cell_ents: Iterator[Tuple[str, Container[URI]]],
     ) -> Dict[str, int]:
@@ -115,9 +99,9 @@ class Searcher(Asset):
         return
 
 
-class WikiLookup(Asset):
-    def lookup_wikititle(self, title: str) -> str:
-        """Lookup Wikipedia title in KB
+class Lookup(Asset):
+    def lookup_title(self, title: str) -> str:
+        """Lookup (Wikipedia) page title in KB, return URI
 
         Args:
             title: The title to look up
@@ -134,7 +118,7 @@ class WikiLookup(Asset):
 
         ci_ri_ents = {}
         for href, rowcols in href_rowcols.items():
-            uri = self.lookup_wikititle(href, **kwargs)
+            uri = self.lookup_title(href, **kwargs)
             if uri:
                 for ri, ci in rowcols:
                     ci_ri_ents.setdefault(str(ci), {}).setdefault(str(ri), {})[uri] = 1
@@ -157,15 +141,6 @@ class Database(Asset):
         for (_, p, o) in self.triples((e, None, None)):
             about.setdefault(p, []).append(o)
         return about
-
-
-class NaryDB(Database):
-    """For querying a KB with qualifiers."""
-
-    def get_rowfacts(
-        self, celltexts: List[str], entsets: List[Container[str]]
-    ) -> Iterator[MatchResult]:
-        return
 
 
 class Linker(Asset):

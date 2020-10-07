@@ -1,4 +1,4 @@
-__all__ = ["SimpleCellType", "EntityType"]
+__all__ = ["SimpleTyper", "EntityTyper"]
 
 import logging as log
 import time
@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple
 
 from rdflib import URIRef, Literal
 
-from .base import CellType, LiteralMatchResult, Database
+from .base import Typer, LiteralMatchResult, Database
 
 URI = str
 CellValue = str
@@ -24,7 +24,7 @@ RDFTYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFSUBCLASS = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 
 
-class SimpleCellType(CellType):
+class SimpleTyper(Typer):
     NUMBER = "http://www.w3.org/2001/XMLSchema#decimal"
     ENTITY = "http://www.w3.org/2002/07/owl#Thing"
     TEXT = "http://www.w3.org/2001/XMLSchema#string"
@@ -91,7 +91,7 @@ class SimpleCellType(CellType):
 
     def coltype(
         self, cell_ents: List[Tuple[CellValue, List[URI]]],
-    ) -> Dict[CellType, int]:
+    ) -> Dict[Typer, int]:
 
         n = len(cell_ents)
         counts = collections.Counter()
@@ -180,7 +180,7 @@ class SimpleCellType(CellType):
             yield LiteralMatchResult(score, literal, dtype)
 
 
-class EntityType(SimpleCellType):
+class EntityTyper(SimpleTyper):
     def __init__(
         self,
         db: Database,
@@ -214,7 +214,7 @@ class EntityType(SimpleCellType):
 
     def coltype(self, cell_ents):
         types = super().coltype(cell_ents)
-        if SimpleCellType.ENTITY in types:
+        if SimpleTyper.ENTITY in types:
             n = sum(1 for _, ents in cell_ents if ents)
             counts = collections.Counter()
             for c, es in cell_ents:

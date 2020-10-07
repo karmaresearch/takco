@@ -9,16 +9,14 @@ import re
 from .base import (
     Searcher,
     Database,
-    NaryDB,
     SearchResult,
     Triple,
     Node,
-    QualifierMatchResult,
-    MatchResult,
     LiteralMatchResult,
-    CellType,
+    Typer,
 )
-from .types import SimpleCellType
+from .types import SimpleTyper
+from .integrate import NaryDB, NaryMatchResult, QualifierMatchResult
 
 
 def encode_wikidata(query):
@@ -33,6 +31,19 @@ def encode_wikidata(query):
 class GraphDB(Database, rdflib.Graph):
     def __init__(self, *args, **kwargs):
         rdflib.Graph.__init__(self, *args, **kwargs)
+        
+    def __reduce__(self):
+        return (self.__class__, (self.store, self.identifier), self.__dict__)
+        
+    def __enter__(self):
+        try:
+            self.open(None)
+        except Exception as e:
+            log.debug(e)
+        return self
+    
+    def __exit__(self, *args):
+        self.close()
 
     def triples(self, triplepattern, **kwargs):
         return rdflib.Graph.triples(self, triplepattern, **kwargs)
@@ -89,7 +100,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
         language="en",
         stringmatch="jaccard",
         refsort=True,
-        cellType: CellType = SimpleCellType,
+        cellType: Typer = SimpleTyper,
         encoding=None,
         labelProperties=[],
         typeProperties=[],
@@ -117,9 +128,9 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
             self.qualifierIDProperty = URIRef(qualifierIDProperty)
 
         self.statementURIprefix = statementURIprefix
-
+        
         GraphDB.__init__(self, store=store)
-
+    
     def search_entities(self, query: str, context=(), limit=1, add_about=False):
         if self.encoding and (query != query.encode("ascii", errors="ignore").decode()):
             if self.encoding == "wikidata":
@@ -186,7 +197,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
 
     def get_rowfacts(
         self, celltexts: List[str], entsets: List[Collection[str]]
-    ) -> Iterator[MatchResult]:
+    ) -> Iterator[NaryMatchResult]:
         """Get matched (n-ary) facts for a row
 
         Args:
@@ -203,7 +214,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
                     # Find simple matches
                     match = False
                     for s, p, o in self.triples([e1, None, e2]):
-                        yield MatchResult((ci1, ci2), (e1, p, e2), [])
+                        yield NaryMatchResult((ci1, ci2), (e1, p, e2), [])
                         match = True
                     if not match:
                         continue
@@ -232,4 +243,4 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
                                             )
                                             qmatches.append(qm)
 
-                            yield MatchResult((ci1, ci2), (e1, mainprop, e2), qmatches)
+                            yield NaryMatchResult((ci1, ci2), (e1, mainprop, e2), qmatches)

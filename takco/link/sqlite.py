@@ -13,7 +13,7 @@ import logging as log
 import sqlite3
 import time
 
-from .base import Searcher, SearchResult, WikiLookup, Database
+from .base import Searcher, SearchResult, Lookup, Database
 
 
 class SQLiteCache:
@@ -45,7 +45,7 @@ class SQLiteCache:
                 self.cons.append(con)
 
             try:
-                con.execute(self._COUNTDB).fetchall()
+                con.execute(f"select count(*) from {self._DBNAME}").fetchall()
             except:
                 try:
                     con.executescript(self._INITDB)
@@ -57,15 +57,20 @@ class SQLiteCache:
 
         return self
 
-    def _write_cache(self):
+    def _write_cache(self, end=False):
         l = len(self.cons)
+        cache = self.cache.execute(self._SELECTDB).fetchall()
         for ci, con in enumerate(self.cons):
-            cache = self.cache.execute(self._SELECTDB).fetchall()
             if cache:
                 log.debug(f"Writing cache of size {len(cache)} to {con} ({ci+1}/{l})")
 
                 con.executemany(self._INSERTDB, cache)
                 con.commit()
+        
+        if not end:
+            self.cache.execute(f"DROP TABLE {self._DBNAME}")
+            self.cache.executescript(self._INITDB)
+            self.cache.commit()
 
     def _addcache(self, new):
         if self.cache is None:
@@ -75,7 +80,7 @@ class SQLiteCache:
         self.cache.commit()
 
     def __exit__(self, *args):
-        self._write_cache()
+        self._write_cache(end=True)
 
         for con in self.cons:
             con.__exit__(*args)
@@ -86,27 +91,29 @@ class SQLiteCache:
             self.fallback.__exit__(*args)
 
 
-class SQLiteWikiLookup(SQLiteCache, WikiLookup):
-    _COUNTDB = "select count(*) from WikiLookup"
+class SQLiteLookup(SQLiteCache, Lookup):
+    _DBNAME = "Lookup"
     _INITDB = """
-        CREATE TABLE WikiLookup(
+        CREATE TABLE Lookup(
             title TEXT,
             uri TEXT
         );
-        CREATE INDEX IF NOT EXISTS WikiLookup_uri ON WikiLookup(uri);
-        CREATE INDEX IF NOT EXISTS WikiLookup_title ON WikiLookup(title);
+        CREATE INDEX IF NOT EXISTS Lookup_uri ON Lookup(uri);
+        CREATE INDEX IF NOT EXISTS Lookup_title ON Lookup(title);
     """
-    _INSERTDB = "insert or replace into WikiLookup(title, uri) values (?,?)"
-    _SELECTDB = "select title, uri from WikiLookup"
+    _INSERTDB = "insert or replace into Lookup(title, uri) values (?,?)"
+    _SELECTDB = "select title, uri from Lookup"
 
     def __init__(
         self,
         sqlitedb: typing.List[Path],
         baseuri="",
-        fallback: WikiLookup = None,
+        cache_often=False,
+        fallback: Lookup = None,
         sqlite_kwargs=None,
     ):
         self.baseuri = baseuri
+        self.cache_often = cache_often
         SQLiteCache.__init__(
             self, files=sqlitedb, fallback=fallback, sqlite_kwargs=sqlite_kwargs
         )
@@ -116,27 +123,30 @@ class SQLiteWikiLookup(SQLiteCache, WikiLookup):
 
     def __exit__(self, *args):
         return SQLiteCache.__exit__(self, *args)
-
-    def lookup_wikititle(self, title: str) -> str:
+    
+    def flush(self):
+        if self.cache_often:
+            self._write_cache()
+    
+    def lookup_title(self, title: str) -> str:
+        t = title.replace("_", " ").lower()
         """Gets the URI for a DBpedia entity based on wikipedia title."""
-        title = title.replace(" ", "_")
         try:
             for con in self.cons:
-                q = "select uri from WikiLookup where title=:q"
-                for uri in con.execute(q, {"q": title}).fetchone() or []:
+                q = "select uri from Lookup where title=:t"
+                for uri in con.execute(q, {"t": t}).fetchone() or []:
                     if str(uri) == "-1":
                         continue
                     if not uri:
                         return
-                    #                     log.debug(f"Found Wikititle for {title}: {uri}")
                     return self.baseuri + str(uri)
 
             if self.fallback is not None:
-                uri = self.fallback.lookup_wikititle(title)
+                uri = self.fallback.lookup_title(title)
                 if str(uri) == "-1":
                     uri = None
 
-                new = (title, uri.replace(self.baseuri, "") if uri else None)
+                new = (t, uri.replace(self.baseuri, "") if uri else None)
                 self._addcache([new])
                 log.debug(f"Found Wikititle fallback for {title}: {uri}")
                 return uri
@@ -145,7 +155,7 @@ class SQLiteWikiLookup(SQLiteCache, WikiLookup):
 
 
 class SQLiteDB(SQLiteCache, Database):
-    _COUNTDB = "select count(*) from Triples"
+    _DBNAME = "Triples"
     _INITDB = """
         CREATE TABLE Triples(
             s TEXT,
@@ -243,6 +253,7 @@ class SQLiteDB(SQLiteCache, Database):
 
 
 class SQLiteSearcher(SQLiteCache, Searcher):
+    _DBNAME = "label"
     _INITDB = """
         CREATE TABLE label(
             uri TEXT,

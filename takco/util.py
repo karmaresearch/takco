@@ -5,8 +5,9 @@ import copy
 import typing
 import functools
 
+T = typing.TypeVar('T')
 
-class Config(dict):
+class Config(dict, typing.Generic[T]):
     """A wrapper for json or toml configuration hashes.
     Reads a file or a string.
     Resolves ``{name=x}`` hashes from kwargs.

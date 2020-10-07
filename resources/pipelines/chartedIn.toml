@@ -3,6 +3,10 @@ datadir = "output/chartedIn/"
 workdir = "output/chartedIn/"
 cache = true
 
+[[assets]]
+name = 'linker'
+resolve = "wikidata-trident"
+
 [[step]]
 step = "extract"
     [step.source.warc]
@@ -21,21 +25,22 @@ load_user = false
 unpivot_heuristics = [{class = "NumSuffix"}]
 
 [[step]]
-step = "link"
-linker_config = {}
-lookup_cells = true
-lookup_config = {resolve = 'wiki-lookup'}
-
-[[step]]
 step = "cluster"
 addcontext = ["pgTitle"]
 headerunions = true
+
+[[step]]
+step = "link"
+linker_config = {}
+lookup_cells = true
+lookup_config = {resolve = 'wiki-sqlite'}
+
     
 [[step]]
 step = "coltypes"
     [step.typer_config]
-    class = "EntityType"
-    db = {resolve = "wikidata-20200709-direct-prefLabel-en"}
+    class = "EntityTyper"
+    db = {resolve = "linker"}
     type_prop = "http://www.wikidata.org/prop/direct/P31"
     supertype_prop = "http://www.wikidata.org/prop/direct/P279"
     cover_threshold = 0.333
@@ -51,19 +56,19 @@ edge_exp = 3
 agg_threshold_col = 0.5
 store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
     
-    [[step.matchers]]
+    [[step.matcher_configs]]
     name  = 'headjacc'
     class = 'CellJaccMatcher'
     source = 'head'
     tokenize = true
     
-    [[step.matchers]]
+    [[step.matcher_configs]]
     name  = 'headvec'
     class = 'EmbeddingMatcher'
     source = 'head'
     wordvec_fname = "./data/glove.6B/glove.6B.50d.txt"
 
-    [[step.matchers]]
+    [[step.matcher_configs]]
     name  = 'bodylsh'
     class = 'LSHMatcher'
     source = 'body'
@@ -71,18 +76,17 @@ store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
     port = 63790
     threshold = 0.5
     
-    [[step.matchers]]
+    [[step.matcher_configs]]
     name  = 'bodyvec'
     class = 'EmbeddingMatcher'
     source = 'body'
     wordvec_fname = "./data/glove.6B/glove.6B.50d.txt"
     
-    [[step.matchers]]
+    [[step.matcher_configs]]
     name  = 'bodytype'
     class = 'TypeCosMatcher'
 
-#[[step]]
-#step = "integrate"
-#pfd_threshold = 0.95
-#searcher_config = {resolve = "wikidata-hdt"}
-#searcher_config = {resolve = "wikidata2019-P31inf-wikibase-simple-qualifiers"}
+[[step]]
+step = "integrate"
+pfd_threshold = 0.95
+db_config = {resolve = "linker"}

@@ -1,13 +1,34 @@
-from typing import List, Dict
+from typing import List, Tuple, Dict, Container, Iterator, NamedTuple, Optional
 import logging as log
 from collections import defaultdict, Counter
 
 from . import types
+from .base import Database, LiteralMatchResult, Triple
 
 
-class NaryIntegrator:
-    def __init__(self, db):
-        self.db = db
+class QualifierMatchResult(NamedTuple):
+    """The result of matching a qualified statement in the Knowledge Base"""
+
+    column: int  #: Table column where this match was found
+    triple: Triple  #: Statement qualifier triple
+    match: Optional[LiteralMatchResult]  #: Match metadata
+
+
+class NaryMatchResult(NamedTuple):
+    """The result of matching a Knowledge Base statement"""
+
+    columns: Tuple[int, int]  #: Pair of (head, tail) table columns
+    triple: Triple  #: Statement triple
+    qualifiers: Container[QualifierMatchResult]  #: Statement qualifier matches
+
+        
+class NaryDB(Database):
+    """For querying a KB with qualifiers."""
+        
+    def get_rowfacts(
+        self, celltexts: List[str], entsets: List[Container[str]]
+    ) -> Iterator[NaryMatchResult]:
+        return
 
     def integrate(self, rows, row_entsets):
         """Find n-ary matches"""
@@ -17,7 +38,7 @@ class NaryIntegrator:
         colmatch_qcolprop_count = defaultdict(Counter)
         for celltexts, entsets in zip(rows, row_entsets):
 
-            for (c1, c2), (s, p, o), qs in self.db.get_rowfacts(celltexts, entsets):
+            for (c1, c2), (s, p, o), qs in self.get_rowfacts(celltexts, entsets):
                 if c1 == c2:
                     continue
                 colmatch_count[(c1, c2, p)] += 1

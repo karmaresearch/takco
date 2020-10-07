@@ -10,7 +10,7 @@ import typing
 from decimal import Decimal
 from datetime import datetime
 
-from .base import Searcher, SearchResult, Database, WikiLookup
+from .base import Searcher, SearchResult, Database, Lookup
 
 import logging as log
 import typing
@@ -108,7 +108,7 @@ class SparqlStore(Store):
         return [t for t in self._triples(triplepattern)]
 
 
-class MediaWikiAPI(Searcher, WikiLookup):
+class MediaWikiAPI(Searcher, Lookup):
     """A `MediaWiki API <https://www.mediawiki.org/wiki/API:Main_page>`_ endpoint.
     By default, uses the `Wikidata API <https://www.wikidata.org/w/api.php>`_.
 
@@ -143,7 +143,7 @@ class MediaWikiAPI(Searcher, WikiLookup):
         self.log.debug(f"Requesting {self.__class__.__name__} with {params}")
         return self.get_json(self.url, params=params)
 
-    def lookup_wikititle(
+    def lookup_title(
         self, title: str, site: str = "enwiki", normalize: bool = True,
     ):
         """Gets the URI of a Wikibase entity based on wikipedia title.
@@ -152,7 +152,7 @@ class MediaWikiAPI(Searcher, WikiLookup):
             title: The title of the corresponding page
 
 
-        >>> MediaWikiAPI().lookup_wikititle('amsterdam')
+        >>> MediaWikiAPI().lookup_title('amsterdam')
         'http://www.wikidata.org/entity/Q727'
 
         """
@@ -281,7 +281,7 @@ class MediaWikiAPI(Searcher, WikiLookup):
             log.debug(f"No {self.__class__.__name__} results for {search}")
 
 
-class DBpediaLookup(Searcher, WikiLookup):
+class DBpediaLookup(Searcher, Lookup):
     """ A `DBpedia Lookup <https://wiki.dbpedia.org/lookup>`_ instance."""
 
     def __init__(
@@ -300,7 +300,7 @@ class DBpediaLookup(Searcher, WikiLookup):
         self.log.debug(f"Requesting {self.__class__.__name__} with {params}")
         return self.get_json(self.url, params=params)
 
-    def lookup_wikititle(self, title: str) -> str:
+    def lookup_title(self, title: str) -> str:
         """Gets the URI for a DBpedia entity based on wikipedia title."""
         title = title.replace(" ", "_")
         redir = get_redirects(f"http://dbpedia.org/page/{title}")

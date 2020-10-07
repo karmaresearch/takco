@@ -14,14 +14,12 @@ import datetime
 from .base import (
     Searcher,
     SearchResult,
-    NaryDB,
-    CellType,
-    MatchResult,
-    QualifierMatchResult,
-    WikiLookup,
+    Typer,
+    Lookup,
 )
 from .rdf import GraphDB, URIRef, Literal
-from .types import SimpleCellType
+from .types import SimpleTyper
+from .integrate import NaryDB, NaryMatchResult, QualifierMatchResult
 
 ONLY_IDF = (
     "double idf = Math.log((field.docCount+1.0)/(term.docFreq+1.0)) + 1.0;"
@@ -462,7 +460,7 @@ class ElasticSearcher(Searcher):
         return json.dumps(es.search_entities(query, limit=limit))
 
 
-class ElasticDB(ElasticSearcher, GraphDB, NaryDB, WikiLookup):
+class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
     INIT = {
         "mappings": {
             "properties": {
@@ -475,7 +473,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, WikiLookup):
     }
 
     def __init__(
-        self, cellType: CellType = SimpleCellType, cache=False, *args, **kwargs
+        self, cellType: Typer = SimpleTyper, cache=False, *args, **kwargs
     ):
         self.cellType = cellType
         self.cache = {} if cache else None
@@ -588,7 +586,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, WikiLookup):
     def __len__(self):
         return 0
 
-    def lookup_wikititle(self, title):
+    def lookup_title(self, title):
         title = title.replace(" ", "_")
         body = {"query": {"match_phrase": {"wiki": title}}}
         res = self.es.search(index=self.index, body=body)
@@ -652,7 +650,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, WikiLookup):
                                                 )
                                                 qmatches.append(qm)
 
-                            yield MatchResult((ci1, ci2), (e1, mainprop, e2), qmatches)
+                            yield NaryMatchResult((ci1, ci2), (e1, mainprop, e2), qmatches)
 
     @staticmethod
     def _wd_att(snak):

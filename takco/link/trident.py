@@ -3,7 +3,6 @@ import logging as log
 
 from rdflib.plugins.parsers.ntriples import NTriplesParser
 
-
 class TridentNode(rdflib.term.Node):
     def __init__(self, id, db):
         self.id = id
@@ -48,7 +47,7 @@ class TridentNode(rdflib.term.Node):
 
 
 class Trident(rdflib.store.Store):
-    def __init__(self, ent_baseuri=None, prop_baseuri=None, ns=None, *args, **kwargs):
+    def __init__(self, configuration=None, ent_baseuri=None, prop_baseuri=None, ns=None, *args, **kwargs):
         """Trident store. Required kwarg: ``configuration``.
         
         Args:
@@ -57,11 +56,26 @@ class Trident(rdflib.store.Store):
             prop_baseuri: Base URI for properties
             ns: Namespace dict
         """
+        self.configuration = configuration
         self.db = None
         self.ent_baseuri = ent_baseuri
         self.prop_baseuri = prop_baseuri
         self.ns = ns or {}
-        super().__init__(*args, **kwargs)
+        super(rdflib.store.Store, self).__init__(*args, **kwargs)
+        
+    def open(self, configuration: str, create=False):
+        if not configuration:
+            configuration = self.configuration
+            
+        import trident
+        
+        self.db = trident.Db(configuration)
+        log.debug(f"Using Trident DB with {len(self)} triples")
+        return rdflib.store.VALID_STORE
+    
+    def close(self, *args, **kwargs):
+        self.db = None
+    
 
     def node(self, i, baseuri=None, ns=None):
         return TridentNode(i, self.db).resolve(baseuri=baseuri, ns=ns)
@@ -81,12 +95,7 @@ class Trident(rdflib.store.Store):
             else:
                 return self.db.lookup_id(n3 + " ")
 
-    def open(self, configuration: str):
-        import trident
-
-        self.db = trident.Db(configuration)
-        log.debug(f"Using Trident DB with {len(self)} triples")
-        return rdflib.store.VALID_STORE
+    
 
     def count(self, triple):
         s, p, o = triple
@@ -168,3 +177,6 @@ class Trident(rdflib.store.Store):
 
     def __len__(self, context=None):
         return self.db.n_triples()
+
+    
+rdflib.plugin.register('trident', rdflib.store.Store, 'takco.link.trident', 'Trident')
