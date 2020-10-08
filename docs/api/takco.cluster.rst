@@ -20,6 +20,6 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
-   takco.cluster.clustering
+   takco.cluster.cluster
    takco.cluster.context
    takco.cluster.headerunions

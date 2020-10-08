@@ -20,25 +20,25 @@ class CellJaccMatcher(Matcher):
     ):
         self.name = name or self.__class__.__name__
         mdir = Path(fdir) / Path(self.name)
-#         if create:
-#             shutil.rmtree(mdir, ignore_errors=True)
-#         mdir.mkdir(parents=True, exist_ok=True)
+        # if create:
+        #     shutil.rmtree(mdir, ignore_errors=True)
+        # mdir.mkdir(parents=True, exist_ok=True)
 
         self.source = source
         self.tokenize = tokenize
-#         self.config(Path(mdir) / Path("config.toml"))
+        # self.config(Path(mdir) / Path("config.toml"))
 
         self.cell_tables_fname = Path(mdir) / Path("cell_tables.pickle")
         if self.cell_tables_fname.exists():
             pass
-#             self.cell_tables = pickle.load(self.cell_tables_fname.open("rb"))
+            # self.cell_tables = pickle.load(self.cell_tables_fname.open("rb"))
         else:
             self.cell_tables = {}
 
         self.table_cells_fname = Path(mdir) / Path("table_cells.pickle")
         if self.table_cells_fname.exists():
             pass
-#             self.table_cells = pickle.load(self.table_cells_fname.open("rb"))
+            # self.table_cells = pickle.load(self.table_cells_fname.open("rb"))
         else:
             self.table_cells = {}
 
@@ -85,10 +85,10 @@ class CellJaccMatcher(Matcher):
 
     def index(self):
         pass
-#         with self.cell_tables_fname.open("wb") as fw:
-#             pickle.dump(self.cell_tables, fw)
-#         with self.table_cells_fname.open("wb") as fw:
-#             pickle.dump(self.table_cells, fw)
+        # with self.cell_tables_fname.open("wb") as fw:
+        #     pickle.dump(self.cell_tables, fw)
+        # with self.table_cells_fname.open("wb") as fw:
+        #     pickle.dump(self.table_cells, fw)
 
     def block(self, ti: int):
         """Block tables on having some cell in common."""

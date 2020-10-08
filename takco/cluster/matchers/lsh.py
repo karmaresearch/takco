@@ -18,6 +18,8 @@ except:
 
 
 class LSHMatcher(Matcher):
+    """MinHash-based jaccard similarity with LSH blocking"""
+    
     def __init__(
         self,
         fdir,
@@ -31,12 +33,11 @@ class LSHMatcher(Matcher):
         create=False,
         **kwargs,
     ):
-        """MinHash-based jaccard similarity with LSH blocking"""
         self.name = name or self.__class__.__name__
         mdir = Path(fdir) / Path(self.name)
-#         if create:
-#             shutil.rmtree(mdir, ignore_errors=True)
-#         mdir.mkdir(parents=True, exist_ok=True)
+        # if create:
+        #     shutil.rmtree(mdir, ignore_errors=True)
+        # mdir.mkdir(parents=True, exist_ok=True)
 
         self.source = source
         self.redis_dir = redis_dir if redis_dir and Path(redis_dir).exists() else None
@@ -44,7 +45,7 @@ class LSHMatcher(Matcher):
         self.port = port
         self.num_perm = num_perm
         self.threshold = threshold
-#         self.config(Path(mdir) / Path("config.toml"))
+        # self.config(Path(mdir) / Path("config.toml"))
 
         if self.redis_dir:
             self.redis_dir = Path(self.redis_dir)
@@ -92,16 +93,16 @@ class LSHMatcher(Matcher):
         self.minhashes_fname = Path(mdir) / Path("minhashes.npy")
         if self.minhashes_fname.exists():
             pass
-#             self.minhash = np.load(self.minhashes_fname, mmap_mode="r")
+            # self.minhash = np.load(self.minhashes_fname, mmap_mode="r")
         else:
             self.minhash = None
 
         self.column_ids_fname = Path(mdir) / Path("column_ids.npy")
         if self.column_ids_fname.exists():
             pass
-#             self.ci_digest = collections.OrderedDict(
-#                 (k, v) for v, k in enumerate(np.load(self.column_ids_fname))
-#             )
+            # self.ci_digest = collections.OrderedDict(
+            #     (k, v) for v, k in enumerate(np.load(self.column_ids_fname))
+            # )
         else:
             self.ci_digest = collections.OrderedDict()
 
@@ -175,12 +176,12 @@ class LSHMatcher(Matcher):
     def index(self):
         self.session.close()
         self.minhash = np.array(self.digests)
-#         np.save(self.minhashes_fname, self.minhash)
+        # np.save(self.minhashes_fname, self.minhash)
 
         self.ci_digest = collections.OrderedDict(
             zip(self.ci_digest.keys(), range(len(self.digests)))
         )
-#         np.save(self.column_ids_fname, np.array(list(self.ci_digest.keys())))
+        # np.save(self.column_ids_fname, np.array(list(self.ci_digest.keys())))
 
         if self.redis_dir:
             r = self.cli("save")

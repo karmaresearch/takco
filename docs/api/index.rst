@@ -1,5 +1,5 @@
 .. takco documentation master file, created by
-   sphinx-quickstart on Tue Oct  6 16:07:59 2020.
+   sphinx-quickstart on Thu Oct  8 12:54:38 2020.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 

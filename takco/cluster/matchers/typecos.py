@@ -12,14 +12,14 @@ class TypeCosMatcher(Matcher):
     ):
         self.name = name or self.__class__.__name__
         mdir = Path(fdir) / Path(self.name)
-#         if create:
-#             shutil.rmtree(mdir, ignore_errors=True)
-#         mdir.mkdir(parents=True, exist_ok=True)
+        # if create:
+        #     shutil.rmtree(mdir, ignore_errors=True)
+        # mdir.mkdir(parents=True, exist_ok=True)
 
         self.coltypes_fname = Path(mdir) / Path("coltypes.pickle")
         if self.coltypes_fname.exists():
             pass
-#             self.coltypes = pickle.load(self.coltypes_fname.open("rb"))
+            # self.coltypes = pickle.load(self.coltypes_fname.open("rb"))
         else:
             self.coltypes = {}
 
@@ -46,8 +46,8 @@ class TypeCosMatcher(Matcher):
 
     def index(self):
         log.debug(f"TypeCos index is len {len(self.coltypes)}")
-#         with self.coltypes_fname.open("wb") as fw:
-#             pickle.dump(self.coltypes, fw)
+        # with self.coltypes_fname.open("wb") as fw:
+        #     pickle.dump(self.coltypes, fw)
 
     def match(self, table_index_pairs):
         """Match columns on token jaccard."""

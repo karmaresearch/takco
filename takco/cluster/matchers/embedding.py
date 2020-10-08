@@ -30,29 +30,29 @@ class EmbeddingMatcher(Matcher):
         """Matcher based on embeddings and FAISS"""
         self.name = name or self.__class__.__name__
         mdir = Path(fdir) / Path(self.name)
-#         if create:
-#             shutil.rmtree(mdir, ignore_errors=True)
-#         mdir.mkdir(parents=True, exist_ok=True)
+        # if create:
+        #     shutil.rmtree(mdir, ignore_errors=True)
+        # mdir.mkdir(parents=True, exist_ok=True)
 
         self.source = source
         self.wordvec_fname = str(wordvec_fname)
         self.topn = topn
         self.threshold = threshold
         self.wordvec_fname = Path(self.wordvec_fname)
-#         self.config(Path(mdir) / Path("config.toml"))
+        # self.config(Path(mdir) / Path("config.toml"))
 
         self.faissindex_fname = Path(mdir) / Path("index.faiss")
 
-#         self.means_fname = Path(mdir) / Path("means.npy")
-#         if self.means_fname.exists():
-#             self.means = np.load(self.means_fname, mmap_mode="r")
+        # self.means_fname = Path(mdir) / Path("means.npy")
+        # if self.means_fname.exists():
+        #     self.means = np.load(self.means_fname, mmap_mode="r")
 
         self.column_ids_fname = Path(mdir) / Path("column_ids.npy")
         if self.column_ids_fname.exists():
             pass
-#             self.ci_vi = collections.OrderedDict(
-#                 (ci, vi) for vi, ci in enumerate(np.load(self.column_ids_fname))
-#             )
+            # self.ci_vi = collections.OrderedDict(
+            #     (ci, vi) for vi, ci in enumerate(np.load(self.column_ids_fname))
+            # )
         else:
             self.ci_vi = collections.OrderedDict()
         self.vi_ci = collections.OrderedDict((v, k) for k, v in self.ci_vi.items())
@@ -138,9 +138,8 @@ class EmbeddingMatcher(Matcher):
 
     def index(self):
         self.means = np.array(self.vecs).astype("float32")
-#         np.save(self.means_fname, self.means)
-
-#         np.save(self.column_ids_fname, np.array(list(self.ci_vi.keys())))
+        # np.save(self.means_fname, self.means)
+        # np.save(self.column_ids_fname, np.array(list(self.ci_vi.keys())))
         self.vi_ci = collections.OrderedDict((vi, ci) for ci, vi in self.ci_vi.items())
 
         # Create FAISS index

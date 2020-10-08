@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict, Container, Tuple, Iterator
 from pathlib import Path
 import logging as log
 from collections import Counter
@@ -7,6 +7,18 @@ import sqlite3
 import hashlib
 import contextlib
 
+from .matchers import Matcher
+
+try:
+    from pandas import DataFrame, Series
+    from sklearn.cluster import AgglomerativeClustering
+except:
+    import typing
+
+    DataFrame = typing.Any
+    Series = typing.Any
+    AgglomerativeClustering = typing.Any
+    
 
 def louvain(tablesim, edge_exp=1) -> List[List[int]]:
     """Louvain clustering
@@ -41,8 +53,16 @@ def louvain(tablesim, edge_exp=1) -> List[List[int]]:
     )
     return louvain_partition
 
-def max_align(g, return_total=False):
-    """Maximum alignment score for soft jaccard index"""
+def max_align(g: Series, return_total=False):
+    """Maximum alignment score for soft jaccard index
+
+    Args:
+        g (Series): Series of (_, _, left, right) -> value
+        return_total: Whether to return total or alignment.
+
+    Returns:
+        Either the total alignment score, or the max alignment dict ``{left: right}``
+    """
     lr, rl, t = {}, {}, 0
     for (_, _, l, r), v in g.sort_values(ascending=False).items():
         if (l not in lr) and (r not in rl):
@@ -68,11 +88,18 @@ def make_column_index_df(tables):
         log.debug(f"Indexed {len(df)} tables")
         yield df
 
-def aggregate_similarities(sims, agg_func):
+def aggregate_similarities(sims: DataFrame, agg_func: str):
     """Aggregate similarities using a numexpr aggregation function.
+
+    Extra functions available: ``max(*a)``, ``min(*a)``, ``mean(*a)``, ``pow(a,b)``.
 
     See also:
         `Pandas eval <https://pandas.pydata.org/pandas-docs/stable/user_guide/enhancingperf.html#supported-syntax>`_
+        `Numexpr <https://numexpr.readthedocs.io/>`_
+
+    Args:
+        sims: DataFrame of similarities, where columns are matcher names.
+        agg_func: Numexpr-style function.
     """
     import pandas as pd
     import numpy as np
@@ -90,8 +117,13 @@ def aggregate_similarities(sims, agg_func):
     return pd.Series(agg, index=sims.index)
 
 
-def make_blocked_matches_df(table_indices, matchers):
-    """Yield a dataframe for similarities from blocked matches"""
+def make_blocked_matches_df(table_indices: Container[int], matchers: List[Matcher]):
+    """Yield a dataframe for similarities from blocked matches
+    
+    Args:
+        table_indices: Set of table indices
+        matchers: Matcher instances
+    """
     import pandas as pd
     
     with contextlib.ExitStack() as matcherstack:
@@ -109,7 +141,16 @@ def make_blocked_matches_df(table_indices, matchers):
 
 
 
-def matcher_add_tables(tables, matchers):
+def matcher_add_tables(tables: Container[dict], matchers: List[Matcher]):
+    """Add tables to matchers
+
+    Args:
+        tables: Tables
+        matchers: Matcher instances
+
+    Returns:
+        Updated matchers
+    """
     with contextlib.ExitStack() as matcherstack:
         matchers = [matcherstack.enter_context(m) for m in matchers]
         log.info(f"Loading tables into matchers")
@@ -121,8 +162,26 @@ def matcher_add_tables(tables, matchers):
 
 
 def cluster_partition_columns(
-    iparts, clus, aggsim, agg_func, agg_threshold, matchers
-):
+    iparts: Container[Tuple[int,int]], 
+    clus: AgglomerativeClustering, 
+    aggsim: Series, 
+    agg_func: str, 
+    agg_threshold: float, 
+    matchers: List[Matcher]
+) -> Iterator[Tuple[Dict[int,int],Dict[int,int],Dict[int,Dict[int,int]]]]:
+    """Cluster columns withing a partition
+
+    Args:
+        iparts: Pairs of (partition index, [table indices])
+        clus: Scikit-learn clustering instance
+        aggsim: Aggregated similarities Series of {(p1,p2,c1,c2): normalized sim }
+        agg_func: Numexpr-style aggregation function
+        agg_threshold: Aggregation threshold value for column similarities
+        matchers: Matcher instances
+
+    Yields:
+        ``({table:partition}, {partition: ncols}, {column:{column index: partition column index}})``
+    """
     import pandas as pd
 
     partition_has_unblocked_pairs = {}
@@ -194,7 +253,17 @@ def cluster_partition_columns(
 
 
     
-def merge_partition_tables(mergetable, table, store_align_meta=["tableHeaders"]):
+def merge_partition_tables(mergetable:dict, table:dict, store_align_meta=["tableHeaders"]) -> dict:
+    """Merge tables within partition
+
+    Args:
+        mergetable: Big table
+        table: Small table
+        store_align_meta: Which fields to keep in ``partColAlign`` tables
+
+    Returns:
+        Merged table
+    """
 
     empty_cell = {"text": ""}
     pi = table["part"]
@@ -294,7 +363,16 @@ def get_headerId(header):
     return int(h[:16], 16) // 2  # integer between 0 and SQLite MAX_VAL
 
 
-def yield_blocked_matches(table_indices, matchers):
+def yield_blocked_matches(table_indices: Container[int], matchers: List[Matcher]):
+    """Match table columns using matchers
+
+    Args:
+        table_indices: Table indices
+        matchers: Matcher instances
+
+    Yields:
+        (matcher index, ``(t1, t2, c1, c2)``, score)
+    """
     table_indices = set(table_indices)
     
     for matcher in matchers:
@@ -314,29 +392,23 @@ def yield_blocked_matches(table_indices, matchers):
                 yield mi, pairs, score
 
 
-def yield_tablepairs_matches(table_index_pairs, matchers):
+def yield_tablepairs_matches(table_index_pairs: Container[Tuple[int,int]], matchers: List[Matcher]):
+    """Get matches for table pairs
+
+    Args:
+        table_index_pairs: Table index pairs
+        matchers: Matcher instances
+
+    Yields:
+        (matcher index, ``(t1, t2, c1, c2)``, score)
+    """
     table_index_pairs = set(table_index_pairs)
     for mi, matcher in enumerate(matchers):
         for pairs, score in matcher.match(table_index_pairs):
             yield mi, pairs, score
 
 
-
-
-
-
-
-try:
-    from pandas import DataFrame
-    from sklearn.cluster import AgglomerativeClustering
-except:
-    import typing
-
-    DataFrame = typing.Any
-    AgglomerativeClustering = typing.Any
-
-
-def cluster_columns(colsim: DataFrame, clus: AgglomerativeClustering, pi=None):
+def cluster_columns(colsim: DataFrame, clus: AgglomerativeClustering, pi=None) -> Dict[int,int]:
     """Cluster columns from different tables together within a cluster of tables
 
     Column similarities within one table are set to 0 to prevent different columns
@@ -346,6 +418,9 @@ def cluster_columns(colsim: DataFrame, clus: AgglomerativeClustering, pi=None):
         colsim: Dataframe of column similarities
         clus: Agglomerative clustering method
         pi: Partition information (for debugging)
+    
+    Returns:
+        ``{column index: partition column index}``
     """
     # Don't allow different columns within one table to link
     colsim = colsim[(colsim["ti1"] != colsim["ti2"]) | (colsim["ci1"] == colsim["ci2"])]
