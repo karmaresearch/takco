@@ -114,4 +114,4 @@ class CellJaccMatcher(Matcher):
 
                     for ci1 in cis1:
                         for ci2 in cis2:
-                            yield cell_jacc, ci1, ci2
+                            yield (ti1, ti2, ci1, ci2), cell_jacc

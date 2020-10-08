@@ -199,4 +199,4 @@ class EmbeddingMatcher(Matcher):
                     if (ci1 in self.ci_vi) and (ci2 in self.ci_vi):
                         vi1, vi2 = self.ci_vi[ci1], self.ci_vi[ci2]
                         a1, a2 = self.means[vi1], self.means[vi2]
-                        yield self.vecsim(a1, a2), ci1, ci2
+                        yield (ti1, ti2, ci1, ci2), self.vecsim(a1, a2)

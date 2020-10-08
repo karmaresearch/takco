@@ -203,7 +203,7 @@ class LSHMatcher(Matcher):
                     if (ci1 in self.ci_digest) and (ci2 in self.ci_digest):
                         mh1 = self.minhash[self.ci_digest[ci1]]
                         mh2 = self.minhash[self.ci_digest[ci2]]
-                        yield np.mean((mh1 == mh2)), ci1, ci2
+                        yield (ti1, ti2, ci1, ci2), np.mean((mh1 == mh2))
 
     def close(self):
         if self.redis_dir:

@@ -96,4 +96,4 @@ class Matcher:
         for ti1, ti2 in table_index_pairs:
             for ci1 in self.get_columns(ti1):
                 for ci2 in self.get_columns(ti2):
-                    return int(ci1 == ci2), ci1, ci2
+                    yield (ti1, ti2, ci1, ci2), int(ci1 == ci2)

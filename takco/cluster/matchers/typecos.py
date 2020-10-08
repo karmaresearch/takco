@@ -61,4 +61,4 @@ class TypeCosMatcher(Matcher):
                         dot = lambda a, b: sum((a[k] * b[k]) for k in set(a) & set(b))
                         norm = lambda a: sum(v ** 2 for v in a.values()) ** 0.5
                         cos = dot(cls1, cls2) / (norm(cls1) * norm(cls2))
-                        yield max(cos, 0), ci1, ci2
+                        yield (ti1, ti2, ci1, ci2), max(cos, 0)
