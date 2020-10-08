@@ -13,17 +13,14 @@ class Matcher:
             return [text]
         return re.split(r"\W+", text.lower())
 
-    def config(self, config_fname: Path):
-        if config_fname.exists():
-            c = toml.load(config_fname.open())
-            for k, v in c.items():
-                setattr(self, k, v)
-        else:
-            with config_fname.open("w") as fw:
-                toml.dump(self.__dict__, fw)
-
     def __init__(self, fdir: Path, **kwargs):
         self.indices_fname = Path(fdir) / Path("indices.sqlite")
+        
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, *args):
+        return
 
     def __hash__(self):
         name = getattr(self, "name") if hasattr(self, "name") else ""
@@ -59,13 +56,29 @@ class Matcher:
             else:
                 log.error(f"Could not find table {ti} in {self.indices_fname}")
                 raise KeyError(ti)
+                
+    def get_columns_multi(self, tis):
+        with sqlite3.connect(self.indices_fname) as indices:
+            rs = indices.execute(
+                f"""
+                 select i, columnIndexOffset, numCols from indices
+                 where (i in ({', '.join('?' for _ in tis)}))
+            """,
+                [int(ti) for ti in tis],
+            ).fetchall()
+            if rs:
+                for ti, columnIndexOffset, numCols in rs:
+                    yield ti, range(columnIndexOffset, columnIndexOffset + numCols)
+            else:
+                log.error(f"Could not find table {tis} in {self.indices_fname}")
+                raise KeyError(tis)
 
     def add(self, table):
         pass
 
     def merge(self, matcher):
         """Merge this matcher with another"""
-        pass
+        return self
 
     def index(self):
         pass
@@ -79,5 +92,8 @@ class Matcher:
     def block(self, tableId):
         return set([tableId])
 
-    def match(self, ti1, ti2):
-        return int(ti1 == ti2)
+    def match(self, table_index_pairs):
+        for ti1, ti2 in table_index_pairs:
+            for ci1 in self.get_columns(ti1):
+                for ci2 in self.get_columns(ti2):
+                    return int(ci1 == ci2), ci1, ci2

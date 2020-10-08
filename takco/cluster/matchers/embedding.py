@@ -30,48 +30,55 @@ class EmbeddingMatcher(Matcher):
         """Matcher based on embeddings and FAISS"""
         self.name = name or self.__class__.__name__
         mdir = Path(fdir) / Path(self.name)
-        if create:
-            shutil.rmtree(mdir, ignore_errors=True)
-        mdir.mkdir(parents=True, exist_ok=True)
+#         if create:
+#             shutil.rmtree(mdir, ignore_errors=True)
+#         mdir.mkdir(parents=True, exist_ok=True)
 
         self.source = source
         self.wordvec_fname = str(wordvec_fname)
         self.topn = topn
         self.threshold = threshold
-        self.config(Path(mdir) / Path("config.toml"))
         self.wordvec_fname = Path(self.wordvec_fname)
+#         self.config(Path(mdir) / Path("config.toml"))
 
         self.faissindex_fname = Path(mdir) / Path("index.faiss")
 
-        self.means_fname = Path(mdir) / Path("means.npy")
-        if self.means_fname.exists():
-            self.means = np.load(self.means_fname, mmap_mode="r")
+#         self.means_fname = Path(mdir) / Path("means.npy")
+#         if self.means_fname.exists():
+#             self.means = np.load(self.means_fname, mmap_mode="r")
 
         self.column_ids_fname = Path(mdir) / Path("column_ids.npy")
         if self.column_ids_fname.exists():
-            self.ci_vi = collections.OrderedDict(
-                (ci, vi) for vi, ci in enumerate(np.load(self.column_ids_fname))
-            )
+            pass
+#             self.ci_vi = collections.OrderedDict(
+#                 (ci, vi) for vi, ci in enumerate(np.load(self.column_ids_fname))
+#             )
         else:
             self.ci_vi = collections.OrderedDict()
         self.vi_ci = collections.OrderedDict((v, k) for k, v in self.ci_vi.items())
 
-        self.wordvec_pickle_fname = Path(mdir) / Path("wordvecs.pickle")
-        if not self.wordvec_pickle_fname.exists():
-            log.info(f"Loading word vectors {self.wordvec_fname}")
+        self.vecs = []
+        self.ti_block = {}
+        
+        super().__init__(fdir)
+        
+    def __enter__(self):
+        log.info(f"Loading word vectors {self.wordvec_fname}")
+        if str(self.wordvec_fname).endswith('.pickle'):
+            wordvecs = pd.read_pickle(self.wordvec_fname)
+        else:
             wordvecs = pd.read_csv(
                 self.wordvec_fname, delimiter=" ", quoting=3, header=None, index_col=0
             )
-            wordvecs.to_pickle(self.wordvec_pickle_fname)
-        else:
-            wordvecs = pd.read_pickle(self.wordvec_pickle_fname)
 
         self.word_i = {w: i for i, w in enumerate(wordvecs.index)}
         self.wordvecarray = np.array(wordvecs)
-
-        self.vecs = []
-        self.ti_block = {}
-        super().__init__(fdir)
+        return self
+    
+    def __exit__(self, *args):
+        self.wordvecarray = None
+        self.word_i = None
+        return
 
     def add(self, table):
         # Extract tokens from columns and create embeddings
@@ -124,26 +131,29 @@ class EmbeddingMatcher(Matcher):
             return np.vstack(cell_vecs).mean(axis=0)
 
     def merge(self, matcher: Matcher):
-        self.vecs += matcher.vecs
-        self.ci_vi.update(matcher.ci_vi)
+        if matcher is not None:
+            self.vecs += matcher.vecs
+            self.ci_vi.update(matcher.ci_vi)
+        return self
 
     def index(self):
         self.means = np.array(self.vecs).astype("float32")
-        np.save(self.means_fname, self.means)
+#         np.save(self.means_fname, self.means)
 
-        np.save(self.column_ids_fname, np.array(list(self.ci_vi.keys())))
+#         np.save(self.column_ids_fname, np.array(list(self.ci_vi.keys())))
         self.vi_ci = collections.OrderedDict((vi, ci) for ci, vi in self.ci_vi.items())
 
         # Create FAISS index
         V = np.ascontiguousarray(self.means)
         V /= np.sqrt((V ** 2).sum(axis=1))[:, None]
 
-        index = faiss.IndexFlatIP(V.shape[1])  # build the index
-        index.add(np.array(V))  # add vectors to the index
+        faissindex = faiss.IndexFlatIP(V.shape[1])  # build the index
+        faissindex.add(np.array(V))  # add vectors to the index
 
         log.debug("faiss info: %s", faiss.MatrixStats(V).comments)
         log.info(f"Writing faiss index to {self.faissindex_fname}")
-        faiss.write_index(index, str(self.faissindex_fname))
+        Path(self.faissindex_fname).parent.mkdir(parents=True, exist_ok=True)
+        faiss.write_index(faissindex, str(self.faissindex_fname))
 
     def prepare_block(self, tis):
         faissindex = faiss.read_index(str(self.faissindex_fname))
@@ -156,12 +166,12 @@ class EmbeddingMatcher(Matcher):
                 qi_mean.append(self.means[self.ci_vi[ci]])
 
         if not len(qi_mean):
-            log.debug(f"No column embeddings found for any of tables {tis}")
+            log.debug(f"No column embeddings found in {self.name} for any of tables {tis}")
         else:
             xq = np.vstack(qi_mean)  # query vectors
             xq /= np.sqrt((xq ** 2).sum(axis=1))[:, None]  # L2 normalize
             xq = xq.astype("float32")
-            log.debug(f"Querying faiss index with query matrix of shape {xq.shape}")
+            log.debug(f"Querying {self.name} faiss index with query matrix of shape {xq.shape}")
             D, I = faissindex.search(xq, self.topn)
 
             for ci1, qi in ci_qi.items():
@@ -180,10 +190,13 @@ class EmbeddingMatcher(Matcher):
         c = a1.dot(a2) / (np.sqrt((a1 ** 2).sum()) * np.sqrt((a2 ** 2).sum()))
         return np.round(max(c, 0), 5)
 
-    def match(self, ti1: int, ti2: int):
-        for ci1 in self.get_columns(ti1):
-            for ci2 in self.get_columns(ti2):
-                if (ci1 in self.ci_vi) and (ci2 in self.ci_vi):
-                    vi1, vi2 = self.ci_vi[ci1], self.ci_vi[ci2]
-                    a1, a2 = self.means[vi1], self.means[vi2]
-                    yield self.vecsim(a1, a2), ci1, ci2
+    def match(self, table_index_pairs):
+        tis = set(ti for pair in table_index_pairs for ti in pair)
+        ti_cols = dict(self.get_columns_multi(tis))
+        for ti1, ti2 in table_index_pairs:
+            for ci1 in ti_cols.get(ti1, []):
+                for ci2 in ti_cols.get(ti2, []):
+                    if (ci1 in self.ci_vi) and (ci2 in self.ci_vi):
+                        vi1, vi2 = self.ci_vi[ci1], self.ci_vi[ci2]
+                        a1, a2 = self.means[vi1], self.means[vi2]
+                        yield self.vecsim(a1, a2), ci1, ci2

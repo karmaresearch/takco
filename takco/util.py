@@ -154,8 +154,8 @@ class HashBag:
             if isinstance(f, TextIOBase):
                 fw = f
             else:
-                if "*" in str(f):
-                    f = Path(str(f).replace("*", "output.jsonl"))
+                if "*.jsonl" in str(f):
+                    f = Path(str(f).replace("*.jsonl", "output.jsonl"))
                 fw = open(f, "w")
             for r in it:
                 if r:
@@ -190,12 +190,12 @@ class HashBag:
                     log.debug(f"Opening {f}")
                     with Path(f).open() as o:
                         yield from cls._load(o)
-                elif "*" in str(f):
+                elif "*.jsonl" in str(f):
                     import glob
 
                     yield from cls._load(glob.glob(str(f)))
                 elif Path(f).exists() and Path(f).is_dir():
-                    yield from cls._load(Path(f).glob("*"))
+                    yield from cls._load(Path(f).glob("*.jsonl"))
 
         return cls(it(files))
 

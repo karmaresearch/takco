@@ -22,7 +22,7 @@ resolve = "wikidata-trident"
 
 [[step]]
 step = "load"
-vals = "data/TabEL/10k-part-*"
+vals = "data/TabEL/75k-part-*"
 
 [[step]]
 step = "reshape"

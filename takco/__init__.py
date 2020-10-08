@@ -181,7 +181,6 @@ class TableSet:
 
         Args:
             source: Source of HTML files
-            workdir: Working directory for caching
         """
         if isinstance(source, dict):
             for k, v in source.items():
@@ -199,7 +198,6 @@ class TableSet:
 
     def reshape(
         tables: TableSet,
-        workdir: Path = None,
         restructure: bool = True,
         unpivot_configs: typing.List[Config] = (),
         centralize_pivots: bool = False,
@@ -212,7 +210,6 @@ class TableSet:
         See also: :mod:`takco.reshape`
 
         Args:
-            workdir: Working Directory
             restructure: Whether to restructure tables heuristically
             unpivot_configs: Use a subset of available heuristics
             centralize_pivots: If True, find pivots on unique headers instead of tables
@@ -304,17 +301,17 @@ class TableSet:
             edge_exp : Exponent of edge weight for Louvain modularity
             agg_threshold_col: Matcher aggregation threshold (default: agg_threshold)
         """
-        matcher_kwargs = {
-            m.get("name", m.get("class")): Config(m, assets)
+        from .cluster import matchers as matcher_classes
+        matchers = [
+            Config({'fdir': workdir, **m}, assets).init_class(**matcher_classes.__dict__)
             for m in matcher_configs
-        }
+        ]
         agg_threshold_col = agg_threshold_col or agg_threshold
 
         import tqdm
         import sqlite3
         import pandas as pd
         from . import cluster
-        from .cluster import clustering
 
         if addcontext:
             tables = tables._pipe(cluster.tables_add_context_rows, fields=addcontext)
@@ -324,7 +321,7 @@ class TableSet:
                 cluster.table_get_headerId, cluster.combine_by_first_header
             )
 
-        if matcher_kwargs:
+        if matchers:
 
             # Collect index
             tables, index = TableSet.get_tables_index(tables)
@@ -343,19 +340,21 @@ class TableSet:
             if use_match_cache and simpath.exists():
                 sims = pd.read_csv(simpath, index_col=[0, 1, 2, 3])
             else:
-                log.info(f"Using matchers: {', '.join(matcher_kwargs)}")
+                log.info(f"Using matchers: {', '.join(m.name for m in matchers)}")
                 matchers = tables._pipe(
-                    clustering.matcher_add_tables, workdir, matcher_kwargs
+                    cluster.matcher_add_tables, matchers
                 )
 
-                for m in matchers._fold(lambda x: x.name, lambda a, b: a.merge(b)):
+                matchers = matchers._fold(lambda x: x.name, lambda a, b: a.merge(b))
+                matchers = list(matchers)
+                for m in matchers:
                     log.info(f"Indexing {m}")
                     m.index()
 
                 # Get blocked column match scores
                 log.info(f"Computing column similarities...")
                 simdfs = tables.__class__(table_indices)._pipe(
-                    cluster.make_blocked_matches_df, workdir, matcher_kwargs
+                    cluster.make_blocked_matches_df, matchers
                 )
                 sims = pd.concat(list(simdfs))
                 log.info(f"Computed {len(sims)} column similarities")
@@ -365,7 +364,7 @@ class TableSet:
             log.info(
                 f"Aggregating matcher results using `{agg_func} > {agg_threshold}` "
             )
-            aggsim = clustering.aggregate_similarities(sims, agg_func)
+            aggsim = cluster.aggregate_similarities(sims, agg_func)
 
             # Compute soft column alignment jaccard
             import warnings
@@ -379,7 +378,7 @@ class TableSet:
                 tqdm.tqdm.pandas(desc="Aggregating column scores")
             threshold_sim = aggsim[aggsim > agg_threshold]
             aligned_total = threshold_sim.groupby(level=[0, 1]).progress_aggregate(
-                clustering.max_align, return_total=True
+                cluster.max_align, return_total=True
             )
             j = (
                 pd.DataFrame({"total": aligned_total})
@@ -417,8 +416,7 @@ class TableSet:
                 aggsim,
                 agg_func,
                 agg_threshold_col,
-                workdir,
-                matcher_kwargs,
+                matchers,
             )
             for chunk_ti_pi, chunk_pi_ncols, chunk_ci_pci in chunks:
                 ti_pi.update(chunk_ti_pi)
@@ -449,7 +447,7 @@ class TableSet:
             for table in listtables:
                 pi = table["part"]
                 pi_mergetable[pi] = (
-                    clustering.merge_partition_tables(
+                    cluster.merge_partition_tables(
                         pi_mergetable[pi], table, store_align_meta=store_align_meta,
                     )
                     if (pi in pi_mergetable)
@@ -728,9 +726,8 @@ class TableSet:
             if conf.get("cache"):
                 shutil.rmtree(stepdir, ignore_errors=True)
                 stepdir.mkdir(exist_ok=True, parents=True)
-                tablefile = Path(stepdir) / Path("*")
-
-                log.info(f"Writing cache to {tablefile}")
+                log.info(f"Writing cache to {stepdir}")
+                tablefile = str(stepdir) + "/*.jsonl"
                 return stepfunc(**stepargs)._dump(tablefile)
             else:
                 return stepfunc(**stepargs)
@@ -752,11 +749,13 @@ class TableSet:
 
                     stepargs["tables"] = tables
                     stepargs.update(conf)
+                    stepargs["workdir"] = stepdir
                     log.info(f"Chaining pipeline step {stepname}")
                     tables = wrap_step(stepfunc, stepargs, stepdir)
                 else:
                     log.warn(f"Skipping step {stepname}, using cache instead")
-                    tables = executor._load(str(stepdir) + "/*", **exkw)
+                    tablefile = str(stepdir) + "/*.jsonl"
+                    tables = executor._load(tablefile, **exkw)
             else:
                 log.warn(f"Pipeline step {si} has no step type!")
 

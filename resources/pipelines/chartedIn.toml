@@ -66,21 +66,21 @@ store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
     name  = 'headvec'
     class = 'EmbeddingMatcher'
     source = 'head'
-    wordvec_fname = "./data/glove.6B/glove.6B.50d.txt"
+    wordvec_fname = "./data/glove.6B.50d.pickle"
 
     [[step.matcher_configs]]
     name  = 'bodylsh'
     class = 'LSHMatcher'
     source = 'body'
-    redis_dir = "./redis-5.0.5/src/"
-    port = 63790
+    #redis_dir = "./redis-5.0.5/src/"
+    #port = 63790
     threshold = 0.5
     
     [[step.matcher_configs]]
     name  = 'bodyvec'
     class = 'EmbeddingMatcher'
     source = 'body'
-    wordvec_fname = "./data/glove.6B/glove.6B.50d.txt"
+    wordvec_fname = "./data/glove.6B.50d.pickle"
     
     [[step.matcher_configs]]
     name  = 'bodytype'

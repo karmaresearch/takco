@@ -34,17 +34,17 @@ class LSHMatcher(Matcher):
         """MinHash-based jaccard similarity with LSH blocking"""
         self.name = name or self.__class__.__name__
         mdir = Path(fdir) / Path(self.name)
-        if create:
-            shutil.rmtree(mdir, ignore_errors=True)
-        mdir.mkdir(parents=True, exist_ok=True)
+#         if create:
+#             shutil.rmtree(mdir, ignore_errors=True)
+#         mdir.mkdir(parents=True, exist_ok=True)
 
         self.source = source
-        self.redis_dir = redis_dir if Path(redis_dir).exists() else None
+        self.redis_dir = redis_dir if redis_dir and Path(redis_dir).exists() else None
         self.basename = str(fdir) if (basename is None) else basename
         self.port = port
         self.num_perm = num_perm
         self.threshold = threshold
-        self.config(Path(mdir) / Path("config.toml"))
+#         self.config(Path(mdir) / Path("config.toml"))
 
         if self.redis_dir:
             self.redis_dir = Path(self.redis_dir)
@@ -91,15 +91,17 @@ class LSHMatcher(Matcher):
 
         self.minhashes_fname = Path(mdir) / Path("minhashes.npy")
         if self.minhashes_fname.exists():
-            self.minhash = np.load(self.minhashes_fname, mmap_mode="r")
+            pass
+#             self.minhash = np.load(self.minhashes_fname, mmap_mode="r")
         else:
             self.minhash = None
 
         self.column_ids_fname = Path(mdir) / Path("column_ids.npy")
         if self.column_ids_fname.exists():
-            self.ci_digest = collections.OrderedDict(
-                (k, v) for v, k in enumerate(np.load(self.column_ids_fname))
-            )
+            pass
+#             self.ci_digest = collections.OrderedDict(
+#                 (k, v) for v, k in enumerate(np.load(self.column_ids_fname))
+#             )
         else:
             self.ci_digest = collections.OrderedDict()
 
@@ -153,19 +155,32 @@ class LSHMatcher(Matcher):
                     self.session.insert(name, m, check_duplication=False)
 
     def merge(self, matcher: Matcher):
-        self.session.close()
-        self.digests += matcher.digests
-        self.ci_digest.update(matcher.ci_digest)
-        matcher.session.close()
+        if matcher is not None:
+            matcher.session.close()
+            assert self.num_perm == matcher.num_perm
+            
+            if self.session is None:
+                self.session = self.lshindex.insertion_session()
+            for ci, di in matcher.ci_digest.items():
+                mh = matcher.digests[di]
+                name = str(ci)
+                m = datasketch.MinHash(num_perm=self.num_perm, hashvalues=mh)
+                self.session.insert(name, m, check_duplication=False)
+                
+            self.digests += matcher.digests
+            self.ci_digest.update(matcher.ci_digest)
+            
+        return self
 
     def index(self):
+        self.session.close()
         self.minhash = np.array(self.digests)
-        np.save(self.minhashes_fname, self.minhash)
+#         np.save(self.minhashes_fname, self.minhash)
 
         self.ci_digest = collections.OrderedDict(
             zip(self.ci_digest.keys(), range(len(self.digests)))
         )
-        np.save(self.column_ids_fname, np.array(list(self.ci_digest.keys())))
+#         np.save(self.column_ids_fname, np.array(list(self.ci_digest.keys())))
 
         if self.redis_dir:
             r = self.cli("save")
@@ -179,13 +194,16 @@ class LSHMatcher(Matcher):
                 for ci in self.lshindex.query(m):
                     yield self.get_table(int(ci))
 
-    def match(self, ti1: int, ti2: int):
-        for ci1 in self.get_columns(ti1):
-            for ci2 in self.get_columns(ti2):
-                if (ci1 in self.ci_digest) and (ci2 in self.ci_digest):
-                    mh1 = self.minhash[self.ci_digest[ci1]]
-                    mh2 = self.minhash[self.ci_digest[ci2]]
-                    yield np.mean((mh1 == mh2)), ci1, ci2
+    def match(self, table_index_pairs):
+        tis = set(ti for pair in table_index_pairs for ti in pair)
+        ti_cols = dict(self.get_columns_multi(tis))
+        for ti1, ti2 in table_index_pairs:
+            for ci1 in ti_cols.get(ti1):
+                for ci2 in ti_cols.get(ti2):
+                    if (ci1 in self.ci_digest) and (ci2 in self.ci_digest):
+                        mh1 = self.minhash[self.ci_digest[ci1]]
+                        mh2 = self.minhash[self.ci_digest[ci2]]
+                        yield np.mean((mh1 == mh2)), ci1, ci2
 
     def close(self):
         if self.redis_dir:
