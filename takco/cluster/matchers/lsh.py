@@ -19,7 +19,7 @@ except:
 
 class LSHMatcher(Matcher):
     """MinHash-based jaccard similarity with LSH blocking"""
-    
+
     def __init__(
         self,
         fdir,
@@ -159,7 +159,7 @@ class LSHMatcher(Matcher):
         if matcher is not None:
             matcher.session.close()
             assert self.num_perm == matcher.num_perm
-            
+
             if self.session is None:
                 self.session = self.lshindex.insertion_session()
             for ci, di in matcher.ci_digest.items():
@@ -167,10 +167,10 @@ class LSHMatcher(Matcher):
                 name = str(ci)
                 m = datasketch.MinHash(num_perm=self.num_perm, hashvalues=mh)
                 self.session.insert(name, m, check_duplication=False)
-                
+
             self.digests += matcher.digests
             self.ci_digest.update(matcher.ci_digest)
-            
+
         return self
 
     def index(self):

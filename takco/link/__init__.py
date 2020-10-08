@@ -61,8 +61,8 @@ def lookup_hyperlinks(tables: List[dict], lookup: Lookup, lookup_cells=False):
                 for ri, es in ri_ents.items():
                     ents.setdefault(ci, {}).setdefault(ri, {}).update(es)
             yield table
-            
-            if hasattr(lookup, 'flush'):
+
+            if hasattr(lookup, "flush"):
                 lookup.flush()
 
 
@@ -122,8 +122,8 @@ def link(
             )
             table.update(links)
             yield table
-            
-            if hasattr(linker, 'flush'):
+
+            if hasattr(linker, "flush"):
                 linker.flush()
 
 
@@ -160,10 +160,7 @@ def coltypes(tables: List[dict], typer: Typer):
 
 
 def integrate(
-    tables: List[dict],
-    db: NaryDB,
-    pfd_threshold=0.9,
-    typer: Typer = None,
+    tables: List[dict], db: NaryDB, pfd_threshold=0.9, typer: Typer = None,
 ):
     """Integrate tables with n-ary relations
 

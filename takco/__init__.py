@@ -42,7 +42,6 @@ def wiki(
     encoding: str = None,
     executor: Config = None,
     assets: typing.List[Config] = (),
-    **_,
 ):
     """
     Download Wikipedia articles
@@ -82,7 +81,6 @@ def warc(
     datadir: Path = None,
     executor: Config = None,
     assets: typing.List[Config] = (),
-    **_,
 ):
     """Load HTML pages from WARC files
 
@@ -106,7 +104,7 @@ class TableSet:
 
     @classmethod
     def from_csvs(
-        cls, fnames=(), executor: Config = None, assets: typing.List[Config] = (), **_,
+        cls, fnames=(), executor: Config = None, assets: typing.List[Config] = (),
     ):
         executor, exkw = get_executor_kwargs(executor, assets)
 
@@ -126,7 +124,7 @@ class TableSet:
 
     @classmethod
     def load(
-        cls, vals=(), executor: Config = None, assets: typing.List[Config] = (), **_,
+        cls, vals=(), executor: Config = None, assets: typing.List[Config] = (),
     ):
         log.debug(f"Loading tables {vals} using executor {executor}")
         if all(str(val).endswith("csv") for val in vals):
@@ -145,7 +143,7 @@ class TableSet:
         withgold: bool = False,
         executor: Config = None,
         assets: typing.List[Config] = (),
-        **_,
+        tables: typing.Any = None,
     ):
         """Load tables from a dataset
 
@@ -173,7 +171,7 @@ class TableSet:
         source: typing.Union[Config, HashBag],
         executor: Config = None,
         assets: typing.List[Config] = (),
-        **_,
+        tables: typing.Any = None,
     ):
         """Collect tables from HTML files
 
@@ -203,7 +201,6 @@ class TableSet:
         centralize_pivots: bool = False,
         split_compound_columns: bool = False,
         assets: typing.List[Config] = (),
-        **_,
     ):
         """Reshape tables
 
@@ -228,8 +225,7 @@ class TableSet:
             unpivot_heuristics[name] = Config(h, assets).init_class(
                 **{**reshape.__dict__, **link.__dict__}
             )
-            
-        
+
         if unpivot_heuristics:
             log.info(f"Reshaping with heuristics: {', '.join(unpivot_heuristics)}")
 
@@ -282,8 +278,8 @@ class TableSet:
         edge_exp: float = 1,
         agg_threshold_col: float = None,
         store_align_meta: typing.List[str] = ["tableHeaders"],
+        mergeheaders_topn: int = None,
         assets: typing.List[Config] = (),
-        **_,
     ):
         """Cluster tables
 
@@ -300,10 +296,14 @@ class TableSet:
             agg_threshold: Matcher aggregation threshold
             edge_exp : Exponent of edge weight for Louvain modularity
             agg_threshold_col: Matcher aggregation threshold (default: agg_threshold)
+            mergeheaders_topn: Number of top headers to keep when merging
         """
         from .cluster import matchers as matcher_classes
+
         matchers = [
-            Config({'fdir': workdir, **m}, assets).init_class(**matcher_classes.__dict__)
+            Config({"fdir": workdir, **m}, assets).init_class(
+                **matcher_classes.__dict__
+            )
             for m in matcher_configs
         ]
         agg_threshold_col = agg_threshold_col or agg_threshold
@@ -341,9 +341,7 @@ class TableSet:
                 sims = pd.read_csv(simpath, index_col=[0, 1, 2, 3])
             else:
                 log.info(f"Using matchers: {', '.join(m.name for m in matchers)}")
-                matchers = tables._pipe(
-                    cluster.matcher_add_tables, matchers
-                )
+                matchers = tables._pipe(cluster.matcher_add_tables, matchers)
 
                 matchers = matchers._fold(lambda x: x.name, lambda a, b: a.merge(b))
                 matchers = list(matchers)
@@ -411,12 +409,7 @@ class TableSet:
             iparts = list(enumerate(louvain_partition))
             ti_pi, pi_ncols, ci_pci = {}, {}, {}
             chunks = cluster.cluster_partition_columns(
-                iparts,
-                clus,
-                aggsim,
-                agg_func,
-                agg_threshold_col,
-                matchers,
+                iparts, clus, aggsim, agg_func, agg_threshold_col, matchers,
             )
             for chunk_ti_pi, chunk_pi_ncols, chunk_ci_pci in chunks:
                 ti_pi.update(chunk_ti_pi)
@@ -448,7 +441,10 @@ class TableSet:
                 pi = table["part"]
                 pi_mergetable[pi] = (
                     cluster.merge_partition_tables(
-                        pi_mergetable[pi], table, store_align_meta=store_align_meta,
+                        pi_mergetable[pi],
+                        table,
+                        store_align_meta=store_align_meta,
+                        mergeheaders_topn=mergeheaders_topn,
                     )
                     if (pi in pi_mergetable)
                     else table
@@ -462,7 +458,6 @@ class TableSet:
         tables: TableSet,
         typer_config: Config = {"class": "SimpleTyper"},
         assets: typing.List[Config] = (),
-        **_,
     ):
         """Find column types.
         
@@ -486,7 +481,6 @@ class TableSet:
         typer_config: Config = {"class": "SimpleTyper"},
         pfd_threshold: float = 0.9,
         assets: typing.List[Config] = (),
-        **_,
     ):
         """Integrate tables with KB properties and classes.
 
@@ -503,18 +497,14 @@ class TableSet:
 
         db = Config(db_config, assets).init_class(**link.__dict__)
         log.info(f"Integrating with {db}")
-        
+
         typer = None
         if typer_config:
             typer = Config(typer_config, assets).init_class(**link.__dict__)
             log.info(f"Typing with {typer}")
-        
 
         return tables._pipe(
-            link.integrate,
-            db=db,
-            typer=typer,
-            pfd_threshold=pfd_threshold,
+            link.integrate, db=db, typer=typer, pfd_threshold=pfd_threshold,
         )
 
     def link(
@@ -527,7 +517,6 @@ class TableSet:
         },
         usecols: str = [],
         assets: typing.List[Config] = (),
-        **_,
     ):
         """Link table entities to KB.
         Depending on the Linker, also integrates table with KB classes and properties.
@@ -540,15 +529,12 @@ class TableSet:
             usecols: Columns to use
         """
         from . import link
-        
 
         if lookup_config:
             lookup = Config(lookup_config, assets).init_class(**link.__dict__)
             log.debug(f"Lookup with {lookup}")
             tables = tables._pipe(
-                link.lookup_hyperlinks,
-                lookup=lookup,
-                lookup_cells=lookup_cells,
+                link.lookup_hyperlinks, lookup=lookup, lookup_cells=lookup_cells,
             )
 
         if linker_config:
@@ -566,7 +552,6 @@ class TableSet:
         report: typing.Dict = None,
         keycol_only: bool = False,
         assets: typing.List[Config] = (),
-        **_,
     ):
         """Calculate evaluation scores
 
@@ -593,7 +578,6 @@ class TableSet:
         tables: TableSet,
         searcher_config: Config = None,
         assets: typing.List[Config] = (),
-        **_,
     ):
         from . import evaluate
         from . import link
@@ -681,7 +665,6 @@ class TableSet:
         cache: bool = False,
         executor: Config = None,
         assets: typing.List[Config] = (),
-        **_,
     ):
         """Run entire pipeline
 
@@ -697,6 +680,7 @@ class TableSet:
             executor: Executor engine
         """
         import shutil
+        from inspect import signature
 
         pipeline = Config(pipeline)
         if "name" in pipeline:
@@ -736,7 +720,7 @@ class TableSet:
         tables = []
         for si, stepargs in enumerate(pipeline.get("step", [])):
             if "step" in stepargs:
-                stepfuncname = stepargs.get("step")
+                stepfuncname = stepargs.pop("step")
                 stepname = f"{si}-{stepargs.get('name', stepfuncname)}"
                 stepdir = Path(conf["workdir"]) / Path(stepname)
 
@@ -747,9 +731,13 @@ class TableSet:
                         log.error(f"Pipeline step '{stepfuncname}' does not exist")
                         break
 
-                    stepargs["tables"] = tables
-                    stepargs.update(conf)
-                    stepargs["workdir"] = stepdir
+                    sig = signature(stepfunc)
+                    local_config = dict(tables=tables, **conf)
+                    local_config["workdir"] = stepdir
+                    for k, v in local_config.items():
+                        if (k in sig.parameters) and (k not in stepargs):
+                            stepargs[k] = v
+
                     log.info(f"Chaining pipeline step {stepname}")
                     tables = wrap_step(stepfunc, stepargs, stepdir)
                 else:

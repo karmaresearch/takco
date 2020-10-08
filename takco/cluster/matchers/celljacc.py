@@ -80,7 +80,9 @@ class CellJaccMatcher(Matcher):
 
             for ti, cells in matcher.table_cells.items():
                 for cell, cis in cells.items():
-                    self.table_cells.setdefault(ti, {}).setdefault(cell, set()).update(cis)
+                    self.table_cells.setdefault(ti, {}).setdefault(cell, set()).update(
+                        cis
+                    )
         return self
 
     def index(self):

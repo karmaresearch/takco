@@ -15,10 +15,10 @@ class Matcher:
 
     def __init__(self, fdir: Path, **kwargs):
         self.indices_fname = Path(fdir) / Path("indices.sqlite")
-        
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, *args):
         return
 
@@ -56,7 +56,7 @@ class Matcher:
             else:
                 log.error(f"Could not find table {ti} in {self.indices_fname}")
                 raise KeyError(ti)
-                
+
     def get_columns_multi(self, tis):
         with sqlite3.connect(self.indices_fname) as indices:
             rs = indices.execute(

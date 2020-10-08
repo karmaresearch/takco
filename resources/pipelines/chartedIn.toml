@@ -20,9 +20,8 @@ step = "extract"
     
 [[step]]
 step = "reshape"
-split_compound_columns = true
-load_user = false
-unpivot_heuristics = [{class = "NumSuffix"}]
+split_compound_columns = false
+unpivot_configs = [{class = "NumSuffix"}]
 
 [[step]]
 step = "cluster"
@@ -50,11 +49,12 @@ step = "cluster"
 addcontext = []
 headerunions = false
 use_match_cache = false
-agg_func = '@mean(  @max(headjacc, @pow(headvec, 4)), @max(bodylsh, bodytype, @pow(bodyvec, 4) ) )'
-agg_threshold = 0.95
+agg_func = '@mean(  @max(headjacc, @pow(headvec, 4)), bodytype, @max(bodylsh, @pow(bodyvec, 4) ) )'
+agg_threshold = 0.99
 edge_exp = 3
 agg_threshold_col = 0.5
 store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
+mergeheaders_topn = 1
     
     [[step.matcher_configs]]
     name  = 'headjacc'
@@ -67,6 +67,7 @@ store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
     class = 'EmbeddingMatcher'
     source = 'head'
     wordvec_fname = "./data/glove.6B.50d.pickle"
+    threshold = 0.5
 
     [[step.matcher_configs]]
     name  = 'bodylsh'
@@ -81,6 +82,7 @@ store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
     class = 'EmbeddingMatcher'
     source = 'body'
     wordvec_fname = "./data/glove.6B.50d.pickle"
+    threshold = 0.5
     
     [[step.matcher_configs]]
     name  = 'bodytype'
@@ -90,3 +92,9 @@ store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
 step = "integrate"
 pfd_threshold = 0.95
 db_config = {resolve = "linker"}
+    [step.typer_config]
+    class = "EntityTyper"
+    db = {resolve = "linker"}
+    type_prop = "http://www.wikidata.org/prop/direct/P31"
+    supertype_prop = "http://www.wikidata.org/prop/direct/P279"
+    cover_threshold = 0.333

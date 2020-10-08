@@ -112,11 +112,7 @@ class PivotFinder:
 
     def split_header(self, headrow: List[str], colfrom: int, colto: int):
         """Split the header containing the pivot"""
-        for ci, cell in enumerate(headrow):
-            if ci in range(colfrom, colto + 1):
-                yield "", cell
-            else:
-                yield cell, cell
+        return
 
 
 class RegexFinder(PivotFinder):
@@ -245,12 +241,7 @@ class AgentLikeHyperlink(PivotFinder):
     """
 
     def __init__(
-        self,
-        lookup=None,
-        kb=None,
-        bad_types=(),
-        bad_props=(),
-        type_props=(),
+        self, lookup=None, kb=None, bad_types=(), bad_props=(), type_props=(),
     ):
         from .. import link
 

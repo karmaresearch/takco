@@ -18,7 +18,7 @@ except:
     DataFrame = typing.Any
     Series = typing.Any
     AgglomerativeClustering = typing.Any
-    
+
 
 def louvain(tablesim, edge_exp=1) -> List[List[int]]:
     """Louvain clustering
@@ -53,6 +53,7 @@ def louvain(tablesim, edge_exp=1) -> List[List[int]]:
     )
     return louvain_partition
 
+
 def max_align(g: Series, return_total=False):
     """Maximum alignment score for soft jaccard index
 
@@ -68,6 +69,7 @@ def max_align(g: Series, return_total=False):
         if (l not in lr) and (r not in rl):
             lr[l], rl[r], t = r, l, t + v
     return t if return_total else lr
+
 
 def make_column_index_df(tables):
     """Yield a dataframe for the tables' column indexes"""
@@ -87,6 +89,7 @@ def make_column_index_df(tables):
         df = df.set_index("i")
         log.debug(f"Indexed {len(df)} tables")
         yield df
+
 
 def aggregate_similarities(sims: DataFrame, agg_func: str):
     """Aggregate similarities using a numexpr aggregation function.
@@ -125,7 +128,7 @@ def make_blocked_matches_df(table_indices: Container[int], matchers: List[Matche
         matchers: Matcher instances
     """
     import pandas as pd
-    
+
     with contextlib.ExitStack() as matcherstack:
         matchers = [matcherstack.enter_context(m) for m in matchers]
 
@@ -138,7 +141,6 @@ def make_blocked_matches_df(table_indices: Container[int], matchers: List[Matche
             simdf.index.names = ["ti1", "ti2", "ci1", "ci2"]
             simdf.columns = [m.name for m in matchers]
             yield simdf
-
 
 
 def matcher_add_tables(tables: Container[dict], matchers: List[Matcher]):
@@ -160,15 +162,14 @@ def matcher_add_tables(tables: Container[dict], matchers: List[Matcher]):
         return matchers
 
 
-
 def cluster_partition_columns(
-    iparts: Container[Tuple[int,int]], 
-    clus: AgglomerativeClustering, 
-    aggsim: Series, 
-    agg_func: str, 
-    agg_threshold: float, 
-    matchers: List[Matcher]
-) -> Iterator[Tuple[Dict[int,int],Dict[int,int],Dict[int,Dict[int,int]]]]:
+    iparts: Container[Tuple[int, int]],
+    clus: AgglomerativeClustering,
+    aggsim: Series,
+    agg_func: str,
+    agg_threshold: float,
+    matchers: List[Matcher],
+) -> Iterator[Tuple[Dict[int, int], Dict[int, int], Dict[int, Dict[int, int]]]]:
     """Cluster columns withing a partition
 
     Args:
@@ -211,10 +212,8 @@ def cluster_partition_columns(
     with contextlib.ExitStack() as matcherstack:
         matchers = [matcherstack.enter_context(m) for m in matchers]
         # Make a dataframe of extra similarities
-        tablepairs_matches = yield_tablepairs_matches(
-            unblocked_pairs, matchers
-        )
-        
+        tablepairs_matches = yield_tablepairs_matches(unblocked_pairs, matchers)
+
     unblocked_sims = {i: {} for i, _ in enumerate(matchers)}
     for m, (ti1, ti2, ci1, ci2), s in tablepairs_matches:
         pi = ti_pi[ti1]
@@ -251,15 +250,19 @@ def cluster_partition_columns(
     yield ti_pi, pi_ncols, ci_pci
 
 
-
-    
-def merge_partition_tables(mergetable:dict, table:dict, store_align_meta=["tableHeaders"]) -> dict:
+def merge_partition_tables(
+    mergetable: dict,
+    table: dict,
+    mergeheaders_topn: int = None,
+    store_align_meta=["tableHeaders"],
+) -> dict:
     """Merge tables within partition
 
     Args:
         mergetable: Big table
         table: Small table
         store_align_meta: Which fields to keep in ``partColAlign`` tables
+        mergeheaders_topn: Number of top headers to keep when merging
 
     Returns:
         Merged table
@@ -282,7 +285,7 @@ def merge_partition_tables(mergetable:dict, table:dict, store_align_meta=["table
                 mergetable["tableHeaders"], mergetable["partColAlign"], empty_cell
             )
         )
-        tableHeaders = get_top_headers(tableHeaders)
+        tableHeaders = get_top_headers(tableHeaders, topn=mergeheaders_topn)
         headerText = tuple(
             tuple([cell.get("text", "").lower() for cell in r]) for r in tableHeaders
         )
@@ -322,7 +325,7 @@ def merge_partition_tables(mergetable:dict, table:dict, store_align_meta=["table
         align_columns(table["tableHeaders"], table["partColAlign"], empty_cell)
     )
     tableHeaders = get_top_headers(
-        tableHeaders, merge_headers=mergetable["tableHeaders"]
+        tableHeaders, merge_headers=mergetable["tableHeaders"], topn=mergeheaders_topn
     )
     headerText = tuple(
         tuple([cell.get("text", "").lower() for cell in r]) for r in tableHeaders
@@ -374,9 +377,9 @@ def yield_blocked_matches(table_indices: Container[int], matchers: List[Matcher]
         (matcher index, ``(t1, t2, c1, c2)``, score)
     """
     table_indices = set(table_indices)
-    
+
     for matcher in matchers:
-        log.debug(f"Preparing block for matcher {m.name}")
+        log.debug(f"Preparing block for matcher {matcher.name}")
         matcher.prepare_block(table_indices)
 
     for ti1 in table_indices:
@@ -386,13 +389,15 @@ def yield_blocked_matches(table_indices: Container[int], matchers: List[Matcher]
 
         log.debug(f"Matching {len(block)} blocked candidates for table {ti1}")
 
-        table_index_pairs = set( (ti1, ti2) for ti2 in block if ti1 != ti2)
+        table_index_pairs = set((ti1, ti2) for ti2 in block if ti1 != ti2)
         for mi, matcher in enumerate(matchers):
             for pairs, score in matcher.match(table_index_pairs):
                 yield mi, pairs, score
 
 
-def yield_tablepairs_matches(table_index_pairs: Container[Tuple[int,int]], matchers: List[Matcher]):
+def yield_tablepairs_matches(
+    table_index_pairs: Container[Tuple[int, int]], matchers: List[Matcher]
+):
     """Get matches for table pairs
 
     Args:
@@ -408,7 +413,9 @@ def yield_tablepairs_matches(table_index_pairs: Container[Tuple[int,int]], match
             yield mi, pairs, score
 
 
-def cluster_columns(colsim: DataFrame, clus: AgglomerativeClustering, pi=None) -> Dict[int,int]:
+def cluster_columns(
+    colsim: DataFrame, clus: AgglomerativeClustering, pi=None
+) -> Dict[int, int]:
     """Cluster columns from different tables together within a cluster of tables
 
     Column similarities within one table are set to 0 to prevent different columns
@@ -453,7 +460,7 @@ def get_top_headers(tableHeaders, merge_headers=None, topn=None):
     if merge_headers is None:
         merge_headers = [[{}] * len(tableHeaders[0])] if tableHeaders else []
     top = []
-    if merge_headers:
+    if any(tableHeaders) and any(merge_headers):
         for merge, hcol in zip(merge_headers[0], zip(*tableHeaders)):
             c = Counter(
                 cell.get("text", "").strip()
@@ -467,6 +474,7 @@ def get_top_headers(tableHeaders, merge_headers=None, topn=None):
             top.append({"text": txt, "tdHtmlString": f"<th>{txt}</th>", "freq": c})
         return [top]
     else:
-        return []
-
-
+        if any(tableHeaders):
+            return tableHeaders
+        else:
+            return merge_headers

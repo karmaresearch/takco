@@ -31,17 +31,17 @@ def encode_wikidata(query):
 class GraphDB(Database, rdflib.Graph):
     def __init__(self, *args, **kwargs):
         rdflib.Graph.__init__(self, *args, **kwargs)
-        
+
     def __reduce__(self):
         return (self.__class__, (self.store, self.identifier), self.__dict__)
-        
+
     def __enter__(self):
         try:
             self.open(None)
         except Exception as e:
             log.debug(e)
         return self
-    
+
     def __exit__(self, *args):
         self.close()
 
@@ -128,9 +128,9 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
             self.qualifierIDProperty = URIRef(qualifierIDProperty)
 
         self.statementURIprefix = statementURIprefix
-        
+
         GraphDB.__init__(self, store=store)
-    
+
     def search_entities(self, query: str, context=(), limit=1, add_about=False):
         if self.encoding and (query != query.encode("ascii", errors="ignore").decode()):
             if self.encoding == "wikidata":
@@ -243,4 +243,6 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
                                             )
                                             qmatches.append(qm)
 
-                            yield NaryMatchResult((ci1, ci2), (e1, mainprop, e2), qmatches)
+                            yield NaryMatchResult(
+                                (ci1, ci2), (e1, mainprop, e2), qmatches
+                            )

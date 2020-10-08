@@ -88,41 +88,13 @@ def main():
         TableSet.triples,
     )
 
-    # hot-patch defopt to deal with hidden kwargs (VAR_KEYWORD)
-    def signature(func):
-        import inspect
-
-        full_sig = inspect.signature(func)
-        doc = defopt._parse_docstring(inspect.getdoc(func))
-        parameters = []
-        for name, param in full_sig.parameters.items():
-            if param.name.startswith("_"):
-                if param.kind != param.VAR_KEYWORD and param.default is param.empty:
-                    raise ValueError(
-                        "Parameter {} of {}{} is private but has no default".format(
-                            param.name, func.__name__, full_sig
-                        )
-                    )
-            else:
-                parameters.append(
-                    defopt.Parameter(
-                        name=param.name,
-                        kind=param.kind,
-                        default=param.default,
-                        annotation=defopt._get_type(func, param.name),
-                        doc=doc.params.get(param.name, defopt._Param(None, None)).text,
-                    )
-                )
-        return full_sig.replace(parameters=parameters)
-
-    defopt.signature = signature
-
     parser = defopt._create_parser(
         funcs,
         strict_kwonly=False,
         parsers={
             typing.Container[str]: str.split,
             typing.Dict: json.loads,
+            typing.Any: lambda _: None,
             Config: Config,
             HashBag: HashBag,
             TableSet: load_tables,

@@ -59,12 +59,12 @@ class EmbeddingMatcher(Matcher):
 
         self.vecs = []
         self.ti_block = {}
-        
+
         super().__init__(fdir)
-        
+
     def __enter__(self):
         log.info(f"Loading word vectors {self.wordvec_fname}")
-        if str(self.wordvec_fname).endswith('.pickle'):
+        if str(self.wordvec_fname).endswith(".pickle"):
             wordvecs = pd.read_pickle(self.wordvec_fname)
         else:
             wordvecs = pd.read_csv(
@@ -74,7 +74,7 @@ class EmbeddingMatcher(Matcher):
         self.word_i = {w: i for i, w in enumerate(wordvecs.index)}
         self.wordvecarray = np.array(wordvecs)
         return self
-    
+
     def __exit__(self, *args):
         self.wordvecarray = None
         self.word_i = None
@@ -165,12 +165,16 @@ class EmbeddingMatcher(Matcher):
                 qi_mean.append(self.means[self.ci_vi[ci]])
 
         if not len(qi_mean):
-            log.debug(f"No column embeddings found in {self.name} for any of tables {tis}")
+            log.debug(
+                f"No column embeddings found in {self.name} for any of tables {tis}"
+            )
         else:
             xq = np.vstack(qi_mean)  # query vectors
             xq /= np.sqrt((xq ** 2).sum(axis=1))[:, None]  # L2 normalize
             xq = xq.astype("float32")
-            log.debug(f"Querying {self.name} faiss index with query matrix of shape {xq.shape}")
+            log.debug(
+                f"Querying {self.name} faiss index with query matrix of shape {xq.shape}"
+            )
             D, I = faissindex.search(xq, self.topn)
 
             for ci1, qi in ci_qi.items():

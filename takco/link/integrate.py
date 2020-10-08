@@ -21,10 +21,10 @@ class NaryMatchResult(NamedTuple):
     triple: Triple  #: Statement triple
     qualifiers: Container[QualifierMatchResult]  #: Statement qualifier matches
 
-        
+
 class NaryDB(Database):
     """For querying a KB with qualifiers."""
-        
+
     def get_rowfacts(
         self, celltexts: List[str], entsets: List[Container[str]]
     ) -> Iterator[NaryMatchResult]:

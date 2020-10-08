@@ -472,9 +472,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
         }
     }
 
-    def __init__(
-        self, cellType: Typer = SimpleTyper, cache=False, *args, **kwargs
-    ):
+    def __init__(self, cellType: Typer = SimpleTyper, cache=False, *args, **kwargs):
         self.cellType = cellType
         self.cache = {} if cache else None
         ElasticSearcher.__init__(self, *args, **kwargs)
@@ -650,7 +648,9 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
                                                 )
                                                 qmatches.append(qm)
 
-                            yield NaryMatchResult((ci1, ci2), (e1, mainprop, e2), qmatches)
+                            yield NaryMatchResult(
+                                (ci1, ci2), (e1, mainprop, e2), qmatches
+                            )
 
     @staticmethod
     def _wd_att(snak):

@@ -66,7 +66,7 @@ class SQLiteCache:
 
                 con.executemany(self._INSERTDB, cache)
                 con.commit()
-        
+
         if not end:
             self.cache.execute(f"DROP TABLE {self._DBNAME}")
             self.cache.executescript(self._INITDB)
@@ -123,11 +123,11 @@ class SQLiteLookup(SQLiteCache, Lookup):
 
     def __exit__(self, *args):
         return SQLiteCache.__exit__(self, *args)
-    
+
     def flush(self):
         if self.cache_often:
             self._write_cache()
-    
+
     def lookup_title(self, title: str) -> str:
         t = title.replace("_", " ").lower()
         """Gets the URI for a DBpedia entity based on wikipedia title."""
