@@ -441,6 +441,7 @@ class TableSet:
         assets: typing.List[Config] = (),
     ):
         """Link table entities to KB.
+        
         Depending on the Linker, also integrates table with KB classes and properties.
         
         See also: :meth:`takco.link.link`

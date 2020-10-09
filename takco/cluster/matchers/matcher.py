@@ -58,20 +58,24 @@ class Matcher:
                 raise KeyError(ti)
 
     def get_columns_multi(self, tis):
+        tis = list(set(tis))
+        size = 999
         with sqlite3.connect(self.indices_fname) as indices:
-            rs = indices.execute(
-                f"""
-                 select i, columnIndexOffset, numCols from indices
-                 where (i in ({', '.join('?' for _ in tis)}))
-            """,
-                [int(ti) for ti in tis],
-            ).fetchall()
-            if rs:
-                for ti, columnIndexOffset, numCols in rs:
-                    yield ti, range(columnIndexOffset, columnIndexOffset + numCols)
-            else:
-                log.error(f"Could not find table {tis} in {self.indices_fname}")
-                raise KeyError(tis)
+            for xi in range(0, len(tis), size):
+                chunk = tis[xi:(xi+size)]
+                rs = indices.execute(
+                    f"""
+                     select i, columnIndexOffset, numCols from indices
+                     where (i in ({', '.join('?' for _ in tis)}))
+                """,
+                    [int(ti) for ti in tis],
+                ).fetchall()
+                if rs:
+                    for ti, columnIndexOffset, numCols in rs:
+                        yield ti, range(columnIndexOffset, columnIndexOffset + numCols)
+                else:
+                    log.error(f"Could not find table {tis} in {self.indices_fname}")
+                    raise KeyError(tis)
 
     def add(self, table):
         pass
