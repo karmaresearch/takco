@@ -31,9 +31,6 @@ class SetConfig(argparse.Action):
             if conf:
                 config.update(conf)
                 log.info(f"Loaded config {conf}")
-        elif Path("config.toml").exists():
-            config.update(toml.load(Path("config.toml").open()))
-            log.info(f"Loaded local config.toml")
         else:
             config.update(os.environ)
             log.info(f"Loaded config from environment")

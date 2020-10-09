@@ -14,97 +14,15 @@ import logging as log
 from .util import *
 
 
-def get_executor_kwargs(conf: Config, context):
-    """Get executor configuration"""
-    if conf:
-        conf = Config(conf, context)
-
-        if isinstance(conf, dict):
-            if "class" in conf:
-                cls = globals().get(conf.pop("class"))
-                return cls, conf
-            elif "name" in conf:
-                return globals().get(conf.pop("name"), HashBag), {}
-        else:
-            return globals().get(str(conf), HashBag), {}
-    else:
-        return HashBag, {}
-
-
-def wiki(
-    dbconfig: Config = {"class": "GraphDB", "store": {"class": "SparqlStore"}},
-    pred: str = None,
-    obj: str = None,
-    urlprefix: str = "https://en.wikipedia.org/wiki/",
-    localurlprefix: str = None,
-    sample: int = None,
-    justurls: bool = False,
-    encoding: str = None,
-    executor: Config = None,
-    assets: typing.List[Config] = (),
-):
-    """
-    Download Wikipedia articles
-
-    Downloads HTML files for entities that have a certain predicate/object in a DB.
-
-    Args:
-        dbconfig: DB configuration (default: Wikidata)
-        pred: Predicate URI
-        obj: Object URI
-        urlprefix: Wikipedia URL prefix
-        localprefix: Wikipedia URL prefix for locally hosted pages
-        encoding: Force encoding (use "guess" for guessing)
-    """
-    executor, exkw = get_executor_kwargs(executor, assets)
-
-    from . import link
-
-    with Config(dbconfig, assets).init_class(**link.__dict__) as db:
-
-        ent_abouturl = []
-        for e, ps in db.pages_about([None, pred, obj]).items():
-            for pageurl in ps:
-                if localurlprefix:
-                    pageurl = pageurl.replace(urlprefix, localurlprefix)
-                ent_abouturl.append((e, pageurl))
-        ent_abouturl = ent_abouturl[:sample]
-        if justurls:
-            return ({"entity": e, "page": url} for e, url in ent_abouturl)
-
-        log.info(f"Downloading {len(ent_abouturl)} pages with executor {executor}")
-        return executor(ent_abouturl, **exkw)._pipe(pages_download, encoding=encoding)
-
-
-def warc(
-    globstrings: typing.List[str] = (),
-    datadir: Path = None,
-    executor: Config = None,
-    assets: typing.List[Config] = (),
-):
-    """Load HTML pages from WARC files
-
-    Args:
-        globstrings: Glob strings for WARC gz files
-        datadir: Data directory
-
-    """
-    executor, exkw = get_executor_kwargs(executor, assets)
-
-    fnames = [fname for g in globstrings for fname in Path(".").glob(g)]
-    assert len(fnames), f"No glob results for {globstrings}"
-    log.info(
-        f"Extracting pages from {len(fnames)} warc files using executor {executor}"
-    )
-    return executor(fnames, **exkw)._pipe(pages_warc)
-
-
 class TableSet:
     """A set of tables that can be clustered and linked."""
 
     @classmethod
-    def from_csvs(
-        cls, fnames=(), executor: Config = None, assets: typing.List[Config] = (),
+    def csvs(
+        cls,
+        path: Path = None,
+        executor: Config = None,
+        assets: typing.List[Config] = (),
     ):
         executor, exkw = get_executor_kwargs(executor, assets)
 
@@ -118,20 +36,23 @@ class TableSet:
                 ],
                 "_id": fname,
             }
-            for fname in fnames
+            for fname in path
         )
         return executor(data, **exkw)
 
     @classmethod
     def load(
-        cls, vals=(), executor: Config = None, assets: typing.List[Config] = (),
+        cls,
+        path: Path = None,
+        executor: Config = None,
+        assets: typing.List[Config] = (),
     ):
-        log.debug(f"Loading tables {vals} using executor {executor}")
-        if all(str(val).endswith("csv") for val in vals):
-            return cls.from_csvs(vals, executor=executor, assets=assets)
+        log.debug(f"Loading tables {path} using executor {executor}")
+        if all(str(val).endswith("csv") for val in path):
+            return cls.csvs(path, executor=executor, assets=assets)
 
         executor, exkw = get_executor_kwargs(executor, assets)
-        return executor._load(vals, **exkw)
+        return executor._load(path, **exkw)
 
     @classmethod
     def dataset(
@@ -180,10 +101,11 @@ class TableSet:
         Args:
             source: Source of HTML files
         """
-        if isinstance(source, dict):
-            for k, v in source.items():
-                htmlpages = globals()[k](**v, executor=executor, assets=assets)
-                break
+        if isinstance(source, Config):
+            from . import pages
+
+            source.update(dict(executor=executor, assets=assets))
+            htmlpages = source.init_class(**pages.__dict__).get()
         elif isinstance(source, HashBag):
             htmlpages = source
         else:
@@ -657,11 +579,11 @@ class TableSet:
     def run(
         cls,
         pipeline: Config,
+        input_tables: typing.List[typing.Union[Path, Config]] = (),
         workdir: Path = None,
         datadir: Path = None,
         resourcedir: Path = None,
-        force: bool = False,
-        step_force: int = 0,
+        force: typing.List[int] = (),
         cache: bool = False,
         executor: Config = None,
         assets: typing.List[Config] = (),
@@ -670,6 +592,7 @@ class TableSet:
 
         Args:
             pipeline: Pipeline config
+            input_tables: Either path(s) to tables as json/csv or config with ``input``
             workdir: Working directory (also for cache)
             datadir: Data directory
             resourcedir: Resource directory
@@ -699,15 +622,18 @@ class TableSet:
             "cache": cache or pipeline.get("cache"),
             "executor": executor or pipeline.get("executor"),
         }
-        executor, exkw = get_executor_kwargs(conf["executor"], conf["assets"])
+        executor, assets, cache = conf["executor"], conf["assets"], conf["cache"]
+        executor, exkw = get_executor_kwargs(executor, assets)
 
-        if conf["cache"]:
+        force = True if (force == []) else force
+
+        if cache:
             if force:
                 shutil.rmtree(conf["workdir"], ignore_errors=True)
             Path(conf["workdir"]).mkdir(exist_ok=True, parents=True)
 
         def wrap_step(stepfunc, stepargs, stepdir):
-            if conf.get("cache"):
+            if cache:
                 shutil.rmtree(stepdir, ignore_errors=True)
                 stepdir.mkdir(exist_ok=True, parents=True)
                 log.info(f"Writing cache to {stepdir}")
@@ -715,6 +641,18 @@ class TableSet:
                 return stepfunc(**stepargs)._dump(tablefile)
             else:
                 return stepfunc(**stepargs)
+
+        # Prepend input tables to pipeline
+        input_tables = input_tables or pipeline.get("input_tables")
+        if not input_tables:
+            raise Exception(f"No input tables specified in config or pipeline!")
+        log.info(f"Using input tables {input_tables}")
+        if isinstance(input_tables, Config):
+            input_tables["step"] = input_tables.pop("input")
+        else:
+            input_tables = Config({"step": "load", "path": input_tables})
+
+        pipeline.setdefault("step", []).insert(0, input_tables)
 
         log.info(f"Running pipeline '{name}' in {workdir}")
         tables = []
@@ -725,11 +663,12 @@ class TableSet:
                 stepdir = Path(conf["workdir"]) / Path(stepname)
 
                 nodir = (not stepdir.exists()) or (not any(stepdir.iterdir()))
-                if force or (si >= step_force) or nodir:
+                if (force == True) or (si >= min(force)) or nodir:
                     stepfunc = getattr(TableSet, stepfuncname)
                     if not stepfunc:
-                        log.error(f"Pipeline step '{stepfuncname}' does not exist")
-                        break
+                        raise Exception(
+                            f"Pipeline step '{stepfuncname}' does not exist"
+                        )
 
                     sig = signature(stepfunc)
                     local_config = dict(tables=tables, **conf)
@@ -745,7 +684,7 @@ class TableSet:
                     tablefile = str(stepdir) + "/*.jsonl"
                     tables = executor._load(tablefile, **exkw)
             else:
-                log.warn(f"Pipeline step {si} has no step type!")
+                raise Exception(f"Pipeline step {si} has no step type")
 
         if cache:
             for _ in tables:

@@ -3,9 +3,8 @@ datadir = 'data'
 workdir = "output/t2d-v2-baseline/"
 cache = false
 
-
-[[step]]
-step = "dataset"
+[input_tables]
+input = "dataset"
 params = "t2d-v2"
 #sample = 2
 

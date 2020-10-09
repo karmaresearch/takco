@@ -9,8 +9,8 @@ threads_per_worker=2
 memory_target_fraction = 0.85
 
 
-[[step]]
-step = "dataset"
+[input_tables]
+input = "dataset"
 params = {class = "Semtab", name = "semtab-r2"}
 #sample = 1000
 

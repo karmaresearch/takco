@@ -4,22 +4,30 @@ workdir = "output/chartedIn/"
 cache = true
 
 [[assets]]
+name = 'lookup'
+resolve = "wiki-sqlite"
+
+[[assets]]
 name = 'linker'
 resolve = "wikidata-trident"
 
-[[step]]
-step = "extract"
-    [step.source.warc]
+
+[input_tables]
+input = "extract"
+    [input_tables.source]
+    class = "WarcPages"
     globstrings = ["./data/wikipedia-2019-12-P2291/*-00000.warc.gz"]
     
-    #[step.source.wiki]
+    #[input_tables.source]
+    #class = "WikiPages"
     #pred = "http://www.wikidata.org/prop/direct/P2291"
     #localurlprefix = "http://localhost:8989/wikipedia_en_all_nopic_2019-12/A/"
     #encoding = "utf-8"
     #sample=10
-    
+
 [[step]]
 step = "reshape"
+restructure = true
 split_compound_columns = false
 unpivot_configs = [{class = "NumSuffix"}]
 
@@ -32,7 +40,7 @@ headerunions = true
 step = "link"
 linker_config = {}
 lookup_cells = true
-lookup_config = {resolve = 'wiki-sqlite'}
+lookup_config = {resolve = 'lookup'}
 
     
 [[step]]
@@ -49,9 +57,9 @@ step = "cluster"
 addcontext = []
 headerunions = false
 use_match_cache = false
-agg_func = '@mean(  @max(headjacc, @pow(headvec, 4)), bodytype, @max(bodylsh, @pow(bodyvec, 4) ) )'
+agg_func = '@mean(  @max(headjacc, @pow(headvec, 4)), @max(bodylsh, @pow(bodyvec, 4), bodytype ) )'
 agg_threshold = 0.99
-edge_exp = 3
+edge_exp = 5
 agg_threshold_col = 0.5
 store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
 mergeheaders_topn = 1
@@ -73,8 +81,6 @@ mergeheaders_topn = 1
     name  = 'bodylsh'
     class = 'LSHMatcher'
     source = 'body'
-    #redis_dir = "./redis-5.0.5/src/"
-    #port = 63790
     threshold = 0.5
     
     [[step.matcher_configs]]
@@ -87,6 +93,12 @@ mergeheaders_topn = 1
     [[step.matcher_configs]]
     name  = 'bodytype'
     class = 'TypeCosMatcher'
+
+[[step]]
+step = "link"
+linker_config = {}
+lookup_cells = true
+lookup_config = {resolve = 'lookup'}
 
 [[step]]
 step = "integrate"

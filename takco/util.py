@@ -71,8 +71,8 @@ class Config(dict, typing.Generic[T]):
                 except Exception as e:
                     log.debug(f"Did not parse {val} with parser {cpi} due to error {e}")
             if not len(self):
-                self["name"] = val
                 log.info(f"Skipped config: {val} (context: {context})")
+                return val
 
     def init_class(self, **context):
         if isinstance(self, dict) and "class" in self:
@@ -97,6 +97,23 @@ class Config(dict, typing.Generic[T]):
                 raise Exception(f'CONFIG ERROR: Cannot find class "{self["class"]}" !')
         else:
             return self
+
+
+def get_executor_kwargs(conf: Config, context):
+    """Get executor configuration"""
+    if conf:
+        conf = Config(conf, context)
+
+        if isinstance(conf, dict):
+            if "class" in conf:
+                cls = globals().get(conf.pop("class"))
+                return cls, conf
+            elif "name" in conf:
+                return globals().get(conf.pop("name"), HashBag), {}
+        else:
+            return globals().get(str(conf), HashBag), {}
+    else:
+        return HashBag, {}
 
 
 class HashBag:
@@ -300,53 +317,6 @@ try:
 except Exception as e:
     log.debug(f"Could not load Dask")
     log.debug(e)
-
-
-def pages_download(
-    ent_abouturl: typing.Collection[typing.Tuple[str, str]], encoding=None
-):
-    """Download html pages from urls
-    
-    Args:
-        ent_abouturl: A ``[(uri,url)]`` list of entitu URIs and page URLs
-        encoding: Page encoding (use "guess" to use requests' apparent encoding)
-    """
-    import requests
-
-    for e, url in ent_abouturl:
-        result = requests.get(url)
-        if encoding:
-            if encoding == "guess":
-                result.encoding = result.apparent_encoding
-            else:
-                result.encoding = encoding
-        if result.status_code == 200:
-            yield {
-                "url": url,
-                "about": e,
-                "html": result.text,
-            }
-
-
-def pages_warc(fnames):
-    """Yield html pages from WARC files"""
-    from warcio.archiveiterator import ArchiveIterator
-
-    for fname in fnames:
-        with open(fname, "rb") as stream:
-            for record in ArchiveIterator(stream):
-                if record.rec_type == "response":
-                    url = record.rec_headers.get_header("WARC-Target-URI")
-                    e = None
-                    if "?about=" in url:
-                        url, e = url.rsplit("?about=", 1)
-
-                    text = record.content_stream().read().decode()
-                    yield {
-                        "url": url,
-                        "about": e,
-                        "html": text,
-                    }
 
 
 def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):

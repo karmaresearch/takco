@@ -470,8 +470,13 @@ def get_top_headers(tableHeaders, merge_headers=None, topn=None):
             if merge:
                 c += Counter(merge.get("freq", {}))
 
-            txt = "\t".join(txt for txt, _ in c.most_common(topn))
+            txt = ""
+            if c:
+                txts, _ = zip(*c.most_common())
+                txts_nohidden = [t for t in txts if t and t[0] != "_"]
+                txt = "\t".join(t for t in (txts_nohidden or txts)[:topn])
             top.append({"text": txt, "tdHtmlString": f"<th>{txt}</th>", "freq": c})
+
         return [top]
     else:
         if any(tableHeaders):

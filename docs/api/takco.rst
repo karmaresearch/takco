@@ -25,4 +25,5 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
+   takco.pages
    takco.util
