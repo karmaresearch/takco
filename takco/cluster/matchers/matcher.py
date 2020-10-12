@@ -59,16 +59,16 @@ class Matcher:
 
     def get_columns_multi(self, tis):
         tis = list(set(tis))
-        size = 999
+        size = 99
         with sqlite3.connect(self.indices_fname) as indices:
             for xi in range(0, len(tis), size):
-                chunk = tis[xi:(xi+size)]
+                tis_chunk = tis[xi:(xi+size)]
                 rs = indices.execute(
                     f"""
                      select i, columnIndexOffset, numCols from indices
-                     where (i in ({', '.join('?' for _ in tis)}))
+                     where (i in ({', '.join('?' for _ in tis_chunk)}))
                 """,
-                    [int(ti) for ti in tis],
+                    [int(ti) for ti in tis_chunk],
                 ).fetchall()
                 if rs:
                     for ti, columnIndexOffset, numCols in rs:
