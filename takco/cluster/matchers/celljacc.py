@@ -19,28 +19,15 @@ class CellJaccMatcher(Matcher):
         **kwargs,
     ):
         self.name = name or self.__class__.__name__
-        mdir = Path(fdir) / Path(self.name)
-        # if create:
-        #     shutil.rmtree(mdir, ignore_errors=True)
-        # mdir.mkdir(parents=True, exist_ok=True)
+        self.mdir = Path(fdir) / Path(self.name)
+        self.indexed = False
 
         self.source = source
         self.tokenize = tokenize
-        # self.config(Path(mdir) / Path("config.toml"))
 
-        self.cell_tables_fname = Path(mdir) / Path("cell_tables.pickle")
-        if self.cell_tables_fname.exists():
-            pass
-            # self.cell_tables = pickle.load(self.cell_tables_fname.open("rb"))
-        else:
-            self.cell_tables = {}
-
-        self.table_cells_fname = Path(mdir) / Path("table_cells.pickle")
-        if self.table_cells_fname.exists():
-            pass
-            # self.table_cells = pickle.load(self.table_cells_fname.open("rb"))
-        else:
-            self.table_cells = {}
+        self.cell_tables = {}
+        self.table_cells = {}
+        self.pickles = ["cell_tables", "table_cells"]
 
         super().__init__(fdir)
 
@@ -86,11 +73,26 @@ class CellJaccMatcher(Matcher):
         return self
 
     def index(self):
-        pass
-        # with self.cell_tables_fname.open("wb") as fw:
-        #     pickle.dump(self.cell_tables, fw)
-        # with self.table_cells_fname.open("wb") as fw:
-        #     pickle.dump(self.table_cells, fw)
+        if not self.indexed:
+            self.indexed = True
+            self.mdir.mkdir(parents=True, exist_ok=True)
+            for p in self.pickles:
+                with (self.mdir / Path(f"{p}.pickle")).open("wb") as fw:
+                    pickle.dump(getattr(self, p), fw)
+            self.__exit__()
+
+    def __enter__(self):
+        if self.indexed:
+            for p in self.pickles:
+                fpath = self.mdir / Path(f"{p}.pickle")
+                if fpath.exists():
+                    setattr(self, p, pickle.load(fpath.open("rb")))
+        return self
+
+    def __exit__(self, *args):
+        if self.indexed:
+            for p in self.pickles:
+                delattr(self, p)
 
     def block(self, ti: int):
         """Block tables on having some cell in common."""
@@ -105,6 +107,7 @@ class CellJaccMatcher(Matcher):
 
             for cell1, cis1 in cells1.items():
                 for cell2, cis2 in cells2.items():
+
                     special1 = all(c.startswith("_") for c in cell1)
                     special2 = all(c.startswith("_") for c in cell2)
                     if special1 or special2:

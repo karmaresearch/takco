@@ -283,3 +283,31 @@ def transpose(table, n_header_rows=0):
 def heuristic_transpose(table):
     if (table["numDataRows"] == 1) and (table["numCols"] == 2):
         transpose(table)
+
+
+def apply_prefix_header_rules(table, prefix_header_rules):
+    prefixes = {p["find"]: p["header"] for p in prefix_header_rules}
+
+    if not any(h for hr in table["tableHeaders"] for h in hr):
+        hcols = dict(enumerate(zip(*table["tableHeaders"])))
+        cols = list(zip(*table["tableData"]))
+        for ci, col in enumerate(cols):
+            for p, headertext in prefixes.items():
+                if any(c.get("text", "").startswith(p) for c in col):
+                    l = len(p)
+                    for c in col:
+                        c["text"] = c["text"][l:]
+                        for link in c["surfaceLinks"]:
+                            link["offset"] -= l
+                            link["endOffset"] -= l
+                    head = hcols.setdefault(ci, [{}])
+                    head[0]["text"] = headertext
+                    break
+
+        if hcols:
+            for ci in range(len(cols)):
+                hcols.setdefault(ci, [{"text": ""}])
+            _, hcols = zip(*sorted(hcols.items()))
+            table["tableHeaders"] = list(zip(*hcols))
+            table["tableData"] = list(zip(*cols))
+            table["numHeaderRows"] = len(table["tableHeaders"])

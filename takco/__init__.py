@@ -13,9 +13,19 @@ import logging as log
 
 from .util import *
 
+__all__ = [
+    "TableSet",
+]
+
 
 class TableSet:
     """A set of tables that can be clustered and linked."""
+
+    def __init__(self, tables):
+        self.tables = tables
+
+    def dump(self, *args, **kwargs):
+        return TableSet(self.tables._dump(*args, **kwargs))
 
     @classmethod
     def csvs(
@@ -38,7 +48,7 @@ class TableSet:
             }
             for fname in path
         )
-        return executor(data, **exkw)
+        return TableSet(executor(data, **exkw))
 
     @classmethod
     def load(
@@ -46,13 +56,14 @@ class TableSet:
         path: Path = None,
         executor: Config = None,
         assets: typing.List[Config] = (),
+        **_,
     ):
         log.debug(f"Loading tables {path} using executor {executor}")
         if all(str(val).endswith("csv") for val in path):
             return cls.csvs(path, executor=executor, assets=assets)
 
         executor, exkw = get_executor_kwargs(executor, assets)
-        return executor._load(path, **exkw)
+        return TableSet(executor._load(path, **exkw))
 
     @classmethod
     def dataset(
@@ -84,7 +95,8 @@ class TableSet:
         params = Config(params, assets)
         log.info(f"Loading dataset {params}")
         ds = evaluate.dataset.load(resourcedir=resourcedir, datadir=datadir, **params)
-        return executor(itertools.islice(ds.get_unannotated_tables(), sample), **exkw)
+        it_sample = itertools.islice(ds.get_unannotated_tables(), sample)
+        return TableSet(executor(it_sample, **exkw))
 
     @classmethod
     def extract(
@@ -113,12 +125,12 @@ class TableSet:
 
         from .extract import extract_tables
 
-        tables = htmlpages._pipe(extract_tables, desc="Extract")
-        return tables
+        return TableSet(htmlpages._pipe(extract_tables))
 
     def reshape(
-        tables: TableSet,
+        self: TableSet,
         restructure: bool = True,
+        prefix_header_rules: typing.List[Config] = (),
         unpivot_configs: typing.List[Config] = (),
         centralize_pivots: bool = False,
         split_compound_columns: bool = False,
@@ -135,11 +147,13 @@ class TableSet:
             split_compound_columns: Whether to split compound columns (with NER)
 
         """
+        tables = self.tables
         from . import reshape
         from . import link
 
         if restructure:
-            tables = tables._pipe(reshape.restructure, desc="Restructure")
+            log.info(f"Restructuring with rules: {prefix_header_rules}")
+            tables = tables._pipe(reshape.restructure, prefix_header_rules)
 
         unpivot_heuristics = {}
         for h in unpivot_configs:
@@ -149,7 +163,7 @@ class TableSet:
             )
 
         if unpivot_heuristics:
-            log.info(f"Reshaping with heuristics: {', '.join(unpivot_heuristics)}")
+            log.info(f"Unpivoting with heuristics: {', '.join(unpivot_heuristics)}")
 
             headerId_pivot = None
             if centralize_pivots:
@@ -165,18 +179,16 @@ class TableSet:
                 log.info(f"Found {len(headerId_pivot)} pivots")
 
             tables = tables._pipe(
-                reshape.unpivot_tables,
-                headerId_pivot,
-                heuristics=unpivot_heuristics,
-                desc="Unpivoting",
+                reshape.unpivot_tables, headerId_pivot, heuristics=unpivot_heuristics,
             )
 
         if split_compound_columns:
-            tables = tables._pipe(reshape.split_compound_columns, desc="Uncompounding")
+            tables = tables._pipe(reshape.split_compound_columns)
 
-        return tables
+        return TableSet(tables)
 
-    def get_tables_index(tables: TableSet):
+    @staticmethod
+    def get_tables_index(tables):
         """Make a dataframe of table and column indexes"""
         import pandas as pd
         from . import cluster
@@ -185,16 +197,15 @@ class TableSet:
         tables = tables._offset("numCols", "columnIndexOffset")
         tables.persist()
 
-        index = pd.concat(tables._pipe(cluster.make_column_index_df))
+        index = pd.concat(list(tables._pipe(cluster.make_column_index_df)))
         return tables, index
 
     def cluster(
-        tables: TableSet,
+        self: TableSet,
         workdir: Path = None,
         addcontext: typing.List[str] = (),
         headerunions: bool = True,
         matcher_configs: typing.List[Config] = (),
-        use_match_cache: bool = False,
         agg_func: str = "mean",
         agg_threshold: float = 0,
         edge_exp: float = 1,
@@ -220,6 +231,7 @@ class TableSet:
             agg_threshold_col: Matcher aggregation threshold (default: agg_threshold)
             mergeheaders_topn: Number of top headers to keep when merging
         """
+        tables = self.tables
         from .cluster import matchers as matcher_classes
 
         matchers = [
@@ -245,6 +257,8 @@ class TableSet:
 
         if matchers:
 
+            ## Partition table similarity graph
+
             # Collect index
             tables, index = TableSet.get_tables_index(tables)
 
@@ -257,62 +271,33 @@ class TableSet:
                 index.to_sql("indices", con, index_label="i", if_exists="replace")
                 con.execute("create index colOffset on indices(columnIndexOffset)")
 
-            table_indices = set(t["tableIndex"] for t in tables)
-            simpath = Path(workdir) / Path("sims.csv")
-            if use_match_cache and simpath.exists():
-                sims = pd.read_csv(simpath, index_col=[0, 1, 2, 3])
-            else:
-                log.info(f"Using matchers: {', '.join(m.name for m in matchers)}")
-                matchers = tables._pipe(cluster.matcher_add_tables, matchers)
+            log.info(f"Using matchers: {', '.join(m.name for m in matchers)}")
+            matchers = tables._pipe(cluster.matcher_add_tables, matchers)
 
-                matchers = matchers._fold(lambda x: x.name, lambda a, b: a.merge(b))
-                matchers = list(matchers)
-                for m in matchers:
-                    log.info(f"Indexing {m}")
-                    m.index()
+            matchers = matchers._fold(lambda x: x.name, lambda a, b: a.merge(b))
+            matchers = list(matchers)
+            for m in matchers:
+                log.info(f"Indexing {m}")
+                m.index()
 
-                # Get blocked column match scores
-                log.info(f"Computing column similarities...")
-                simdfs = tables.__class__(table_indices)._pipe(
-                    cluster.make_blocked_matches_df, matchers
+            # Get blocked column match scores
+            table_numcols = pd.Series({t["tableIndex"]: t["numCols"] for t in tables})
+            log.info(f"Computing and aggregating column similarities...")
+            table_indexes = tables.__class__(table_numcols)
+            aggsims, tablesims = zip(
+                *table_indexes._pipe(
+                    cluster.get_sims,
+                    matchers=matchers,
+                    agg_func=agg_func,
+                    agg_threshold=agg_threshold,
+                    table_numcols=table_numcols,
                 )
-                sims = pd.concat(list(simdfs))
-                log.info(f"Computed {len(sims)} column similarities")
-
-                sims.to_csv(simpath)
-
-            log.info(
-                f"Aggregating matcher results using `{agg_func} > {agg_threshold}` "
             )
-            aggsim = cluster.aggregate_similarities(sims, agg_func)
+            tablesim = pd.concat(tablesims)
+            log.info(f"Got {len(tablesim)} table similarities")
+            # tablesim.to_csv(Path(workdir) / Path("tablesim.csv"))
 
-            # Compute soft column alignment jaccard
-            import warnings
-
-            con = sqlite3.connect(Path(workdir) / Path("indices.sqlite"))
-            n = pd.read_sql("select i,numCols from indices", con).set_index("i")[
-                "numCols"
-            ]
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=FutureWarning)
-                tqdm.tqdm.pandas(desc="Aggregating column scores")
-            threshold_sim = aggsim[aggsim > agg_threshold]
-            aligned_total = threshold_sim.groupby(level=[0, 1]).progress_aggregate(
-                cluster.max_align, return_total=True
-            )
-            j = (
-                pd.DataFrame({"total": aligned_total})
-                .join(n.rename("n1"), on="ti1")
-                .join(n.rename("n2"), on="ti2")
-            )
-            tablesim = j["total"] / (j["n1"] + j["n2"] - j["total"])
-
-            tablesim.to_csv(Path(workdir) / Path("tablesim.csv"))
-
-            # TODO: end of parallel loop
-
-            tablesim[tablesim < 0] = 0
-            for ti in table_indices:
+            for ti in table_numcols.index:
                 tablesim.loc[(ti, ti)] = 1  # assure all tables are clustered
             louvain_partition = cluster.louvain(tablesim, edge_exp=edge_exp)
             log.info(f"Found {len(louvain_partition)} clusters")
@@ -328,6 +313,8 @@ class TableSet:
             )
 
             # TODO: parallelize this with partition object
+            aggsim = pd.concat(aggsims)
+            log.info(f"Got {len(aggsim)} column similarities")
             iparts = list(enumerate(louvain_partition))
             ti_pi, pi_ncols, ci_pci = {}, {}, {}
             chunks = cluster.cluster_partition_columns(
@@ -374,10 +361,10 @@ class TableSet:
 
             tables = tables.__class__(list(pi_mergetable.values()))
 
-        return tables
+        return TableSet(tables)
 
     def coltypes(
-        tables: TableSet,
+        self: TableSet,
         typer_config: Config = {"class": "SimpleTyper"},
         assets: typing.List[Config] = (),
     ):
@@ -387,14 +374,15 @@ class TableSet:
             tables: Tables to find column types
             typer_config: Typer config
         """
+        tables = self.tables
 
         from . import link
 
         typer = Config(typer_config, assets).init_class(**link.__dict__)
-        return tables._pipe(link.coltypes, typer=typer)
+        return TableSet(tables._pipe(link.coltypes, typer=typer))
 
     def integrate(
-        tables: TableSet,
+        self: TableSet,
         db_config: Config = {
             "class": "RDFSearcher",
             "statementURIprefix": "http://www.wikidata.org/entity/statement/",
@@ -415,6 +403,7 @@ class TableSet:
             pfd_threshold: Probabilistic Functional Dependency threshold for key column
                 prediction
         """
+        tables = self.tables
         from . import link
 
         db = Config(db_config, assets).init_class(**link.__dict__)
@@ -425,12 +414,13 @@ class TableSet:
             typer = Config(typer_config, assets).init_class(**link.__dict__)
             log.info(f"Typing with {typer}")
 
-        return tables._pipe(
+        tables = tables._pipe(
             link.integrate, db=db, typer=typer, pfd_threshold=pfd_threshold,
         )
+        return TableSet(tables)
 
     def link(
-        tables: TableSet,
+        self: TableSet,
         lookup_config: Config = {"class": "MediaWikiAPI"},
         lookup_cells: bool = False,
         linker_config: Config = {
@@ -451,6 +441,7 @@ class TableSet:
             linker: Entity Linker config
             usecols: Columns to use
         """
+        tables = self.tables
         from . import link
 
         if lookup_config:
@@ -465,10 +456,10 @@ class TableSet:
             log.info(f"Linking with {linker}")
             tables = tables._pipe(link.link, linker, usecols=usecols,)
 
-        return tables
+        return TableSet(tables)
 
     def score(
-        tables: TableSet,
+        self: TableSet,
         labels: Config,
         datadir: Path = None,
         resourcedir: Path = None,
@@ -495,26 +486,39 @@ class TableSet:
         table_annot = dset.get_annotated_tables()
         log.info(f"Loaded {len(table_annot)} annotated tables")
 
-        return tables._pipe(evaluate.table_score, table_annot, keycol_only=keycol_only)
+        tables = tables._pipe(
+            evaluate.table_score, table_annot, keycol_only=keycol_only
+        )
+        return TableSet(tables)
 
     def novelty(
-        tables: TableSet,
+        self: TableSet,
         searcher_config: Config = None,
         assets: typing.List[Config] = (),
     ):
+        tables = self.tables
         from . import evaluate
         from . import link
 
         searcher = Config(searcher_config, assets).init_class(**link.__dict__)
-        return tables._pipe(evaluate.table_novelty, searcher)
+        return TableSet(tables._pipe(evaluate.table_novelty, searcher))
 
-    def triples(tables: TableSet, include_type: bool = True):
+    def triples(self: TableSet, include_type: bool = True):
         """Make triples for predictions"""
+        tables = self.tables
         from . import evaluate
 
-        return tables._pipe(evaluate.table_triples, include_type=include_type)
+        tables = tables._pipe(evaluate.table_triples, include_type=include_type)
+        return TableSet(tables)
 
-    def report(tables: TableSet, keycol_only: bool = False, curve: bool = False):
+    def report(self: TableSet, keycol_only: bool = False, curve: bool = False):
+        """Generate report
+
+        Args:
+            keycol_only: Only analyse keycol predictions
+            curve: Calculate precision-recall tradeoff curve
+        """
+        tables = self.tables
         from . import evaluate
 
         data = {}
@@ -626,7 +630,8 @@ class TableSet:
         executor, assets, cache = conf["executor"], conf["assets"], conf["cache"]
         executor, exkw = get_executor_kwargs(executor, assets)
 
-        force = True if (force == []) else force
+        stepforce = None if (force == ()) else min(force, default=0)
+        force = force == []
 
         if cache:
             if force:
@@ -639,7 +644,7 @@ class TableSet:
                 stepdir.mkdir(exist_ok=True, parents=True)
                 log.info(f"Writing cache to {stepdir}")
                 tablefile = str(stepdir) + "/*.jsonl"
-                return stepfunc(**stepargs)._dump(tablefile)
+                return stepfunc(**stepargs).dump(tablefile)
             else:
                 return stepfunc(**stepargs)
 
@@ -664,7 +669,7 @@ class TableSet:
                 stepdir = Path(conf["workdir"]) / Path(stepname)
 
                 nodir = (not stepdir.exists()) or (not any(stepdir.iterdir()))
-                if (force == True) or (si >= min(force)) or nodir:
+                if force or (si >= stepforce) or nodir:
                     stepfunc = getattr(TableSet, stepfuncname)
                     if not stepfunc:
                         raise Exception(
@@ -672,7 +677,7 @@ class TableSet:
                         )
 
                     sig = signature(stepfunc)
-                    local_config = dict(tables=tables, **conf)
+                    local_config = dict(self=tables, **conf)
                     local_config["workdir"] = stepdir
                     for k, v in local_config.items():
                         if (k in sig.parameters) and (k not in stepargs):

@@ -129,11 +129,10 @@ class HashBag:
     def __iter__(self):
         return iter(self.it)
 
-    def _pipe(self, func, *args, desc=None, **kwargs):
+    def _pipe(self, func, *args, **kwargs):
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
         it = (copy.deepcopy(x) for x in it)
-        if desc:
-            log.info(desc)
+        log.debug(f"Piping {func.__name__} ...")
         return self.__class__(func(it, *args, **kwargs))
 
     def _fold(self, key, combine, exe=None, cast=False):
@@ -157,7 +156,7 @@ class HashBag:
                 yield i
                 i[set_attr] = total
                 total = t
-            log.info(f"Serial cumsum {get_attr} {set_attr} {default} -> {total}")
+            log.debug(f"Serial cumsum {get_attr} {set_attr} {default} -> {total}")
 
         return self.__class__(offset_it(it, default))
 
@@ -204,29 +203,39 @@ class HashBag:
                     import sys
 
                     yield from cls._load(sys.stdin)
-                elif Path(f).exists() and Path(f).is_file():
+                elif Path(f).exists() and not Path(f).is_dir():
                     log.debug(f"Opening {f}")
                     with Path(f).open() as o:
                         yield from cls._load(o)
-                elif "*.jsonl" in str(f):
+                elif "*" in str(f):
                     import glob
 
                     yield from cls._load(glob.glob(str(f)))
                 elif Path(f).exists() and Path(f).is_dir():
                     yield from cls._load(Path(f).glob("*.jsonl"))
+                else:
+                    raise Exception(f"Could not load {f}!")
 
         return cls(it(files))
 
 
 try:
-    import tqdm
+    import tqdm, inspect
 
     class TqdmHashBag(HashBag):
         """A HashBag that displays `tqdm <https://tqdm.github.io/>`_ progress bars."""
 
         def __init__(self, it, **kwargs):
             def wrap(it):
-                return tqdm.tqdm(it, leave=False)
+
+                # Get calling function
+                frameinfo = inspect.stack()[1]
+                args = inspect.getargvalues(frameinfo.frame).locals
+                relevant_arg = args.get("func", args.get("combine"))
+                relevant_arg = relevant_arg.__name__ if relevant_arg else ""
+                desc = f"{frameinfo.function}({relevant_arg})"
+
+                return tqdm.tqdm(it, desc=desc, leave=False)
 
             super().__init__(it, wrap=wrap, **kwargs)
 
@@ -280,7 +289,7 @@ try:
         def __iter__(self):
             return iter(self.bag.compute())
 
-        def _pipe(self, func, *args, desc=None, **kwargs):
+        def _pipe(self, func, *args, **kwargs):
             @functools.wraps(func)
             def listify(x, *args, **kwargs):
                 return list(func(x, *args, **kwargs))

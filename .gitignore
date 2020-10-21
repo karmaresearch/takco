@@ -1,4 +1,5 @@
 __pycache__
+.eggs
 .ipynb_checkpoints
 *.sqlite
 _build
@@ -6,4 +7,6 @@ output
 *.egg-info
 data/
 slurm-*
-
+dask-*
+.vscode
+.bin

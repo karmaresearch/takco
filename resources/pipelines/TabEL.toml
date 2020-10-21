@@ -30,6 +30,7 @@ path = "data/TabEL/part-*"
 [[step]]
 step = "reshape"
 restructure = true
+prefix_header_rules = [{find='Precededby ',header='Preceded by'}, {find='Succeededby ',header='Succeeded by'}]
 split_compound_columns = true
 
     [[step.unpivot_configs]]
@@ -59,6 +60,7 @@ step = "cluster"
 addcontext = ["pgTitle"]
 headerunions = true
 
+
 [[step]]
 step = "link"
 linker_config = {}
@@ -79,10 +81,9 @@ step = "coltypes"
 step = "cluster"
 addcontext = []
 headerunions = false
-use_match_cache = false
 agg_func = '@mean(  @max(headjacc, @pow(headvec, 4)), @max(bodylsh, @pow(bodyvec, 4), bodytype ) )'
-agg_threshold = 0.99
-edge_exp = 5
+agg_threshold = 0.9
+edge_exp = 6
 agg_threshold_col = 0.5
 store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
 mergeheaders_topn = 1
@@ -131,5 +132,8 @@ db_config = {resolve = "linker"}
     class = "EntityTyper"
     db = {resolve = "linker"}
     type_prop = "http://www.wikidata.org/prop/direct/P31"
-    supertype_prop = "http://www.wikidata.org/prop/direct/P279"
+    supertype_prop = ""
     cover_threshold = 0.333
+
+[[step]]
+step = "triples"

@@ -13,6 +13,7 @@ from .clean import (
     remove_empty_rows,
     process_rowspanning_body_cells,
     heuristic_transpose,
+    apply_prefix_header_rules,
 )
 
 
@@ -21,6 +22,7 @@ from typing import Dict, List, Iterator, Any, Tuple
 from collections import Counter
 import json
 import copy
+import contextlib
 
 L_COLHEADER = "_Variable"
 R_COLHEADER = "_Value"
@@ -97,37 +99,131 @@ def unpivot(
 def yield_pivots(headerobjs: Iterator[Dict], heuristics: Dict[str, PivotFinder]):
     """Detect headers that should be unpivoted using heuristics."""
 
-    for headerobj in headerobjs:
+    with contextlib.ExitStack() as hstack:
+        heuristics = {hname: hstack.enter_context(h) for hname, h in heuristics.items()}
 
-        headertext = [[c.get("text", "") for c in hrow] for hrow in headerobj]
+        for headerobj in headerobjs:
 
-        if headertext:
+            headertext = [[c.get("text", "") for c in hrow] for hrow in headerobj]
 
-            pivot_size = Counter()
-            for hname, h in heuristics.items():
-                with h:
+            if headertext:
+
+                pivot_size = Counter()
+                for hname, h in heuristics.items():
                     for level, colfrom, colto in h.find_longest_pivots(headerobj):
                         pivot_size[(level, colfrom, colto, hname)] = colto - colfrom
 
-            # Get longest pivot
-            for (level, colfrom, colto, hname), _ in pivot_size.most_common(1):
-                log.debug(f"Found pivot {(level, colfrom, colto)} using {hname}")
+                # Get longest pivot
+                for (level, colfrom, colto, hname), _ in pivot_size.most_common(1):
+                    log.debug(f"Found pivot {(level, colfrom, colto)} using {hname}")
 
-                old_headerId = get_headerId(headertext)
+                    old_headerId = get_headerId(headertext)
 
-                try:
-                    dummy = [[str(ci) for ci in range(len(headertext[0]))]]
-                    unpivot(headertext, dummy, level, colfrom, colto)
+                    try:
+                        dummy = [[str(ci) for ci in range(len(headertext[0]))]]
+                        unpivot(headertext, dummy, level, colfrom, colto)
 
-                    yield {
-                        "headerId": old_headerId,
-                        "level": level,
-                        "colfrom": colfrom,
-                        "colto": colto,
-                        "heuristic": hname,
-                    }
-                except Exception as e:
-                    log.debug(f"Failed to unpivot header {headertext} due to {e}")
+                        yield {
+                            "headerId": old_headerId,
+                            "level": level,
+                            "colfrom": colfrom,
+                            "colto": colto,
+                            "heuristic": hname,
+                        }
+                    except Exception as e:
+                        log.debug(f"Failed to unpivot header {headertext} due to {e}")
+
+
+def try_unpivot(table, pivot):
+    headerText = [[c.get("text", "") for c in hrow] for hrow in table["tableHeaders"]]
+    log.debug(f"Unpivoting {table.get('_id')}")
+    try:
+
+        level, colfrom, colto = pivot["level"], pivot["colfrom"], pivot["colto"]
+        leftcolheader = L_COLHEADER
+        rightcolheader = R_COLHEADER
+        if level >= len(headerText):
+            log.debug(f"Unpivot level is too big! ({level}, {headerText})")
+            return
+
+        # Allow heuristics to split the colheader
+        heuristic = heuristics.get(pivot["heuristic"])
+        if heuristic:
+            splits = heuristic.split_header(headerText[level], colfrom, colto)
+            splitheaders = []
+            for ci, (head, cell) in enumerate(splits):
+                links = table["tableHeaders"][level][ci]["surfaceLinks"]
+                splitheaders.append(
+                    (
+                        {"text": head or "", "tdHtmlString": f"<td>{head}</td>",},
+                        {
+                            "text": cell or "",
+                            "tdHtmlString": f"<td>{cell}</td>",
+                            "surfaceLinks": links,  # TODO adjust link offsets
+                        },
+                    )
+                )
+            if splitheaders:
+                log.debug(f"Splitting pivot header {table['headerId']}")
+                above, below = zip(*splitheaders)
+                table["tableHeaders"][level] = below
+                table["tableHeaders"].insert(level, above)
+                pivot["level"] = level = level + 1
+
+        # If pivot spans entire header, discard table!
+        if (level == colfrom == 0) and (colto == len(headerText[0]) - 1):
+            log.info(f"Discarded table {pgId}-{tbNr}")
+            return
+
+        leftcolheader = {
+            "text": L_COLHEADER,
+            "tdHtmlString": f"<th>{L_COLHEADER}</th>",
+        }
+        rightcolheader = {
+            "text": R_COLHEADER,
+            "tdHtmlString": f"<th>{R_COLHEADER}</th>",
+        }
+        emptycell = {"text": ""}
+
+        headrows, bodyrows = table["tableHeaders"], table["tableData"]
+
+        headrows, bodyrows = unpivot(
+            headrows,
+            bodyrows,
+            level,
+            colfrom,
+            colto,
+            leftcolheader=leftcolheader,
+            emptycell=emptycell,
+            rightcolheader=rightcolheader,
+        )
+        if not bodyrows:
+            pgId, tbNr = table["pgId"], table["tbNr"]
+            log.info(f"Pivoting {pgId}-{tbNr} resulted in no data")
+            return
+
+        headerText = [[c.get("text", "") for c in r] for r in headrows]
+        newHeaderId = get_headerId(headerText)
+        table["headerId"] = newHeaderId
+
+        table["pivot"] = pivot
+        table["tableHeaders"] = headrows
+        table["tableData"] = bodyrows
+        table["numCols"] = len(bodyrows[0])
+        table["numDataRows"] = len(bodyrows)
+        table["numHeaderRows"] = len(headrows)
+
+        m = min(table["numCols"] - 1, colto + 1)
+        table.setdefault("numericColumns", [])
+        table["numericColumns"] = (
+            table["numericColumns"][:colfrom] + table["numericColumns"][m:]
+        )
+        log.debug(f"Pivoted table {table.get('_id')}")
+
+        return table
+
+    except Exception as e:
+        log.debug(f"Cannot pivot table {table.get('_id')} due to {e}")
 
 
 def unpivot_tables(
@@ -137,6 +233,12 @@ def unpivot_tables(
 ):
     """Unpivot tables."""
 
+    if headerId_pivot is None:
+        headerobjs = [table.get("tableHeaders", []) for table in tables]
+        headerId_pivot = {}
+        for p in yield_pivots(headerobjs=headerobjs, heuristics=heuristics):
+            headerId_pivot[p["headerId"]] = p
+
     for table in tables:
 
         headerText = [
@@ -145,106 +247,13 @@ def unpivot_tables(
         if "headerId" not in table:
             table["headerId"] = get_headerId(headerText)
 
-        pivot = None
-        if headerId_pivot is not None:
-            pivot = headerId_pivot.get(table["headerId"])
-        else:
-            headers = [table.get("tableHeaders", [])]
-            for p in yield_pivots(headerobjs=headers, heuristics=heuristics):
-                pivot = p
+        pivot = headerId_pivot.get(table["headerId"])
 
         if pivot and headerText:
+            table = try_unpivot(table, pivot)
 
-            log.debug(f"Unpivoting {table.get('_id')}")
-            try:
-
-                level, colfrom, colto = pivot["level"], pivot["colfrom"], pivot["colto"]
-                leftcolheader = L_COLHEADER
-                rightcolheader = R_COLHEADER
-                if level >= len(headerText):
-                    log.debug(f"Unpivot level is too big! ({level}, {headerText})")
-                    return table
-
-                # Allow heuristics to split the colheader
-                heuristic = heuristics.get(pivot["heuristic"])
-                if heuristic:
-                    splits = heuristic.split_header(headerText[level], colfrom, colto)
-                    splitheaders = []
-                    for ci, (head, cell) in enumerate(splits):
-                        links = table["tableHeaders"][level][ci]["surfaceLinks"]
-                        splitheaders.append(
-                            (
-                                {
-                                    "text": head or "",
-                                    "tdHtmlString": f"<td>{head}</td>",
-                                },
-                                {
-                                    "text": cell or "",
-                                    "tdHtmlString": f"<td>{cell}</td>",
-                                    "surfaceLinks": links,  # TODO adjust link offsets
-                                },
-                            )
-                        )
-                    if splitheaders:
-                        log.debug(f"Splitting pivot header {table['headerId']}")
-                        above, below = zip(*splitheaders)
-                        table["tableHeaders"][level] = below
-                        table["tableHeaders"].insert(level, above)
-                        pivot["level"] = level = level + 1
-
-                # If pivot spans entire header, discard table!
-                if (level == colfrom == 0) and (colto == len(headerText[0]) - 1):
-                    log.info(f"Discarded table {pgId}-{tbNr}")
-                    return
-
-                leftcolheader = {
-                    "text": L_COLHEADER,
-                    "tdHtmlString": f"<th>{L_COLHEADER}</th>",
-                }
-                rightcolheader = {
-                    "text": R_COLHEADER,
-                    "tdHtmlString": f"<th>{R_COLHEADER}</th>",
-                }
-                emptycell = {"text": ""}
-
-                headrows, bodyrows = table["tableHeaders"], table["tableData"]
-
-                headrows, bodyrows = unpivot(
-                    headrows,
-                    bodyrows,
-                    level,
-                    colfrom,
-                    colto,
-                    leftcolheader=leftcolheader,
-                    emptycell=emptycell,
-                    rightcolheader=rightcolheader,
-                )
-                if not bodyrows:
-                    log.info(f"Pivoting {pgId}-{tbNr} resulted in no data")
-                    return
-
-                oldHeaderId = table["headerId"]
-                headerText = [[c.get("text", "") for c in r] for r in headrows]
-                newHeaderId = get_headerId(headerText)
-                table["headerId"] = newHeaderId
-
-                table["pivot"] = pivot
-                table["tableHeaders"] = headrows
-                table["tableData"] = bodyrows
-                table["numCols"] = len(bodyrows[0])
-                table["numDataRows"] = len(bodyrows)
-                table["numHeaderRows"] = len(headrows)
-
-                m = min(table["numCols"] - 1, colto + 1)
-                table.setdefault("numericColumns", [])
-                table["numericColumns"] = (
-                    table["numericColumns"][:colfrom] + table["numericColumns"][m:]
-                )
-                log.debug(f"Pivoted table {table.get('_id')}")
-            except Exception as e:
-                log.debug(f"Cannot pivot table {table.get('_id')} due to {e}")
-
-        yield table
+        if table:
+            yield table
 
 
 def split_compound_columns(tables, **kwargs):
@@ -270,6 +279,7 @@ def split_compound_columns(tables, **kwargs):
                     newhcol = list(hcol)
                     if newhcol:
                         newhcol[-1] = dict(newhcol[-1])
+                        part = part or ""
                         newhcol[-1]["text"] = newhcol[-1].get("text", "") + " " + part
                     newcols.append((newhcol, newcol))
             else:
@@ -283,7 +293,7 @@ def split_compound_columns(tables, **kwargs):
         yield table
 
 
-def restructure(tables: Iterator[Dict]) -> Iterator[Dict]:
+def restructure(tables: Iterator[Dict], prefix_header_rules=()) -> Iterator[Dict]:
     """Restructure tables.
 
     Performs all sorts of heuristic cleaning operations, including:
@@ -314,6 +324,8 @@ def restructure(tables: Iterator[Dict]) -> Iterator[Dict]:
         remove_empty_rows(table)
         process_rowspanning_body_cells(table)
         heuristic_transpose(table)
+
+        apply_prefix_header_rules(table, prefix_header_rules)
 
         if table["tableData"]:
             yield table

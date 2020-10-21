@@ -35,7 +35,8 @@ class TypeCosMatcher(Matcher):
             for ci, c in zip(ci_range, range(table["numCols"])):
                 classes = table.get("classes", {}).get(str(c))
                 if classes:
-                    self.coltypes.setdefault(ti, {})[ci] = classes
+                    norm = sum(v ** 2 for v in classes.values()) ** 0.5
+                    self.coltypes.setdefault(ti, {})[ci] = (classes, norm)
 
     def merge(self, matcher: Matcher):
         if matcher is not None:
@@ -55,10 +56,8 @@ class TypeCosMatcher(Matcher):
             ci_classes1 = self.coltypes.get(ti1, {})
             ci_classes2 = self.coltypes.get(ti2, {})
 
-            for ci1, cls1 in ci_classes1.items():
-                for ci2, cls2 in ci_classes2.items():
-                    if ci_classes1 and ci_classes2:
-                        dot = lambda a, b: sum((a[k] * b[k]) for k in set(a) & set(b))
-                        norm = lambda a: sum(v ** 2 for v in a.values()) ** 0.5
-                        cos = dot(cls1, cls2) / (norm(cls1) * norm(cls2))
-                        yield (ti1, ti2, ci1, ci2), max(cos, 0)
+            for ci1, (cls1, n1) in ci_classes1.items():
+                for ci2, (cls2, n2) in ci_classes2.items():
+                    dot = lambda a, b: sum((a[k] * b[k]) for k in set(a) & set(b))
+                    cos = dot(cls1, cls2) / (n1 * n2)
+                    yield (ti1, ti2, ci1, ci2), max(cos, 0)

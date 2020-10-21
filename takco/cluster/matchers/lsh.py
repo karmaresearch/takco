@@ -34,10 +34,8 @@ class LSHMatcher(Matcher):
         **kwargs,
     ):
         self.name = name or self.__class__.__name__
-        mdir = Path(fdir) / Path(self.name)
-        # if create:
-        #     shutil.rmtree(mdir, ignore_errors=True)
-        # mdir.mkdir(parents=True, exist_ok=True)
+        self.mdir = Path(fdir) / Path(self.name)
+        self.indexed = False
 
         self.source = source
         self.redis_dir = redis_dir if redis_dir and Path(redis_dir).exists() else None
@@ -90,22 +88,8 @@ class LSHMatcher(Matcher):
             )
             self.session = None
 
-        self.minhashes_fname = Path(mdir) / Path("minhashes.npy")
-        if self.minhashes_fname.exists():
-            pass
-            # self.minhash = np.load(self.minhashes_fname, mmap_mode="r")
-        else:
-            self.minhash = None
-
-        self.column_ids_fname = Path(mdir) / Path("column_ids.npy")
-        if self.column_ids_fname.exists():
-            pass
-            # self.ci_digest = collections.OrderedDict(
-            #     (k, v) for v, k in enumerate(np.load(self.column_ids_fname))
-            # )
-        else:
-            self.ci_digest = collections.OrderedDict()
-
+        self.minhash = None
+        self.ci_digest = collections.OrderedDict()
         self.digests = []
         super().__init__(fdir)
 
@@ -175,17 +159,44 @@ class LSHMatcher(Matcher):
 
     def index(self):
         self.session.close()
+        del self.session
+
         self.minhash = np.array(self.digests)
-        # np.save(self.minhashes_fname, self.minhash)
+        del self.digests
 
         self.ci_digest = collections.OrderedDict(
-            zip(self.ci_digest.keys(), range(len(self.digests)))
+            zip(self.ci_digest.keys(), range(len(self.minhash)))
         )
-        # np.save(self.column_ids_fname, np.array(list(self.ci_digest.keys())))
 
         if self.redis_dir:
             r = self.cli("save")
             log.info(f"Saved redis with code {r.returncode}")
+
+        self.indexed = True
+        self.mdir.mkdir(parents=True, exist_ok=True)
+        np.save(self.mdir / Path("minhash.npy"), self.minhash)
+        np.save(
+            self.mdir / Path("ci_digest.npy"), np.array(list(self.ci_digest.keys()))
+        )
+        with (self.mdir / Path("lshindex.pickle")).open("wb") as fw:
+            pickle.dump(self.lshindex, fw)
+        self.__exit__()
+
+    def __enter__(self):
+        if self.indexed:
+            self.minhash = np.load(self.mdir / Path("minhash.npy"), mmap_mode="r")
+            self.ci_digest = collections.OrderedDict(
+                (k, v) for v, k in enumerate(np.load(self.mdir / Path("ci_digest.npy")))
+            )
+            with (self.mdir / Path("lshindex.pickle")).open("rb") as fr:
+                self.lshindex = pickle.load(fr)
+        return self
+
+    def __exit__(self, *args):
+        if self.indexed:
+            del self.minhash
+            del self.ci_digest
+            del self.lshindex
 
     def block(self, ti: int):
         for ci in self.get_columns(ti):
@@ -197,14 +208,21 @@ class LSHMatcher(Matcher):
 
     def match(self, table_index_pairs):
         tis = set(ti for pair in table_index_pairs for ti in pair)
-        ti_cols = dict(self.get_columns_multi(tis))
+        ti_dis = {}
+        for ti, cs in self.get_columns_multi(tis):
+            ti_dis[ti] = [(ci, self.ci_digest[ci]) for ci in cs if ci in self.ci_digest]
+
+        di_pairs = []
         for ti1, ti2 in table_index_pairs:
-            for ci1 in ti_cols.get(ti1):
-                for ci2 in ti_cols.get(ti2):
-                    if (ci1 in self.ci_digest) and (ci2 in self.ci_digest):
-                        mh1 = self.minhash[self.ci_digest[ci1]]
-                        mh2 = self.minhash[self.ci_digest[ci2]]
-                        yield (ti1, ti2, ci1, ci2), np.mean((mh1 == mh2))
+            for ci1, di1 in ti_dis.get(ti1, []):
+                for ci2, di2 in ti_dis.get(ti2, []):
+                    di_pairs.append(((ti1, ti2, ci1, ci2), di1, di2))
+
+        if di_pairs:
+            inds, dis1, dis2 = zip(*di_pairs)
+            scores = (self.minhash[dis1, :] == self.minhash[dis2, :]).mean(1)
+            for ind, score in zip(inds, scores):
+                yield ind, score
 
     def close(self):
         if self.redis_dir:

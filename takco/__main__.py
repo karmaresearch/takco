@@ -40,15 +40,17 @@ class SetConfig(argparse.Action):
 
 
 class SetExecutor(argparse.Action):
-    def __init__(self, option_strings, dest, nargs=1, **kwargs):
-        super(SetExecutor, self).__init__(option_strings, dest, nargs=1, **kwargs)
+    DEFAULT = {"class": "TqdmHashBag"}
+
+    def __init__(self, option_strings, dest, nargs="?", **kwargs):
+        super(SetExecutor, self).__init__(option_strings, dest, nargs="?", **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None):
         global config
         config = config or {}
-        if self.dest and values:
-            config["executor"] = values
-            setattr(namespace, "executor", values[0])
+        if self.dest:
+            config["executor"] = values or self.DEFAULT
+            setattr(namespace, "executor", values or self.DEFAULT)
 
 
 class SetVerbosity(argparse.Action):
@@ -58,6 +60,10 @@ class SetVerbosity(argparse.Action):
         super(SetVerbosity, self).__init__(option_strings, dest, nargs=0, **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None):
+        logfmt = os.environ.get("LOGFMT", None)
+        if logfmt:
+            log.basicConfig(format=logfmt)
+
         if self.dest:
             loglevel = getattr(log, self.dest.upper(), log.WARNING)
             log.getLogger().setLevel(loglevel)
@@ -65,7 +71,8 @@ class SetVerbosity(argparse.Action):
             ll = os.environ.get("LOGLEVEL", "").upper()
             loglevel = getattr(log, ll, log.WARNING)
             log.getLogger().setLevel(loglevel)
-            logfile = os.environ.get("LOGFILE", None)
+        logfile = os.environ.get("LOGFILE", None)
+        if logfile:
             log.getLogger().addHandler(log.FileHandler(logfile))
         log.info(f"Set log level to {log.getLogger().getEffectiveLevel()}")
 
@@ -131,6 +138,8 @@ def main():
     result = defopt._call_function(parser, args._func, args)
     if result:
         try:
+            if isinstance(result, TableSet):
+                result = result.tables
             if isinstance(result, HashBag):
                 if hasattr(args, "out") and args.out:
                     log.info(f"Writing {result} to {args.out}")

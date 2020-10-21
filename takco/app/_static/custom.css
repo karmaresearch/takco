@@ -1,3 +1,7 @@
 .fa-home::before, .icon-home::before {
     content: "🌮";
 }
+
+.rst-content dl p, .rst-content dl table, .rst-content dl ul, .rst-content dl ol {
+    margin-bottom: 0px !important;
+}

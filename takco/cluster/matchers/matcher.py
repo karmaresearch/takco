@@ -2,6 +2,7 @@ from pathlib import Path
 import logging as log
 import sqlite3
 import re
+import pickle
 
 import toml
 
@@ -25,6 +26,9 @@ class Matcher:
     def __hash__(self):
         name = getattr(self, "name") if hasattr(self, "name") else ""
         return hash((self.__class__, name))
+
+    def __sizeof__(self):
+        return len(pickle.dumps(self))
 
     def get_table(self, ci):
         with sqlite3.connect(self.indices_fname) as indices:
@@ -62,7 +66,7 @@ class Matcher:
         size = 99
         with sqlite3.connect(self.indices_fname) as indices:
             for xi in range(0, len(tis), size):
-                tis_chunk = tis[xi:(xi+size)]
+                tis_chunk = tis[xi : (xi + size)]
                 rs = indices.execute(
                     f"""
                      select i, columnIndexOffset, numCols from indices

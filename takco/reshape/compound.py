@@ -25,6 +25,7 @@ def get_cell_offsetlinks(column: List[Cell]) -> List[Tuple[str, OffsetLinks]]:
             for link in cell.get("surfaceLinks", []):
                 if link.get("linkType", None) == "INTERNAL":
                     href = link.get("target", {}).get("href")
+                    href = href or str(link.get("target", {}).get("id", ""))
                     start = link.get("offset", -1)
                     end = link.get("endOffset", -1)
                     if href and start >= 0 and end >= 0:
@@ -40,9 +41,9 @@ class CompoundSplitter:
 
 
 class SpacyCompoundSplitter(CompoundSplitter):
-    CARDINAL = re.compile("[\d,.]+")
-    YEAR = re.compile("\d{4}")
-    URL_REGEX = "(?:(?:http://)|(?:www.))[^ ]+"
+    CARDINAL = re.compile(r"[\d,.]+")
+    YEAR = re.compile(r"\d{4}")
+    URL_REGEX = r"(?:(?:http://)|(?:www.))[^ ]+"
     URL = re.compile(URL_REGEX)
     EPOCH = datetime.datetime.utcfromtimestamp(0)
     EMPTY = ["", "-"]
@@ -63,33 +64,33 @@ class SpacyCompoundSplitter(CompoundSplitter):
             {
                 "label": "SEASON",
                 "pattern": [
-                    {"TEXT": {"REGEX": "^\d{4}$"}},
-                    {"TEXT": {"REGEX": "^[" + self.DASHES + "]$"}},
-                    {"TEXT": {"REGEX": "^\d{2}$"}},
+                    {"TEXT": {"REGEX": r"^\d{4}$"}},
+                    {"TEXT": {"REGEX": r"^[" + self.DASHES + "]$"}},
+                    {"TEXT": {"REGEX": r"^\d{2}$"}},
                 ],
             },
             {
                 "label": "DATE",
                 "pattern": [
                     {"LIKE_NUM": True},
-                    {"LEMMA": {"REGEX": "(?i)^(" + months + ")$"}},
+                    {"LEMMA": {"REGEX": r"(?i)^(" + months + ")$"}},
                     {"LIKE_NUM": True},
                 ],
             },
             {
                 "label": "DATE",
                 "pattern": [
-                    {"LEMMA": {"REGEX": "(?i)^(" + months + ")\d{1,2},\d{4}$"}},
+                    {"LEMMA": {"REGEX": r"(?i)^(" + months + r")\d{1,2},\d{4}$"}},
                 ],
             },
             {
                 "label": "DATE",
                 "pattern": [
-                    {"TEXT": {"REGEX": "^\d{4}$"}},
-                    {"TEXT": {"REGEX": "^[" + self.DASHES + "]$"}},
-                    {"TEXT": {"REGEX": "^\d{2}$"}},
-                    {"TEXT": {"REGEX": "^[" + self.DASHES + "]$"}},
-                    {"TEXT": {"REGEX": "^\d{2}$"}},
+                    {"TEXT": {"REGEX": r"^\d{4}$"}},
+                    {"TEXT": {"REGEX": r"^[" + self.DASHES + r"]$"}},
+                    {"TEXT": {"REGEX": r"^\d{2}$"}},
+                    {"TEXT": {"REGEX": r"^[" + self.DASHES + r"]$"}},
+                    {"TEXT": {"REGEX": r"^\d{2}$"}},
                 ],
             },
             {"label": "URL", "pattern": [{"LEMMA": {"REGEX": self.URL_REGEX}},],},
@@ -119,7 +120,7 @@ class SpacyCompoundSplitter(CompoundSplitter):
                 between = lambda x, e: e.start <= x <= e.end
                 overlap = lambda a, b: between(a.start, b) or between(a.end, b)
                 # Only add nlp entity if it doesn't clash with linked entity
-                if not any(overlap(e, e_) for e_ in ents):
+                if not any(overlap(e, e_) or overlap(e_, e) for e_ in ents):
                     ents.append(e)
             doc.ents = ents
         return doc
@@ -167,16 +168,23 @@ class SpacyCompoundSplitter(CompoundSplitter):
 
         return tuple(parts), tuple(enttypes), tuple(entlinks)
 
-    def find_splits(self, column: List[Cell]) -> Iterator[CompoundSplit]:
-
+    def candidate_splits(self, column: List[Cell]):
         cellset, offsetlinks = zip(*dict(get_cell_offsetlinks(column)).items())
-        docs = self.nlp.pipe(cellset, batch_size=50)
-        patterns = [
-            self.get_typepattern(self.make_linked_doc(doc, links))
-            for links, doc in zip(offsetlinks, docs)
-        ]
         if len(cellset) > 1:
-            pattern_freq = Counter((part, types) for part, types, links in patterns)
+            docs = self.nlp.pipe(cellset, batch_size=50)
+            patterns = [
+                self.get_typepattern(self.make_linked_doc(doc, links))
+                for links, doc in zip(offsetlinks, docs)
+            ]
+            return cellset, patterns
+        return cellset, ()
+
+    def find_splits(self, column: List[Cell]) -> Iterator[CompoundSplit]:
+        cellset, patterns = self.candidate_splits(column)
+        pattern_freq = Counter((part, types) for part, types, links in patterns)
+        if pattern_freq:
+            # log.debug(f"Found patterns ({len(cellset)}) {pattern_freq.most_common(3)}")
+
             for (colparts, coltypes), freq in pattern_freq.most_common(1):
                 # Check if the most frequent pattern occurs in over half of cells
                 if len(coltypes) > 1 and freq > len(cellset) / 2:
