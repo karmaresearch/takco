@@ -28,8 +28,29 @@ input = "extract"
 [[step]]
 step = "reshape"
 restructure = true
-split_compound_columns = false
-unpivot_configs = [{class = "NumSuffix"}]
+split_compound_columns = true
+
+    [[step.unpivot_configs]]
+    class = "NumSuffix"
+    
+    [[step.unpivot_configs]]
+    class = "SeqPrefix"
+    
+    [[step.unpivot_configs]]
+    class = "SpannedRepeat"
+    
+    [[step.unpivot_configs]]
+    class = "AgentLikeHyperlink"
+    lookup = {resolve = "lookup"}
+    kb = {resolve = "linker"}
+    bad_types = [
+        'http://www.wikidata.org/entity/Q4167410',
+        'http://www.wikidata.org/entity/Q13406463',
+        'http://www.wikidata.org/entity/Q47574',
+    ]
+    bad_props = [
+        'http://www.wikidata.org/prop/direct/P1687',
+    ]
 
 [[step]]
 step = "cluster"
@@ -56,11 +77,10 @@ step = "coltypes"
 step = "cluster"
 addcontext = []
 headerunions = false
-use_match_cache = false
 agg_func = '@mean(  @max(headjacc, @pow(headvec, 4)), @max(bodylsh, @pow(bodyvec, 4), bodytype ) )'
-agg_threshold = 0.99
-edge_exp = 5
-agg_threshold_col = 0.5
+agg_threshold = 0.5
+edge_exp = 6
+agg_threshold_col = 0.1
 store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
 mergeheaders_topn = 1
     
@@ -98,7 +118,7 @@ mergeheaders_topn = 1
 step = "link"
 linker_config = {}
 lookup_cells = true
-lookup_config = {resolve = 'lookup'}
+lookup_config = {resolve = 'wiki-sqlite'}
 
 [[step]]
 step = "integrate"
@@ -108,5 +128,8 @@ db_config = {resolve = "linker"}
     class = "EntityTyper"
     db = {resolve = "linker"}
     type_prop = "http://www.wikidata.org/prop/direct/P31"
-    supertype_prop = "http://www.wikidata.org/prop/direct/P279"
+    supertype_prop = ""
     cover_threshold = 0.333
+
+[[step]]
+step = "triples"

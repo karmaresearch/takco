@@ -6,11 +6,14 @@ import warnings
 import sqlite3
 import hashlib
 import contextlib
+import time
 
 from .matchers import Matcher
 
 try:
     from pandas import DataFrame, Series
+    import pandas as pd
+    import numpy as np
     from sklearn.cluster import AgglomerativeClustering
 except:
     import typing
@@ -18,6 +21,23 @@ except:
     DataFrame = typing.Any
     Series = typing.Any
     AgglomerativeClustering = typing.Any
+
+
+class Timer(dict):
+    @contextlib.contextmanager
+    def track(self, name):
+        t0 = time.time()
+        try:
+            yield self
+        finally:
+            self[name] = self.get(name, 0) + (time.time() - t0)
+
+
+def get_headerId(header):
+    # header is a tuple of tuples.
+    header = tuple(tuple(c for c in r) for r in header)
+    h = hashlib.sha224(str(header).encode()).hexdigest()
+    return int(h[:16], 16) // 2  # integer between 0 and SQLite MAX_VAL
 
 
 def louvain(tablesim, edge_exp=1) -> List[List[int]]:
@@ -51,7 +71,7 @@ def louvain(tablesim, edge_exp=1) -> List[List[int]]:
     louvain_partition = G.community_multilevel(
         weights=G.es["weight"], return_levels=False
     )
-    return louvain_partition
+    return [tuple(part) for part in louvain_partition]
 
 
 def matcher_add_tables(tables: Container[dict], matchers: List[Matcher]):
@@ -73,7 +93,7 @@ def matcher_add_tables(tables: Container[dict], matchers: List[Matcher]):
         return matchers
 
 
-def get_sims(
+def get_colsims(
     table_indices: Container[int],
     matchers: List[Matcher],
     agg_func: str,
@@ -81,9 +101,10 @@ def get_sims(
     table_numcols: Dict[int, int],
 ):
     """Block and match tables for column sims, then aggregate and threshold them. """
-    simdfs = make_blocked_matches_df(table_indices, matchers)
-    aggsims = aggregate_similarities(simdfs, agg_func)
-    return threshold_softjacc(aggsims, agg_threshold, table_numcols)
+    simdf = make_blocked_matches_df(table_indices, matchers)
+    if simdf is not None:
+        simdf = aggregate_similarities(simdf, agg_func)
+        yield threshold_softjacc(simdf, agg_threshold, table_numcols)
 
 
 def make_blocked_matches_df(table_indices: Container[int], matchers: List[Matcher]):
@@ -93,7 +114,6 @@ def make_blocked_matches_df(table_indices: Container[int], matchers: List[Matche
         table_indices: Set of table indices
         matchers: Matcher instances
     """
-    import pandas as pd
 
     with contextlib.ExitStack() as matcherstack:
         matchers = [matcherstack.enter_context(m) for m in matchers]
@@ -102,14 +122,15 @@ def make_blocked_matches_df(table_indices: Container[int], matchers: List[Matche
         simdf = {mi: {} for mi, _ in enumerate(matchers)}
         for mi, indexes, score in matches:
             simdf[mi][indexes] = score
+
         simdf = pd.DataFrame.from_dict(simdf)
         if len(simdf):
             simdf.index.names = ["ti1", "ti2", "ci1", "ci2"]
             simdf.columns = [m.name for m in matchers]
-            yield simdf
+            return simdf
 
 
-def aggregate_similarities(simdfs: List[DataFrame], agg_func: str):
+def aggregate_similarities(simdf: DataFrame, agg_func: str):
     """Aggregate similarities using a numexpr aggregation function.
 
     Extra functions available: ``max(*a)``, ``min(*a)``, ``mean(*a)``, ``pow(a,b)``.
@@ -119,24 +140,26 @@ def aggregate_similarities(simdfs: List[DataFrame], agg_func: str):
         `Numexpr <https://numexpr.readthedocs.io/>`_
 
     Args:
-        sims: DataFrame of similarities, where columns are matcher names.
+        simdf: DataFrame of similarities, where columns are matcher names.
         agg_func: Numexpr-style function.
     """
-    import pandas as pd
-    import numpy as np
 
-    funcs = {
-        "max": lambda *args: np.nanmax(args, axis=0),
-        "min": lambda *args: np.nanmin(args, axis=0),
-        "mean": lambda *args: np.nanmean(args, axis=0),
-        "pow": lambda a, b: a ** b,
-    }
-    for sims in simdfs:
+    import warnings, tqdm
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+        funcs = {
+            "max": lambda *args: np.nanmax(args, axis=0),
+            "min": lambda *args: np.nanmin(args, axis=0),
+            "mean": lambda *args: np.nanmean(args, axis=0),
+            "pow": lambda a, b: a ** b,
+        }
         if agg_func in funcs:
-            agg = funcs[agg_func](*(sims[c] for c in sims))
+            agg = funcs[agg_func](*(simdf[c] for c in simdf))
         else:
-            agg = sims.eval(agg_func, local_dict=funcs, engine="python")
-        yield pd.Series(agg, index=sims.index)
+            agg = simdf.eval(agg_func, local_dict=funcs, engine="python")
+        return pd.Series(agg, index=simdf.index)
 
 
 def max_align(g: Series, return_total=False):
@@ -156,35 +179,29 @@ def max_align(g: Series, return_total=False):
     return t if return_total else lr
 
 
-def threshold_softjacc(aggsims, agg_threshold, table_numcols):
-    import pandas as pd
+def threshold_softjacc(aggsim, agg_threshold, table_numcols):
 
-    for aggsim in aggsims:
+    # Compute soft column alignment jaccard
+    if log.getLogger().level < log.INFO:
+        import warnings, tqdm
 
-        # Compute soft column alignment jaccard
-        if log.getLogger().level < log.INFO:
-            import warnings, tqdm
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            tqdm.tqdm.pandas(desc="Aggregating column scores")
 
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=FutureWarning)
-                tqdm.tqdm.pandas(desc="Aggregating column scores")
-
-        aligned_total = aggsim.groupby(level=[0, 1]).aggregate(
-            max_align, return_total=True
-        )
-        aligned_total[aligned_total < 0] = 0
-        j = (
-            pd.DataFrame({"total": aligned_total})
-            .join(table_numcols.rename("n1"), on="ti1")
-            .join(table_numcols.rename("n2"), on="ti2")
-        )
-        tablesim = j["total"] / (j["n1"] + j["n2"] - j["total"])
-        yield aggsim, tablesim[tablesim > agg_threshold]
+    aligned_total = aggsim.groupby(level=[0, 1]).aggregate(max_align, return_total=True)
+    aligned_total[aligned_total < 0] = 0
+    j = (
+        pd.DataFrame({"total": aligned_total})
+        .join(table_numcols.rename("n1"), on="ti1")
+        .join(table_numcols.rename("n2"), on="ti2")
+    )
+    tablesim = j["total"] / (j["n1"] + j["n2"] - j["total"])
+    return tablesim[tablesim > agg_threshold]
 
 
 def make_column_index_df(tables):
     """Yield a dataframe for the tables' column indexes"""
-    import pandas as pd
 
     df = pd.DataFrame(
         [
@@ -203,10 +220,74 @@ def make_column_index_df(tables):
         yield df
 
 
+def yield_blocked_matches(table_indices: Container[int], matchers: List[Matcher]):
+    """Match table columns using matchers
+
+    Args:
+        table_indices: Table indices
+        matchers: Matcher instances
+
+    Yields:
+        (matcher index, ``(t1, t2, c1, c2)``, score)
+    """
+    table_indices = set(table_indices)
+
+    timer = Timer()
+
+    for matcher in matchers:
+        log.debug(f"Preparing block for matcher {matcher.name}")
+        with timer.track(f"prepare-{matcher.name}"):
+            matcher.prepare_block(table_indices)
+
+    table_block = {}
+    for ti in table_indices:
+        block = set()
+        for matcher in matchers:
+            with timer.track(f"block-{matcher.name}"):
+                block |= set(matcher.block(ti) or [])
+        table_block[ti] = block
+
+    table_index_pairs = set(
+        (ti1, ti2) for ti1, block in table_block.items() for ti2 in block if ti1 != ti2
+    )
+    for mi, matcher in enumerate(matchers):
+        log.debug(f"Matching {len(table_index_pairs)} pairs with {matcher.name}...")
+        if log.getLogger().level < log.INFO:
+            try:
+                import tqdm
+
+                table_index_pairs = tqdm.tqdm(table_index_pairs)
+            except:
+                pass
+
+        with timer.track(f"match-{matcher.name}"):
+            for pairs, score in matcher.match(table_index_pairs):
+                yield mi, pairs, score
+
+    log.debug(f"times: {timer}")
+
+
+def yield_tablepairs_matches(
+    table_index_pairs: Container[Tuple[int, int]], matchers: List[Matcher]
+):
+    """Get matches for table pairs
+
+    Args:
+        table_index_pairs: Table index pairs
+        matchers: Matcher instances
+
+    Yields:
+        (matcher index, ``(t1, t2, c1, c2)``, score)
+    """
+    table_index_pairs = set(table_index_pairs)
+    for mi, matcher in enumerate(matchers):
+        for indexes, score in matcher.match(table_index_pairs):
+            yield mi, indexes, score
+
+
 def cluster_partition_columns(
-    iparts: Container[Tuple[int, int]],
+    partitions: Container[Tuple[int, List[int]]],
     clus: AgglomerativeClustering,
-    aggsim: Series,
     agg_func: str,
     agg_threshold: float,
     matchers: List[Matcher],
@@ -214,7 +295,7 @@ def cluster_partition_columns(
     """Cluster columns withing a partition
 
     Args:
-        iparts: Pairs of (partition index, [table indices])
+        partitions: Pairs of (partition index, [table indices])
         clus: Scikit-learn clustering instance
         aggsim: Aggregated similarities Series of {(p1,p2,c1,c2): normalized sim }
         agg_func: Numexpr-style aggregation function
@@ -224,73 +305,55 @@ def cluster_partition_columns(
     Yields:
         ``({table:partition}, {partition: ncols}, {column:{column index: partition column index}})``
     """
-    import pandas as pd
-
-    partition_has_unblocked_pairs = {}
-    unblocked_pairs = []
     ti_pi = {}
-    for pi, part in iparts:
-        for ti in part:
-            ti_pi[ti] = pi
-
-        colsim = aggsim.loc[part, part, :, :]
-
-        # Match unblocked table pairs
-        blocked_pairs = colsim.groupby(level=[0, 1]).agg("any")
-        blocked_pairs = blocked_pairs[blocked_pairs]
-        partition_unblocked_pairs = [
-            (ti1, ti2)
-            for ti1 in part
-            for ti2 in part
-            if ti2 >= ti1
-            and not any(i in blocked_pairs.index for i in [(ti1, ti2), (ti2, ti1)])
-        ]
-        if len(partition_unblocked_pairs):
-            log.debug(f"Partition {pi} has {len(unblocked_pairs)} unblocked pairs")
-            unblocked_pairs += partition_unblocked_pairs
-            partition_has_unblocked_pairs[pi] = True
+    pi_ncols = {}
+    ci_pci = {}
+    pi_colsim = {}
 
     with contextlib.ExitStack() as matcherstack:
         entered = [matcherstack.enter_context(m) for m in matchers]
-        # Make a dataframe of extra similarities
-        tablepairs_matches = yield_tablepairs_matches(unblocked_pairs, entered)
 
-        unblocked_sims = {i: {} for i, _ in enumerate(matchers)}
-        for m, (ti1, ti2, ci1, ci2), s in tablepairs_matches:
-            pi = ti_pi[ti1]
-            unblocked_sims.setdefault(m, {})[(pi, ti1, ti2, ci1, ci2)] = s
+        for pi, part in partitions:
+            for ti in part:
+                ti_pi[ti] = pi
 
-    unblocked_aggsim = None
-    if all(unblocked_sims.values()):
-        unblocked_sims = pd.DataFrame.from_dict(unblocked_sims)
-        unblocked_sims.index.names = ["pi", "ti1", "ti2", "ci1", "ci2"]
-        unblocked_sims.columns = [m.name for m in matchers]
-        for unblocked_aggsim in aggregate_similarities([unblocked_sims], agg_func):
-            unblocked_aggsim = unblocked_aggsim[unblocked_aggsim > agg_threshold]
+            # Match unblocked table pairs
+            pairs = [(t1, t2) for t1 in part for t2 in part if t2 >= t1]
+            # Make a dataframe of extra similarities
+            matches = yield_tablepairs_matches(pairs, entered)
+            sims = {mi: {} for mi, _ in enumerate(matchers)}
+            for mi, indexes, score in matches:
+                sims[mi][indexes] = score
+            if not sims:
+                continue
 
-    pi_ncols = {}
-    ci_pci = {}
-    for pi, part in iparts:
+            sims = pd.DataFrame.from_dict(sims)
+            sims.index.names = ["ti1", "ti2", "ci1", "ci2"]
+            sims.columns = [m.name for m in matchers]
+            colsim = aggregate_similarities(sims, agg_func)
+            colsim = colsim[colsim > agg_threshold]
 
-        colsim = aggsim.loc[part, part, :, :]
-        if partition_has_unblocked_pairs.get(pi) and (unblocked_aggsim is not None):
-            colsim = pd.concat([colsim, unblocked_aggsim.loc[pi]])
+            for ti, ci_range in entered[0].get_columns_multi(part):
+                for ci in ci_range:
+                    colsim[(ti, ti, ci, ci)] = 1
 
-        if not len(colsim):
-            # TODO: find out what's going on here.
-            # there should always be self-similarities
-            pi_ncols[pi] = 0
-            log.warning(f"No similarities for partition {pi}: {part}")
-        else:
-            col_cluster = cluster_columns(colsim.reset_index(), clus, pi=pi)
-            ci_pci.update(col_cluster)
-            ncols = len(set(col_cluster.values()))
-            pi_ncols[pi] = ncols
-            log.debug(
-                f"Partition {pi} has {len(part)} tables and {ncols} column clusters"
-            )
+            pi_colsim[pi] = colsim
 
-    yield ti_pi, pi_ncols, ci_pci
+            if not len(colsim):
+                # TODO: find out what's going on here.
+                # there should always be self-similarities
+                pi_ncols[pi] = 0
+                log.warning(f"No similarities for partition {pi}: {part}")
+            else:
+                col_clustercol = cluster_columns(colsim.reset_index(), clus, pi=pi)
+                ci_pci.update(col_clustercol)
+                ncols = len(set(col_clustercol.values()))
+                pi_ncols[pi] = ncols
+                log.debug(
+                    f"Partition {pi} has {len(part)} tables and {ncols} column clusters"
+                )
+
+    yield ti_pi, pi_ncols, ci_pci, pi_colsim
 
 
 def merge_partition_tables(
@@ -310,6 +373,8 @@ def merge_partition_tables(
     Returns:
         Merged table
     """
+    if "part" not in table:
+        return table
 
     empty_cell = {"text": ""}
     pi = table["part"]
@@ -402,91 +467,6 @@ def merge_partition_tables(
     return mergetable
 
 
-def get_headerId(header):
-    # header is a tuple of tuples.
-    header = tuple(tuple(c for c in r) for r in header)
-    h = hashlib.sha224(str(header).encode()).hexdigest()
-    return int(h[:16], 16) // 2  # integer between 0 and SQLite MAX_VAL
-
-
-import contextlib, time
-
-
-class Timer(dict):
-    @contextlib.contextmanager
-    def add(self, name):
-        t0 = time.time()
-        try:
-            yield self
-        finally:
-            self[name] = self.get(name, 0) + (time.time() - t0)
-
-
-def yield_blocked_matches(table_indices: Container[int], matchers: List[Matcher]):
-    """Match table columns using matchers
-
-    Args:
-        table_indices: Table indices
-        matchers: Matcher instances
-
-    Yields:
-        (matcher index, ``(t1, t2, c1, c2)``, score)
-    """
-    table_indices = set(table_indices)
-
-    t = Timer()
-
-    for matcher in matchers:
-        log.debug(f"Preparing block for matcher {matcher.name}")
-        with t.add(f"prepare-{matcher.name}"):
-            matcher.prepare_block(table_indices)
-
-    table_block = {}
-    for ti in table_indices:
-        block = set()
-        for matcher in matchers:
-            with t.add(f"block-{matcher.name}"):
-                block |= set(matcher.block(ti) or [])
-        table_block[ti] = block
-
-    table_index_pairs = set(
-        (ti1, ti2) for ti1, block in table_block.items() for ti2 in block if ti1 != ti2
-    )
-    for mi, matcher in enumerate(matchers):
-        log.debug(f"Matching {len(table_index_pairs)} pairs with {matcher.name}...")
-        if log.getLogger().level < log.INFO:
-            try:
-                import tqdm
-
-                table_index_pairs = tqdm.tqdm(table_index_pairs)
-            except:
-                pass
-
-        with t.add(f"match-{matcher.name}"):
-            for pairs, score in matcher.match(table_index_pairs):
-                yield mi, pairs, score
-
-    log.debug(f"times: {t}")
-
-
-def yield_tablepairs_matches(
-    table_index_pairs: Container[Tuple[int, int]], matchers: List[Matcher]
-):
-    """Get matches for table pairs
-
-    Args:
-        table_index_pairs: Table index pairs
-        matchers: Matcher instances
-
-    Yields:
-        (matcher index, ``(t1, t2, c1, c2)``, score)
-    """
-    table_index_pairs = set(table_index_pairs)
-    for mi, matcher in enumerate(matchers):
-        for pairs, score in matcher.match(table_index_pairs):
-            yield mi, pairs, score
-
-
 def cluster_columns(
     colsim: DataFrame, clus: AgglomerativeClustering, pi=None
 ) -> Dict[int, int]:
@@ -507,9 +487,10 @@ def cluster_columns(
     colsim = colsim[(colsim["ti1"] != colsim["ti2"]) | (colsim["ci1"] == colsim["ci2"])]
     colsim = colsim.set_index(["ci1", "ci2"])[0]
     colsim = colsim[~colsim.index.duplicated()]
+
+    # Make symmetric distance matrix
     d = 1 - colsim.unstack().sort_index(0).sort_index(1).fillna(0)
-    if (d != d.T).any().any() or (d.shape[0] != d.shape[1]):
-        log.warn(f"Distance matrix of partition {pi} is not symmetric!")
+    d = pd.DataFrame(np.minimum(d, d.T))
 
     try:
         partcols = clus.fit_predict(d)

@@ -82,9 +82,9 @@ step = "cluster"
 addcontext = []
 headerunions = false
 agg_func = '@mean(  @max(headjacc, @pow(headvec, 4)), @max(bodylsh, @pow(bodyvec, 4), bodytype ) )'
-agg_threshold = 0.9
+agg_threshold = 0.5
 edge_exp = 6
-agg_threshold_col = 0.5
+agg_threshold_col = 0.1
 store_align_meta = ["_id", "tableHeaders", "tableData", "entities", "classes"]
 mergeheaders_topn = 1
     

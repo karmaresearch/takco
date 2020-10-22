@@ -24,8 +24,11 @@ class TableSet:
     def __init__(self, tables):
         self.tables = tables
 
+    def __iter__(self):
+        return self.tables.__iter__()
+
     def dump(self, *args, **kwargs):
-        return TableSet(self.tables._dump(*args, **kwargs))
+        return TableSet(self.tables.dump(*args, **kwargs))
 
     @classmethod
     def csvs(
@@ -63,7 +66,7 @@ class TableSet:
             return cls.csvs(path, executor=executor, assets=assets)
 
         executor, exkw = get_executor_kwargs(executor, assets)
-        return TableSet(executor._load(path, **exkw))
+        return TableSet(executor.load(path, **exkw))
 
     @classmethod
     def dataset(
@@ -125,7 +128,7 @@ class TableSet:
 
         from .extract import extract_tables
 
-        return TableSet(htmlpages._pipe(extract_tables))
+        return TableSet(htmlpages.pipe(extract_tables))
 
     def reshape(
         self: TableSet,
@@ -153,7 +156,7 @@ class TableSet:
 
         if restructure:
             log.info(f"Restructuring with rules: {prefix_header_rules}")
-            tables = tables._pipe(reshape.restructure, prefix_header_rules)
+            tables = tables.pipe(reshape.restructure, prefix_header_rules)
 
         unpivot_heuristics = {}
         for h in unpivot_configs:
@@ -168,22 +171,22 @@ class TableSet:
             headerId_pivot = None
             if centralize_pivots:
                 tables.persist()
-                headers = tables._fold(reshape.table_get_headerId, lambda x, y: x)
-                headers = headers._pipe(reshape.get_headerobjs)
+                headers = tables.fold(reshape.table_get_headerId, lambda x, y: x)
+                headers = headers.pipe(reshape.get_headerobjs)
 
-                pivots = headers._pipe(
+                pivots = headers.pipe(
                     reshape.yield_pivots, heuristics=unpivot_heuristics
                 )
 
                 headerId_pivot = {p["headerId"]: p for p in pivots}
                 log.info(f"Found {len(headerId_pivot)} pivots")
 
-            tables = tables._pipe(
+            tables = tables.pipe(
                 reshape.unpivot_tables, headerId_pivot, heuristics=unpivot_heuristics,
             )
 
         if split_compound_columns:
-            tables = tables._pipe(reshape.split_compound_columns)
+            tables = tables.pipe(reshape.split_compound_columns)
 
         return TableSet(tables)
 
@@ -193,11 +196,11 @@ class TableSet:
         import pandas as pd
         from . import cluster
 
-        tables = tables._offset("tableIndex", "tableIndex", default=1)
-        tables = tables._offset("numCols", "columnIndexOffset")
+        tables = tables.offset("tableIndex", "tableIndex", default=1)
+        tables = tables.offset("numCols", "columnIndexOffset")
         tables.persist()
 
-        index = pd.concat(list(tables._pipe(cluster.make_column_index_df)))
+        index = pd.concat(list(tables.pipe(cluster.make_column_index_df)))
         return tables, index
 
     def cluster(
@@ -248,10 +251,10 @@ class TableSet:
         from . import cluster
 
         if addcontext:
-            tables = tables._pipe(cluster.tables_add_context_rows, fields=addcontext)
+            tables = tables.pipe(cluster.tables_add_context_rows, fields=addcontext)
 
         if headerunions:
-            tables = tables._fold(
+            tables = tables.fold(
                 cluster.table_get_headerId, cluster.combine_by_first_header
             )
 
@@ -271,36 +274,32 @@ class TableSet:
                 index.to_sql("indices", con, index_label="i", if_exists="replace")
                 con.execute("create index colOffset on indices(columnIndexOffset)")
 
-            log.info(f"Using matchers: {', '.join(m.name for m in matchers)}")
-            matchers = tables._pipe(cluster.matcher_add_tables, matchers)
+            log.info(f"Creating matchers: {', '.join(m.name for m in matchers)}")
+            matchers = tables.pipe(cluster.matcher_add_tables, matchers)
 
-            matchers = matchers._fold(lambda x: x.name, lambda a, b: a.merge(b))
+            matchers = matchers.fold(lambda x: x.name, lambda a, b: a.merge(b))
             matchers = list(matchers)
             for m in matchers:
-                log.info(f"Indexing {m}")
+                log.info(f"Indexing {m.name}")
                 m.index()
 
             # Get blocked column match scores
             table_numcols = pd.Series({t["tableIndex"]: t["numCols"] for t in tables})
-            log.info(f"Computing and aggregating column similarities...")
-            table_indexes = tables.__class__(table_numcols)
-            aggsims, tablesims = zip(
-                *table_indexes._pipe(
-                    cluster.get_sims,
-                    matchers=matchers,
-                    agg_func=agg_func,
-                    agg_threshold=agg_threshold,
-                    table_numcols=table_numcols,
-                )
+            log.info(f"Blocking tables; computing and aggregating column sims...")
+            tablesim = tables.__class__(table_numcols).pipe(
+                cluster.get_colsims,
+                matchers=matchers,
+                agg_func=agg_func,
+                agg_threshold=agg_threshold,
+                table_numcols=table_numcols,
             )
-            tablesim = pd.concat(tablesims)
+            tablesim = pd.concat(tablesim)
             log.info(f"Got {len(tablesim)} table similarities")
             # tablesim.to_csv(Path(workdir) / Path("tablesim.csv"))
 
             for ti in table_numcols.index:
                 tablesim.loc[(ti, ti)] = 1  # assure all tables are clustered
             louvain_partition = cluster.louvain(tablesim, edge_exp=edge_exp)
-            log.info(f"Found {len(louvain_partition)} clusters")
 
             ## Cluster columns
             from sklearn.cluster import AgglomerativeClustering
@@ -312,54 +311,60 @@ class TableSet:
                 distance_threshold=1,
             )
 
-            # TODO: parallelize this with partition object
-            aggsim = pd.concat(aggsims)
-            log.info(f"Got {len(aggsim)} column similarities")
-            iparts = list(enumerate(louvain_partition))
-            ti_pi, pi_ncols, ci_pci = {}, {}, {}
-            chunks = cluster.cluster_partition_columns(
-                iparts, clus, aggsim, agg_func, agg_threshold_col, matchers,
+            nonsingle = [p for p in louvain_partition if len(p) > 1]
+            log.info(f"Found {len(nonsingle)}/{len(louvain_partition)} >1 partitions")
+            chunks = tables.__class__(enumerate(nonsingle)).pipe(
+                cluster.cluster_partition_columns,
+                clus,
+                agg_func,
+                agg_threshold_col,
+                matchers,
             )
-            for chunk_ti_pi, chunk_pi_ncols, chunk_ci_pci in chunks:
+            ti_pi, pi_ncols, ci_pci = {}, {}, {}
+            colsimdir = Path(workdir) / Path("colsims")
+            colsimdir.mkdir(exist_ok=True, parents=True)
+            for chunk_ti_pi, chunk_pi_ncols, chunk_ci_pci, chunk_ti_colsim in chunks:
                 ti_pi.update(chunk_ti_pi)
                 pi_ncols.update(chunk_pi_ncols)
                 ci_pci.update(chunk_ci_pci)
+                for ti, colsim in chunk_ti_colsim.items():
+                    colsim.to_csv(colsimdir / Path(f"{ti}.csv"), header=True)
 
-            # TODO: serialize partitions & cluster alignments for UI
+            def set_alignment(tables, ti_pi, pi_ncols, ci_pci):
+                for table in tables:
+                    if table["tableIndex"] in ti_pi:
+                        table["part"] = ti_pi[table["tableIndex"]]
+                        sq = all(
+                            len(row) == table["numCols"] for row in table["tableData"]
+                        )
+                        # assert sq # TODO: why does this fail sometimes?
+                        ci_range = range(
+                            table["columnIndexOffset"],
+                            table["columnIndexOffset"] + table["numCols"],
+                        )
 
-            # TODO: parallelize map_partition
-            listtables = list(tables)
-            for table in listtables:
-                table["part"] = ti_pi[table["tableIndex"]]
-                #         assert all( len(row)==table['numCols'] for row in table['tableData'] ) # fails
-                ci_range = range(
-                    table["columnIndexOffset"],
-                    table["columnIndexOffset"] + table["numCols"],
-                )
+                        # TODO: add similarity scores
+                        pci_c = {
+                            ci_pci[ci]: c
+                            for c, ci in enumerate(ci_range)
+                            if ci in ci_pci
+                        }
+                        # partColAlign is a mapping from partition cols to local cols
+                        table["partColAlign"] = {
+                            pci: pci_c.get(pci, None)
+                            for pci in range(pi_ncols[table["part"]])
+                        }
+                    yield table
 
-                # TODO: add similarity scores
-                pci_c = {ci_pci[ci]: c for c, ci in enumerate(ci_range) if ci in ci_pci}
-                # partColAlign is a mapping from partition cols to local cols
-                table["partColAlign"] = {
-                    pci: pci_c.get(pci, None) for pci in range(pi_ncols[table["part"]])
-                }
-
-            # TODO: parallelize foldby
-            pi_mergetable = {}
-            for table in listtables:
-                pi = table["part"]
-                pi_mergetable[pi] = (
-                    cluster.merge_partition_tables(
-                        pi_mergetable[pi],
-                        table,
-                        store_align_meta=store_align_meta,
-                        mergeheaders_topn=mergeheaders_topn,
-                    )
-                    if (pi in pi_mergetable)
-                    else table
-                )
-
-            tables = tables.__class__(list(pi_mergetable.values()))
+            tables = tables.pipe(set_alignment, ti_pi, pi_ncols, ci_pci).fold(
+                lambda t: ti_pi.get(t["tableIndex"], t["_id"]),
+                lambda a, b: cluster.merge_partition_tables(
+                    a,
+                    b,
+                    store_align_meta=store_align_meta,
+                    mergeheaders_topn=mergeheaders_topn,
+                ),
+            )
 
         return TableSet(tables)
 
@@ -379,7 +384,7 @@ class TableSet:
         from . import link
 
         typer = Config(typer_config, assets).init_class(**link.__dict__)
-        return TableSet(tables._pipe(link.coltypes, typer=typer))
+        return TableSet(tables.pipe(link.coltypes, typer=typer))
 
     def integrate(
         self: TableSet,
@@ -414,7 +419,7 @@ class TableSet:
             typer = Config(typer_config, assets).init_class(**link.__dict__)
             log.info(f"Typing with {typer}")
 
-        tables = tables._pipe(
+        tables = tables.pipe(
             link.integrate, db=db, typer=typer, pfd_threshold=pfd_threshold,
         )
         return TableSet(tables)
@@ -447,14 +452,14 @@ class TableSet:
         if lookup_config:
             lookup = Config(lookup_config, assets).init_class(**link.__dict__)
             log.debug(f"Lookup with {lookup}")
-            tables = tables._pipe(
+            tables = tables.pipe(
                 link.lookup_hyperlinks, lookup=lookup, lookup_cells=lookup_cells,
             )
 
         if linker_config:
             linker = Config(linker_config, assets).init_class(**link.__dict__)
             log.info(f"Linking with {linker}")
-            tables = tables._pipe(link.link, linker, usecols=usecols,)
+            tables = tables.pipe(link.link, linker, usecols=usecols,)
 
         return TableSet(tables)
 
@@ -479,6 +484,7 @@ class TableSet:
             report: Report config
             keycol_only: Only report results for key column
         """
+        tables = self.tables
         from . import evaluate
 
         annot = Config(labels, assets)
@@ -486,9 +492,7 @@ class TableSet:
         table_annot = dset.get_annotated_tables()
         log.info(f"Loaded {len(table_annot)} annotated tables")
 
-        tables = tables._pipe(
-            evaluate.table_score, table_annot, keycol_only=keycol_only
-        )
+        tables = tables.pipe(evaluate.table_score, table_annot, keycol_only=keycol_only)
         return TableSet(tables)
 
     def novelty(
@@ -501,14 +505,14 @@ class TableSet:
         from . import link
 
         searcher = Config(searcher_config, assets).init_class(**link.__dict__)
-        return TableSet(tables._pipe(evaluate.table_novelty, searcher))
+        return TableSet(tables.pipe(evaluate.table_novelty, searcher))
 
     def triples(self: TableSet, include_type: bool = True):
         """Make triples for predictions"""
         tables = self.tables
         from . import evaluate
 
-        tables = tables._pipe(evaluate.table_triples, include_type=include_type)
+        tables = tables.pipe(evaluate.table_triples, include_type=include_type)
         return TableSet(tables)
 
     def report(self: TableSet, keycol_only: bool = False, curve: bool = False):
@@ -688,7 +692,7 @@ class TableSet:
                 else:
                     log.warn(f"Skipping step {stepname}, using cache instead")
                     tablefile = str(stepdir) + "/*.jsonl"
-                    tables = executor._load(tablefile, **exkw)
+                    tables = TableSet(executor.load(tablefile, **exkw))
             else:
                 raise Exception(f"Pipeline step {si} has no step type")
 

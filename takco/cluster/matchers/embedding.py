@@ -119,7 +119,6 @@ class EmbeddingMatcher(Matcher):
 
             log.debug("faiss info: %s", faiss.MatrixStats(V).comments)
             faissindex_fname = self.mdir / Path("index.faiss")
-            log.info(f"Writing faiss index to {faissindex_fname}")
             Path(faissindex_fname).parent.mkdir(parents=True, exist_ok=True)
             faiss.write_index(faissindex, str(faissindex_fname))
 

@@ -79,7 +79,7 @@ class WikiPages:
             return ({"entity": e, "page": url} for e, url in ent_abouturl)
         executor, exkw = self.ex
         log.info(f"Downloading {len(ent_abouturl)} pages with executor {executor}")
-        return executor(ent_abouturl, **exkw)._pipe(self.download, encoding=encoding)
+        return executor(ent_abouturl, **exkw).pipe(self.download, encoding=encoding)
 
 
 class WarcPages:
@@ -132,4 +132,4 @@ class WarcPages:
         log.info(
             f"Extracting pages from {len(fnames)} warc files using executor {executor}"
         )
-        return executor(fnames, **exkw)._pipe(self.parse_warc)
+        return executor(fnames, **exkw).pipe(self.parse_warc)

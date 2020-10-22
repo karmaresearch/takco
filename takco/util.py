@@ -64,14 +64,17 @@ class Config(dict, typing.Generic[T]):
                 "json-string": json.loads,
                 "toml-string": toml.loads,
             }
+            attempts = {}
             for cpi, config_parse in config_parsers.items():
                 try:
                     self.__init__(config_parse(val), **context)
                     break
                 except Exception as e:
-                    log.debug(f"Did not parse {val} with parser {cpi} due to error {e}")
+                    attempts[cpi] = e
             if not len(self):
-                log.info(f"Skipped config: {val} (context: {context})")
+                log.warn(f"Skipped config: {val} (context: {context})")
+                for cpi, e in attempts.items():
+                    log.debug(f"Did not parse {val} with parser {cpi} due to error {e}")
                 return val
 
     def init_class(self, **context):
@@ -129,24 +132,24 @@ class HashBag:
     def __iter__(self):
         return iter(self.it)
 
-    def _pipe(self, func, *args, **kwargs):
+    def pipe(self, func, *args, **kwargs):
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
         it = (copy.deepcopy(x) for x in it)
         log.debug(f"Piping {func.__name__} ...")
         return self.__class__(func(it, *args, **kwargs))
 
-    def _fold(self, key, combine, exe=None, cast=False):
+    def fold(self, key, binop, exe=None, cast=False, keep_key=False):
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
         combined = {}
         for i in it:
             k = key(i)
             if k in combined:
-                combined[k] = combine(i, combined[k])
+                combined[k] = binop(i, combined[k])
             else:
                 combined[k] = i
-        return self.__class__(combined.values())
+        return self.__class__(combined.items() if keep_key else combined.values())
 
-    def _offset(self, get_attr, set_attr, default=0):
+    def offset(self, get_attr, set_attr, default=0):
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
 
         def offset_it(it, default):
@@ -160,7 +163,7 @@ class HashBag:
 
         return self.__class__(offset_it(it, default))
 
-    def _dump(self, f):
+    def dump(self, f):
         import sys
         from io import TextIOBase
         from pathlib import Path
@@ -184,7 +187,7 @@ class HashBag:
         return self.__class__(dumped_it(f))
 
     @classmethod
-    def _load(cls, files, **kwargs):
+    def load(cls, files, **kwargs):
         from io import TextIOBase
         from pathlib import Path
 
@@ -202,17 +205,17 @@ class HashBag:
                     log.debug(f"Loading json from standard input")
                     import sys
 
-                    yield from cls._load(sys.stdin)
+                    yield from cls.load(sys.stdin)
                 elif Path(f).exists() and not Path(f).is_dir():
                     log.debug(f"Opening {f}")
                     with Path(f).open() as o:
-                        yield from cls._load(o)
+                        yield from cls.load(o)
                 elif "*" in str(f):
                     import glob
 
-                    yield from cls._load(glob.glob(str(f)))
+                    yield from cls.load(glob.glob(str(f)))
                 elif Path(f).exists() and Path(f).is_dir():
-                    yield from cls._load(Path(f).glob("*.jsonl"))
+                    yield from cls.load(Path(f).glob("*.jsonl"))
                 else:
                     raise Exception(f"Could not load {f}!")
 
@@ -272,7 +275,7 @@ try:
                 self.bag = db.from_sequence(it, npartitions=npartitions)
 
         @classmethod
-        def _load(cls, f, **kwargs):
+        def load(cls, f, **kwargs):
             if kwargs:
                 cls.start_client(**kwargs)
 
@@ -284,23 +287,25 @@ try:
                 return cls(db.read_text(f).map(json.loads))
 
         def persist(self):
-            self.bag.persist()
+            self.bag = self.bag.persist()
 
         def __iter__(self):
             return iter(self.bag.compute())
 
-        def _pipe(self, func, *args, **kwargs):
+        def pipe(self, func, *args, **kwargs):
             @functools.wraps(func)
             def listify(x, *args, **kwargs):
                 return list(func(x, *args, **kwargs))
 
             return DaskHashBag(self.bag.map_partitions(listify, *args, **kwargs))
 
-        def _fold(self, key, combine, exe=None, cast=False):
-            bag = self.bag.foldby(key, binop=combine).map(lambda x: x[1])
+        def fold(self, key, binop, exe=None, keep_key=False):
+            bag = self.bag.foldby(key, binop=binop)
+            if not keep_key:
+                bag = bag.map(lambda x: x[1])
             return DaskHashBag(bag.repartition(self.bag.npartitions))
 
-        def _offset(self, get_attr, set_attr, default=0):
+        def offset(self, get_attr, set_attr, default=0):
             df = self.bag.to_dataframe(columns=[get_attr])
             log.info(f"Dask offset {get_attr} {set_attr} {default}")
             if default:
@@ -312,15 +317,15 @@ try:
 
             return DaskHashBag(self.bag.map(setval, vs.to_bag()))
 
-        def _dump(self, f, **kwargs):
+        def dump(self, f, **kwargs):
             from io import TextIOBase
 
             if isinstance(f, TextIOBase):
-                HashBag._dump(self.bag.compute(), f)
+                HashBag.dump(self.bag.compute(), f)
                 return self
             else:
                 self.bag.map(json.dumps).to_textfiles(f, last_endline=True)
-                return self._load(f)
+                return self.load(f)
 
 
 except Exception as e:

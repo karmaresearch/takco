@@ -143,11 +143,11 @@ def main():
             if isinstance(result, HashBag):
                 if hasattr(args, "out") and args.out:
                     log.info(f"Writing {result} to {args.out}")
-                    for line in result._dump(args.out):
+                    for line in result.dump(args.out):
                         pass
                 else:
                     log.info(f"Writing {result} to stdout")
-                    for line in result._dump(sys.stdout):
+                    for line in result.dump(sys.stdout):
                         pass
             elif isinstance(result, (types.GeneratorType, map, filter)):
                 for r in result:
