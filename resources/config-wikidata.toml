@@ -1,57 +1,61 @@
-datadir = "data"
-resourcedir = "resources"
+datadir = 'data'
+resourcedir = 'resources'
 
 ## Executors ##
 
 [[assets]]
-name = "dask-local"
-class = "DaskHashBag"
-scheduler_port = 8786
-dashboard_address = ":8787"
+name = 'dask-local'
+class = 'DaskHashBag'
+scheduler_port = 8586
+dashboard_address = ':8587'
 n_workers = 4
 threads_per_worker = 1
 
 [[assets]]
-name = "dask-local-big"
-class = "DaskHashBag"
-scheduler_port = 8786
-dashboard_address = ":8787"
+name = 'dask-local-big'
+class = 'DaskHashBag'
+scheduler_port = 8586
+dashboard_address = ':8587'
 n_workers = 8
 threads_per_worker = 4
 
 [[assets]]
-name = "dask-cluster"
-class = "DaskHashBag"
-address = "tcp://192.168.62.207:8786"
+name = 'dask-cluster'
+class = 'DaskHashBag'
+address = 'tcp://192.168.62.207:8786'
 
+[[assets]]
+name = 'dask-cluster-2'
+class = 'DaskHashBag'
+address = 'tcp://192.168.62.207:8686'
 
 ## Knowledge Bases ##
 
 [[assets]]
-name = "wikidata-trident"
-class = "RDFSearcher"
-encoding = "wikidata"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
+name = 'wikidata-trident'
+class = 'RDFSearcher'
+encoding = 'wikidata'
+typeProperties = ['http://www.wikidata.org/prop/direct/P31']
     [assets.store]
-    class = "Trident"
-    configuration = "data/wikidata.tridentdb"
+    class = 'Trident'
+    configuration = 'data/wikidata.tridentdb'
 
 [[assets]]
-name  = "wikidata-live"
-class = "RDFSearcher"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
+name  = 'wikidata-live'
+class = 'RDFSearcher'
+typeProperties = ['http://www.wikidata.org/prop/direct/P31']
     [assets.store]
-    class = "SparqlStore"
-    configuration = "https://query.wikidata.org/sparql"
+    class = 'SparqlStore'
+    configuration = 'https://query.wikidata.org/sparql'
 
 [[assets]]
-name  = "wikidata-hdt"
-class = "RDFSearcher"
-encoding = "wikidata"
-typeProperties = ["http://www.wikidata.org/prop/direct/P31"]
+name  = 'wikidata-hdt'
+class = 'RDFSearcher'
+encoding = 'wikidata'
+typeProperties = ['http://www.wikidata.org/prop/direct/P31']
     [assets.store]
-    class = "HDTStore"
-    path = "/var/scratch/bbkruit/wikidata20200309.hdt"
+    class = 'HDTStore'
+    path = '/var/scratch/bbkruit/wikidata20200309.hdt'
     
 
 [[assets]]
@@ -72,7 +76,7 @@ propbaseuri='http://www.wikidata.org/prop/direct/P'
 
 [[assets]]
 name = 'wikidata-cache'
-class = "SQLiteDB"
+class = 'SQLiteDB'
 sqlite_kwargs = {timeout = 60.0}
 sqlitedb = 'data/wikidata-cache.sqlitedb'
 baseuri='http://www.wikidata.org/entity/Q'

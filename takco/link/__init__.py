@@ -117,8 +117,8 @@ def link(
             else:
                 log.debug(f"Linking table {table.get('_id')}")
 
-            links = linker.__class__.link(
-                linker, rows, usecols=table_usecols, existing=table
+            links = linker.link(
+                rows, usecols=table_usecols, existing=table
             )
             table.update(links)
             yield table

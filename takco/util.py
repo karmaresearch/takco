@@ -75,7 +75,7 @@ class Config(dict, typing.Generic[T]):
                 log.warn(f"Skipped config: {val} (context: {context})")
                 for cpi, e in attempts.items():
                     log.debug(f"Did not parse {val} with parser {cpi} due to error {e}")
-                return val
+                self['name'] = val
 
     def init_class(self, **context):
         if isinstance(self, dict) and "class" in self:
@@ -234,7 +234,7 @@ try:
                 # Get calling function
                 frameinfo = inspect.stack()[1]
                 args = inspect.getargvalues(frameinfo.frame).locals
-                relevant_arg = args.get("func", args.get("combine"))
+                relevant_arg = args.get("func", args.get("binop"))
                 relevant_arg = relevant_arg.__name__ if relevant_arg else ""
                 desc = f"{frameinfo.function}({relevant_arg})"
 
@@ -272,6 +272,7 @@ try:
                 self.bag = it
             else:
                 it = list(it)
+                npartitions = npartitions or len(it)
                 self.bag = db.from_sequence(it, npartitions=npartitions)
 
         @classmethod

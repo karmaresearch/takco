@@ -1,26 +1,26 @@
-datadir = "data"
-resourcedir = "resources"
+datadir = 'data'
+resourcedir = 'resources'
 
 [[assets]]
-name  = "semtab-r1-sample"
-class = "Annotation"
-path = "data/semtab-r1"
-fname = "pred-sample.jsonl"
+name  = 'semtab-r1-sample'
+class = 'Annotation'
+path = 'data/semtab-r1'
+fname = 'pred-sample.jsonl'
 
 [[assets]]
-name  = "semtab-r1-missed"
-class = "Annotation"
-path = "data/semtab-r1"
-fname = "pred-missed.jsonl"
+name  = 'semtab-r1-missed'
+class = 'Annotation'
+path = 'data/semtab-r1'
+fname = 'pred-missed.jsonl'
 
 [[assets]]
-name= "semtab-r1-missingsome-head100"
-class = "Annotation"
-path = "data/semtab-r1"
-fname = "pred-missingsome-head100.jsonl"
+name= 'semtab-r1-missingsome-head100'
+class = 'Annotation'
+path = 'data/semtab-r1'
+fname = 'pred-missingsome-head100.jsonl'
 
 [[assets]]
-name  = "semtab-r2-sample"
-class = "Annotation"
-path = "data/semtab-r2/pred"
-fname = "001"
+name  = 'semtab-r2-sample'
+class = 'Annotation'
+path = 'data/semtab-r2/pred'
+fname = '001'

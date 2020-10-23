@@ -22,7 +22,12 @@ class TableSet:
     """A set of tables that can be clustered and linked."""
 
     def __init__(self, tables):
-        self.tables = tables
+        if isinstance(tables, TableSet):
+            self.tables = tables.tables
+        else:
+            if not isinstance(tables, HashBag):
+                tables = HashBag(tables)
+            self.tables = tables
 
     def __iter__(self):
         return self.tables.__iter__()
@@ -104,10 +109,9 @@ class TableSet:
     @classmethod
     def extract(
         cls,
-        source: typing.Union[Config, HashBag],
+        source: typing.Union[Config, HashBag] = None,
         executor: Config = None,
         assets: typing.List[Config] = (),
-        tables: typing.Any = None,
     ):
         """Collect tables from HTML files
 
@@ -119,8 +123,8 @@ class TableSet:
         if isinstance(source, Config):
             from . import pages
 
-            source.update(dict(executor=executor, assets=assets))
-            htmlpages = source.init_class(**pages.__dict__).get()
+            source = Config(source, assets)
+            htmlpages = source.init_class(**pages.__dict__).get(executor, assets)
         elif isinstance(source, HashBag):
             htmlpages = source
         else:
@@ -150,7 +154,7 @@ class TableSet:
             split_compound_columns: Whether to split compound columns (with NER)
 
         """
-        tables = self.tables
+        tables = TableSet(self).tables
         from . import reshape
         from . import link
 
@@ -234,7 +238,7 @@ class TableSet:
             agg_threshold_col: Matcher aggregation threshold (default: agg_threshold)
             mergeheaders_topn: Number of top headers to keep when merging
         """
-        tables = self.tables
+        tables = TableSet(self).tables
         from .cluster import matchers as matcher_classes
 
         matchers = [
@@ -379,7 +383,7 @@ class TableSet:
             tables: Tables to find column types
             typer_config: Typer config
         """
-        tables = self.tables
+        tables = TableSet(self).tables
 
         from . import link
 
@@ -408,7 +412,7 @@ class TableSet:
             pfd_threshold: Probabilistic Functional Dependency threshold for key column
                 prediction
         """
-        tables = self.tables
+        tables = TableSet(self).tables
         from . import link
 
         db = Config(db_config, assets).init_class(**link.__dict__)
@@ -446,7 +450,7 @@ class TableSet:
             linker: Entity Linker config
             usecols: Columns to use
         """
-        tables = self.tables
+        tables = TableSet(self).tables
         from . import link
 
         if lookup_config:
@@ -484,7 +488,7 @@ class TableSet:
             report: Report config
             keycol_only: Only report results for key column
         """
-        tables = self.tables
+        tables = TableSet(self).tables
         from . import evaluate
 
         annot = Config(labels, assets)
@@ -500,7 +504,7 @@ class TableSet:
         searcher_config: Config = None,
         assets: typing.List[Config] = (),
     ):
-        tables = self.tables
+        tables = TableSet(self).tables
         from . import evaluate
         from . import link
 
@@ -509,7 +513,7 @@ class TableSet:
 
     def triples(self: TableSet, include_type: bool = True):
         """Make triples for predictions"""
-        tables = self.tables
+        tables = TableSet(self).tables
         from . import evaluate
 
         tables = tables.pipe(evaluate.table_triples, include_type=include_type)
@@ -522,7 +526,7 @@ class TableSet:
             keycol_only: Only analyse keycol predictions
             curve: Calculate precision-recall tradeoff curve
         """
-        tables = self.tables
+        tables = TableSet(self).tables
         from . import evaluate
 
         data = {}
@@ -588,7 +592,7 @@ class TableSet:
     def run(
         cls,
         pipeline: Config,
-        input_tables: typing.List[typing.Union[Path, Config]] = (),
+        input_tables: typing.List[typing.Union[Config, Path]] = (),
         workdir: Path = None,
         datadir: Path = None,
         resourcedir: Path = None,
@@ -656,11 +660,12 @@ class TableSet:
         input_tables = input_tables or pipeline.get("input_tables")
         if not input_tables:
             raise Exception(f"No input tables specified in config or pipeline!")
-        log.info(f"Using input tables {input_tables}")
-        if isinstance(input_tables, Config):
+        if any(isinstance(inp, Config) for inp in input_tables):
+            input_tables = input_tables[0]
             input_tables["step"] = input_tables.pop("input")
         else:
             input_tables = Config({"step": "load", "path": input_tables})
+        log.info(f"Using input tables {input_tables}")
 
         pipeline.setdefault("step", []).insert(0, input_tables)
 
@@ -673,7 +678,7 @@ class TableSet:
                 stepdir = Path(conf["workdir"]) / Path(stepname)
 
                 nodir = (not stepdir.exists()) or (not any(stepdir.iterdir()))
-                if force or (si >= stepforce) or nodir:
+                if force or (stepforce is not None and si >= stepforce) or nodir:
                     stepfunc = getattr(TableSet, stepfuncname)
                     if not stepfunc:
                         raise Exception(

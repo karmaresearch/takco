@@ -1,8 +1,8 @@
-from .util import Config, get_executor_kwargs
+from .util import Config, get_executor_kwargs, TqdmHashBag
 import typing
 import logging as log
 from pathlib import Path
-
+import glob
 
 class WikiPages:
     """
@@ -29,14 +29,12 @@ class WikiPages:
         sample: int = None,
         justurls: bool = False,
         encoding: str = None,
-        executor: Config = None,
-        assets: typing.List[Config] = (),
     ):
         self.justurls = justurls
-        self.ex = get_executor_kwargs(executor, assets)
+        self.encoding = encoding
 
         from . import link
-
+        
         with Config(dbconfig, assets).init_class(**link.__dict__) as db:
 
             ent_abouturl = []
@@ -49,7 +47,8 @@ class WikiPages:
 
     @staticmethod
     def download(
-        ent_abouturl: typing.Collection[typing.Tuple[str, str]], encoding=None
+        ent_abouturl: typing.Collection[typing.Tuple[str, str]],
+        encoding: str
     ):
         """Download html pages from urls
 
@@ -59,6 +58,7 @@ class WikiPages:
         """
         import requests
 
+        
         for e, url in ent_abouturl:
             result = requests.get(url)
             if encoding:
@@ -73,13 +73,19 @@ class WikiPages:
                     "html": result.text,
                 }
 
-    def get(self):
+    def get(self,
+        executor: Config = None,
+        assets: typing.List[Config] = (),
+    ):
+        executor, exkw = get_executor_kwargs(executor, assets)
         ent_abouturl = self.ent_abouturl
         if self.justurls:
             return ({"entity": e, "page": url} for e, url in ent_abouturl)
-        executor, exkw = self.ex
         log.info(f"Downloading {len(ent_abouturl)} pages with executor {executor}")
-        return executor(ent_abouturl, **exkw).pipe(self.download, encoding=encoding)
+        return executor(ent_abouturl, **exkw).pipe(
+            self.download, 
+            encoding=self.encoding
+        )
 
 
 class WarcPages:
@@ -95,13 +101,11 @@ class WarcPages:
         self,
         globstrings: typing.List[str] = (),
         datadir: Path = None,
-        executor: Config = None,
-        assets: typing.List[Config] = (),
     ):
+        if not isinstance(globstrings, list):
+            globstrings = [globstrings]
 
-        self.ex = get_executor_kwargs(executor, assets)
-
-        fnames = [fname for g in globstrings for fname in Path(".").glob(g)]
+        fnames = [fname for g in globstrings for fname in glob.glob(g)]
         assert len(fnames), f"No glob results for {globstrings}"
         self.fnames = fnames
 
@@ -126,9 +130,12 @@ class WarcPages:
                             "html": text,
                         }
 
-    def get(self):
+    def get(self,
+        executor: Config = None,
+        assets: typing.List[Config] = (),
+    ):
+        executor, exkw = get_executor_kwargs(executor, assets)
         fnames = self.fnames
-        executor, exkw = self.ex
         log.info(
             f"Extracting pages from {len(fnames)} warc files using executor {executor}"
         )

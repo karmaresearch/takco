@@ -21,6 +21,11 @@ from .rdf import GraphDB, URIRef, Literal
 from .types import SimpleTyper
 from .integrate import NaryDB, NaryMatchResult, QualifierMatchResult
 
+try:
+    from elasticsearch import Elasticsearch
+except:
+    log.warn(f"Failed to load Elasticsearch")
+
 ONLY_IDF = (
     "double idf = Math.log((field.docCount+1.0)/(term.docFreq+1.0)) + 1.0;"
     "double norm = 1/Math.sqrt(doc.length);"
@@ -125,16 +130,21 @@ class ElasticSearcher(Searcher):
         prop_baseuri=None,
         **_,
     ):
-        from elasticsearch import Elasticsearch
 
-        es_kwargs = es_kwargs or {}
-        self.es = Elasticsearch(**es_kwargs)
+        self.es_kwargs = es_kwargs or {}
         self.index = index
         self.baseuri = baseuri
         self.propbaseuri = propbaseuri or baseuri
         self.parts = parts
         self.prop_uri = prop_uri or {}
         self.prop_baseuri = prop_baseuri or {}
+
+    def __enter__(self):
+        self.es = Elasticsearch(**self.es_kwargs)
+        return self
+    
+    def __exit__(self, *args):
+        del self.es
 
     def _about(self, source):
         about = {}

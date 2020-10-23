@@ -35,8 +35,6 @@ class SetConfig(argparse.Action):
             config.update(os.environ)
             log.info(f"Loaded config from environment")
 
-        for k, v in config.items():
-            setattr(namespace, k, v)
 
 
 class SetExecutor(argparse.Action):
@@ -132,7 +130,13 @@ def main():
                     action=SetVerbosity,
                     help="Log debugging information",
                 )
+    
     args = parser.parse_args(sys.argv[1:])
+    for k, v in config.items():
+        if isinstance(v, list):
+            setattr(args, k, v + list(args.__dict__.get(k, [])) )
+        else:
+            setattr(args, k, v)
 
     # Output result as json (or newline-delimited json if generator)
     result = defopt._call_function(parser, args._func, args)

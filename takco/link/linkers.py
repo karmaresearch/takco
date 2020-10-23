@@ -38,6 +38,13 @@ class First(Linker):
         self.exclude_about = exclude_about
         self.add_about = bool(majority_class or exclude_about)
         self.normalize = normalize
+    
+    def __enter__(self):
+        self.searcher.__enter__()
+        return self
+    
+    def __exit__(self, *args):
+        self.searcher.__exit__(*args)
 
     def link(
         self,
@@ -175,6 +182,13 @@ class Salient(Linker):
         else:
             self.graph = graph
         self.max_backlink = max_backlink
+    
+    def __enter__(self):
+        self.searcher.__enter__()
+        return self
+    
+    def __exit__(self, *args):
+        self.searcher.__exit__(*args)
 
     def link(
         self,
