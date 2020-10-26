@@ -16,7 +16,9 @@ input = 'extract'
 [[step]]
 step = 'reshape'
 restructure = true
+prefix_header_rules = [{find='Preceded by ',header='Preceded by'}, {find='Succeeded by ',header='Succeeded by'}]
 split_compound_columns = true
+discard_headerless_tables = true
 
     [[step.unpivot_configs]]
     class = 'NumSuffix'

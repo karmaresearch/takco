@@ -141,6 +141,7 @@ class TableSet:
         unpivot_configs: typing.List[Config] = (),
         centralize_pivots: bool = False,
         split_compound_columns: bool = False,
+        discard_headerless_tables: bool = False,
         assets: typing.List[Config] = (),
     ):
         """Reshape tables
@@ -191,6 +192,15 @@ class TableSet:
 
         if split_compound_columns:
             tables = tables.pipe(reshape.split_compound_columns)
+
+        if discard_headerless_tables:
+            def filter_headerless(ts):
+                for t in ts:
+                    headers = t.get('tableHeaders',[])
+                    if any(h.get('text') for hrow in headers for h in hrow):
+                        yield t
+                        
+            tables = tables.pipe(filter_headerless)
 
         return TableSet(tables)
 
@@ -472,7 +482,6 @@ class TableSet:
         labels: Config,
         datadir: Path = None,
         resourcedir: Path = None,
-        report: typing.Dict = None,
         keycol_only: bool = False,
         assets: typing.List[Config] = (),
     ):
@@ -485,8 +494,7 @@ class TableSet:
             labels: Annotated data config
             datadir: Data directory
             resourcedir: Resource directory
-            report: Report config
-            keycol_only: Only report results for key column
+            keycol_only: Only calculate results for key column
         """
         tables = TableSet(self).tables
         from . import evaluate
@@ -496,7 +504,8 @@ class TableSet:
         table_annot = dset.get_annotated_tables()
         log.info(f"Loaded {len(table_annot)} annotated tables")
 
-        tables = tables.pipe(evaluate.table_score, table_annot, keycol_only=keycol_only)
+        pairs = tables.__class__([(t, table_annot.get(t['_id'], {})) for t in tables])
+        tables = pairs.pipe(evaluate.table_score, keycol_only=keycol_only)
         return TableSet(tables)
 
     def novelty(
@@ -641,6 +650,20 @@ class TableSet:
         stepforce = None if (force == ()) else min(force, default=0)
         force = force == []
 
+        # Prepend input tables to pipeline
+        input_tables = input_tables or pipeline.get("input_tables")
+        if not input_tables:
+            raise Exception(f"No input tables specified in config or pipeline!")
+        if not isinstance(input_tables, list):
+            input_tables = [input_tables]
+        if any(isinstance(inp, Config) for inp in input_tables):
+            input_tables = input_tables[0]
+            input_tables["step"] = input_tables.pop("input")
+        else:
+            input_tables = Config({"step": "load", "path": input_tables})
+        log.info(f"Using input tables {input_tables}")
+        pipeline.setdefault("step", []).insert(0, input_tables)
+
         if cache:
             if force:
                 shutil.rmtree(conf["workdir"], ignore_errors=True)
@@ -656,26 +679,12 @@ class TableSet:
             else:
                 return stepfunc(**stepargs)
 
-        # Prepend input tables to pipeline
-        input_tables = input_tables or pipeline.get("input_tables")
-        if not input_tables:
-            raise Exception(f"No input tables specified in config or pipeline!")
-        if any(isinstance(inp, Config) for inp in input_tables):
-            input_tables = input_tables[0]
-            input_tables["step"] = input_tables.pop("input")
-        else:
-            input_tables = Config({"step": "load", "path": input_tables})
-        log.info(f"Using input tables {input_tables}")
-
-        pipeline.setdefault("step", []).insert(0, input_tables)
-
-        log.info(f"Running pipeline '{name}' in {workdir}")
-        tables = []
-        for si, stepargs in enumerate(pipeline.get("step", [])):
+        def chain_step(tableset, workdir, si, stepargs):
+            stepargs = dict(stepargs)
             if "step" in stepargs:
                 stepfuncname = stepargs.pop("step")
                 stepname = f"{si}-{stepargs.get('name', stepfuncname)}"
-                stepdir = Path(conf["workdir"]) / Path(stepname)
+                stepdir = workdir / Path(stepname)
 
                 nodir = (not stepdir.exists()) or (not any(stepdir.iterdir()))
                 if force or (stepforce is not None and si >= stepforce) or nodir:
@@ -686,23 +695,35 @@ class TableSet:
                         )
 
                     sig = signature(stepfunc)
-                    local_config = dict(self=tables, **conf)
-                    local_config["workdir"] = stepdir
+                    local_config = {'self': tableset, **conf, 'workdir': stepdir}
                     for k, v in local_config.items():
                         if (k in sig.parameters) and (k not in stepargs):
                             stepargs[k] = v
 
                     log.info(f"Chaining pipeline step {stepname}")
-                    tables = wrap_step(stepfunc, stepargs, stepdir)
+                    yield workdir, wrap_step(stepfunc, stepargs, stepdir)
                 else:
                     log.warn(f"Skipping step {stepname}, using cache instead")
                     tablefile = str(stepdir) + "/*.jsonl"
-                    tables = TableSet(executor.load(tablefile, **exkw))
+                    yield workdir, TableSet(executor.load(tablefile, **exkw))
+            elif "split" in stepargs:
+                for split, splitargs in enumerate(stepargs["split"]):
+                    splitname = f"{si}-split-{split}"
+                    splitdir = workdir / Path(splitname)
+                    yield from chain_step(tableset, splitdir, si, splitargs)
             else:
                 raise Exception(f"Pipeline step {si} has no step type")
 
+        log.info(f"Running pipeline '{name}' in {workdir} using {executor}")
+        
+        streams = [ (Path(conf["workdir"]), []) ]
+        for si, args in enumerate(pipeline.get("step", [])):
+            streams = [c for wd, ts in streams for c in chain_step(ts, wd, si, args)]
+
         if cache:
-            for _ in tables:
-                pass
+            for workdir, tableset in streams:
+                for _ in tableset:
+                    pass
         else:
-            return tables
+            _, tablesets = zip(*streams)
+            return tablesets[0].__class__.concat(tablesets)

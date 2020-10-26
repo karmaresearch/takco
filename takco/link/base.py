@@ -55,7 +55,6 @@ class LiteralMatchResult(NamedTuple):
 class SearchResult(dict):
     def __init__(self, uri: URI, about: Dict[URI, List[URI]] = None, score: int = 1):
         """An entity search result with optional score"""
-        self.update({"@id": uri, "@score": score})
         self.uri = uri
         self.update(about or {})
         self.score = score
@@ -66,7 +65,7 @@ class SearchResult(dict):
 
 class Typer(Asset):
     def coltype(
-        cls, cell_ents: Iterator[Tuple[str, Container[URI]]],
+        self, cell_ents: Iterator[Tuple[str, Container[URI]]],
     ) -> Dict[str, int]:
         """Find column type for cells and their entities"""
         return {}
@@ -141,6 +140,9 @@ class Database(Asset):
         for (_, p, o) in self.triples((e, None, None)):
             about.setdefault(p, []).append(o)
         return about
+    
+    def triples(self, pattern):
+        return []
 
 
 class Linker(Asset):

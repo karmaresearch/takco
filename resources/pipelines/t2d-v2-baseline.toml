@@ -6,29 +6,29 @@ cache = false
 [input_tables]
 input = 'dataset'
 params = 't2d-v2'
-#sample = 2
 
 [[step]]
-step = 'link'
-#usecols = 'keycol'
-usecols = 'non_numeric_cols'
-#usecols = 'heuristic_key' # only works for literal props
-
-lookup_config = {}
-    [step.linker_config]
-    class = 'Salient'
-    graph = {resolve = 'dbpedia_t2ksubset'}
-    prop_cover = 0.2
-    class_cover = 0.2
-    #only_majority = '@type'
-    searcher = {resolve = 'dbpedia_t2ksubset_extralabels'}
+    [[step.split]]
+    step = 'link'
+    #usecols = 'non_numeric_cols'
+    usecols = 'heuristic_key' # only works for literal props
+    lookup_config = {}
+        [step.split.linker_config]
+        class = 'Salient'
+        graph = {resolve = 'dbpedia_t2ksubset'}
+        prop_cover = 0.2
+        class_cover = 0.2
+        searcher = {resolve = 'dbpedia_t2ksubset_extralabels'}
     
-    #[step.linker_config]
-    #class = 'First'
-    #    [step.linker_config.searcher]
-    #    class = 'SQLiteSearcher'
-    #    files = 'data/dbpedia-t2ksubset-label-sqlitedbs-2/*'
-    #    baseuri = 'http://dbpedia.org/resource/'
+    [[step.split]]
+    step = 'link'
+    #usecols = 'non_numeric_cols'
+    usecols = 'heuristic_key' # only works for literal props
+    lookup_config = {}
+        [step.split.linker_config]
+        class = 'First'
+        searcher = {resolve = 'dbpedia_t2ksubset_extralabels'}
+
 
 [[step]]
 step = 'score'
@@ -42,3 +42,7 @@ step = 'triples'
 [[step]]
 step = 'novelty'
 searcher_config = {resolve = 'dbpedia_t2ksubset'}
+
+[[step]]
+step = 'report'
+keycol_only = true

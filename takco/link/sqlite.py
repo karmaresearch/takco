@@ -17,6 +17,11 @@ from .base import Searcher, SearchResult, Lookup, Database
 
 
 class SQLiteCache:
+    _DBNAME = None
+    _INITDB = None
+    _INSERTDB = None
+    _SELECTDB = None
+
     def __init__(self, files, fallback=None, sqlite_kwargs=None):
         if not isinstance(files, list):
             if "*" in files:
@@ -183,9 +188,11 @@ class SQLiteDB(SQLiteCache, Database):
         )
 
     def __enter__(self):
+        self.fallback.__enter__()
         return SQLiteCache.__enter__(self)
 
     def __exit__(self, *args):
+        self.fallback.__exit__(*args)
         return SQLiteCache.__exit__(self, *args)
 
     def get_prop_values(self, e, p):
@@ -304,9 +311,11 @@ class SQLiteSearcher(SQLiteCache, Searcher):
         )
 
     def __enter__(self):
+        self.graph.__enter__()
         return SQLiteCache.__enter__(self)
 
     def __exit__(self, *args):
+        self.graph.__exit__(*args)
         return SQLiteCache.__exit__(self, *args)
 
     def search_entities(self, query: str, context=(), limit=1, add_about=False):

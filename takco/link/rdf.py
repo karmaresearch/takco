@@ -131,42 +131,53 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
 
         GraphDB.__init__(self, store=store)
 
+    def __enter__(self):
+        try:
+            self.open(None)
+        except Exception as e:
+            log.debug(e)
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
     def search_entities(self, query: str, context=(), limit=1, add_about=False):
         if self.encoding and (query != query.encode("ascii", errors="ignore").decode()):
             if self.encoding == "wikidata":
                 query = encode_wikidata(query)
             else:
                 query = query.encode(self.encoding)
-        results = [
+        result_uris = [
             e
             for l in self.labelProperties
             for lang in [None, self.language]
             for e, _, _ in self.triples((None, l, Literal(query, lang=lang)))
         ][:limit]
 
-        if not results:
+        if not result_uris:
             ls = [Literal(query, lang=lang).n3() for lang in [None, self.language]]
             ls = " or ".join(ls)
             log.debug(f"No {self.__class__.__name__} results for {query} ({ls})")
         else:
             log.debug(
-                f"{len(results):2d} {self.__class__.__name__} results for {query}"
+                f"{len(result_uris):2d} {self.__class__.__name__} results for {query}"
             )
 
         e_score = {}
         if self.refsort:
-            for e in results:
-                e_score[e] = 1 - 1 / (1 + self.count([None, None, URIRef(sr.uri)]))
+            # sort by inverse refCount score
+            for e in result_uris:
+                e_score[e] = 1 - 1 / (1 + self.count([None, None, URIRef(e)]))
 
         results = [
             SearchResult(
                 str(e), self.about(e) if add_about else {}, score=e_score.get(e, 1)
             )
-            for e in results
+            for e in result_uris
         ]
 
         if self.refsort:
-            results = sorted(results, lambda sr: -sr.score)
+            results = sorted(results, key = lambda sr: -sr.score)
 
         return results
 

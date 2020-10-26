@@ -144,15 +144,12 @@ def main():
         try:
             if isinstance(result, TableSet):
                 result = result.tables
+            
             if isinstance(result, HashBag):
-                if hasattr(args, "out") and args.out:
-                    log.info(f"Writing {result} to {args.out}")
-                    for line in result.dump(args.out):
-                        pass
-                else:
-                    log.info(f"Writing {result} to stdout")
-                    for line in result.dump(sys.stdout):
-                        pass
+                out = args.out if hasattr(args, "out") and args.out else sys.stdout
+                log.info(f"Writing {result} to {out}")
+                for _ in result.dump(out):
+                    pass
             elif isinstance(result, (types.GeneratorType, map, filter)):
                 for r in result:
                     print(json.dumps(r))

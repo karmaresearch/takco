@@ -177,7 +177,7 @@ class Salient(Linker):
         self.contextual = contextual
 
         self.expand = expand
-        if not graph and isinstance(searcher, GraphDB):
+        if (graph is None) and isinstance(searcher, GraphDB):
             self.graph = searcher
         else:
             self.graph = graph
@@ -185,10 +185,12 @@ class Salient(Linker):
     
     def __enter__(self):
         self.searcher.__enter__()
+        self.graph.__enter__()
         return self
     
     def __exit__(self, *args):
         self.searcher.__exit__(*args)
+        self.graph.__exit__(*args)
 
     def link(
         self,

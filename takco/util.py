@@ -25,6 +25,7 @@ class Config(dict, typing.Generic[T]):
         context = {c.get("name", c.get("class")): Config(c) for c in (context or [])}
 
         if isinstance(val, dict):
+            val = dict(val)
             if context and ("resolve" in val):
                 if val["resolve"] in context:
                     self.update(context[val.pop("resolve")])
@@ -67,7 +68,7 @@ class Config(dict, typing.Generic[T]):
             attempts = {}
             for cpi, config_parse in config_parsers.items():
                 try:
-                    self.__init__(config_parse(val), **context)
+                    self.__init__(config_parse(val), context=context.values())
                     break
                 except Exception as e:
                     attempts[cpi] = e
@@ -125,6 +126,10 @@ class HashBag:
     def __init__(self, it, wrap=lambda x: x, **kwargs):
         self.it = it
         self.wrap = wrap
+
+    @classmethod
+    def concat(cls, hashbags):
+        return (x for hb in hashbags for x in hb.it)
 
     def persist(self):
         self.it = list(self.wrap(self.it))
@@ -263,7 +268,7 @@ try:
                 client = Client(**kwargs)
             except Exception as e:
                 log.warn(e)
-
+        
         def __init__(self, it, npartitions=None, **kwargs):
             if kwargs:
                 self.start_client(**kwargs)
@@ -286,6 +291,10 @@ try:
                 cls(json.loads(line) for line in f)
             else:
                 return cls(db.read_text(f).map(json.loads))
+
+        @classmethod
+        def concat(cls, hashbags):
+            return db.concat([hb.bag for hb in hashbags])
 
         def persist(self):
             self.bag = self.bag.persist()

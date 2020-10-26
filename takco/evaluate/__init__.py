@@ -12,10 +12,9 @@ task_flatten = {
 }
 
 
-def table_score(tables, table_annot, keycol_only=False):
-    for table in tables:
+def table_score(tablepairs, keycol_only=False):
+    for table, goldtable in tablepairs:
         _id = table["_id"]
-        goldtable = table_annot.get(_id, {})
 
         table["gold"] = {}
         table["score"] = {}
