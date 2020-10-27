@@ -4,6 +4,8 @@ import logging as log
 from pathlib import Path
 import glob
 
+from .link import *
+
 class WikiPages:
     """
     Download Wikipedia articles
@@ -140,3 +142,72 @@ class WarcPages:
             f"Extracting pages from {len(fnames)} warc files using executor {executor}"
         )
         return executor(fnames, **exkw).pipe(self.parse_warc)
+
+
+class LinePages:
+
+    def __init__(
+        self,
+        globstrings: typing.List[str] = (),
+        datadir: Path = None,
+        lookup_config: Config = None,
+        title_regex: str = None,
+    ):
+        if not isinstance(globstrings, list):
+            globstrings = [globstrings]
+
+        fnames = [fname for g in globstrings for fname in glob.glob(g)]
+        assert len(fnames), f"No glob results for {globstrings}"
+        self.fnames = fnames
+
+        self.lookup = lookup_config
+
+        import re
+        self.title_regex = re.compile(title_regex) if title_regex else None
+    
+    @staticmethod
+    def parse_line(fnames, lookup, title_regex):
+        import json
+
+        if lookup is not None:
+            lookup.__enter__()
+
+        for fname in fnames:
+            for line in open(fname):
+                try:
+                    url, html = line.rstrip().split(None, 1)
+                    
+                    title = url
+                    if title_regex:
+                        title = title_regex.match(url).group(1)
+
+                    about = title
+                    if lookup is not None:
+                        about = lookup.lookup_title(title)
+
+                    yield {
+                        'url': url,
+                        'about': about,
+                        'html': json.loads(html),
+                    }
+
+                except Exception as e:
+                    log.error(e)
+
+                if (lookup is not None) and hasattr(lookup, "flush"):
+                    lookup.flush()
+
+        if lookup is not None:
+            lookup.__exit__(None,None,None)
+
+
+    def get(self,
+        executor: Config = None,
+        assets: typing.List[Config] = (),
+    ):
+        executor, exkw = get_executor_kwargs(executor, assets)
+        fnames = self.fnames
+        log.info(
+            f"Extracting pages from {len(fnames)} line files using executor {executor}"
+        )
+        return executor(fnames, **exkw).pipe(self.parse_line, self.lookup, self.title_regex)
