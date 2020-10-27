@@ -20,9 +20,20 @@ labelProperties = ['http://dbpedia.org/ontology/title']
 store = {class = 'Trident', configuration = 'data/kb/dbpedia/2016-10/'}
 
 [[assets]]
+name = 'dbpedia_t2ksubset_es'
+class = 'ElasticSearcher'
+index = 'dbpediasub-6'
+baseuri = 'http://dbpedia.org/resource/'
+es_kwargs.hosts = ['bricks07']
+prop_uri.type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+prop_baseuri.type = 'http://dbpedia.org/ontology/'
+
+
+
+[[assets]]
 name = 'dbpedia_t2ksubset_extralabels'
 class = 'SQLiteSearcher'
-files = 'data/dbpedia-t2ksubset-label-sqlitedbs-2/*'
+files = 'data/dbpedia-t2ksubset-label-sqlitedbs/*'
 baseuri = 'http://dbpedia.org/resource/'
     [assets.graph]
     class = 'RDFSearcher'
@@ -41,17 +52,18 @@ fallback = {class = 'DBpediaLookup'}
     labelProperties = ['http://dbpedia.org/ontology/title']
     store = {class = 'Trident', configuration = 'data/kb/dbpedia_t2ksubset/db/'}
 
-#[[assets]]
-#name = 't2d-v1'
-#class = 'T2D'
-#download = [
-#    'http://webdatacommons.org/webtables/tables_instance.tar.gz',
-#    'http://webdatacommons.org/webtables/entities_instance.tar.gz',
-#    'http://webdatacommons.org/webtables/classes_instance.csv',
-#    'http://webdatacommons.org/webtables/attributes_instance.tar.gz',
-#]
-#version = 1
-#fixuri = 't2d_fix.csv'
+
+[[assets]]
+name = 't2d-v1'
+class = 'T2D'
+download = [
+    'http://webdatacommons.org/webtables/tables_instance.tar.gz',
+    'http://webdatacommons.org/webtables/entities_instance.tar.gz',
+    'http://webdatacommons.org/webtables/classes_instance.csv',
+    'http://webdatacommons.org/webtables/attributes_instance.tar.gz',
+]
+version = 1
+fixuri = 't2d_fix.csv'
 
 [[assets]]
 name = 't2d-v2'
@@ -61,9 +73,3 @@ download = [
 ]
 version = 2
 fixuri = 't2d_fix.csv'
-
-[[assets]]
-name = 't2d-v2-predictions'
-class = 'Annotation'
-path = 'output/t2d-v2-baseline/'
-fname = '4-novelty'

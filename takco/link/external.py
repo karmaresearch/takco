@@ -240,8 +240,7 @@ class MediaWikiAPI(Searcher, Lookup):
 
     def search_entities(
         self,
-        search: str,
-        context=(),
+        query_contexts,
         limit: int = 1,
         add_about: bool = False,
         mainsnak: bool = True,
@@ -258,27 +257,30 @@ class MediaWikiAPI(Searcher, Lookup):
         .. _wbsearchentities: https://www.wikidata.org/w/api.php?action=help&modules=wbsearchentities
 
         """
-        if not search:
-            return {}
-        results = self._query(
-            action="wbsearchentities",
-            search=search,
-            limit=limit,
-            language=self.language,
-        )
-        if results:
-            results = results.get("search", [])
+        for search, _ in query_contexts:
+            if not search:
+                yield []
+                continue
+            results = self._query(
+                action="wbsearchentities",
+                search=search,
+                limit=limit,
+                language=self.language,
+            )
+            if results:
+                results = results.get("search", [])
 
-            if add_about:
-                ids = set(s["id"] for s in results)
-                ent_claims = self.get_claims(*ids, mainsnak=mainsnak)
-                for s in results:
-                    s.update(ent_claims.get(s["id"], {}))
-                    s[RDF_type] = s.get(self.typeuri, [])
+                if add_about:
+                    ids = set(s["id"] for s in results)
+                    ent_claims = self.get_claims(*ids, mainsnak=mainsnak)
+                    for s in results:
+                        s.update(ent_claims.get(s["id"], {}))
+                        s[RDF_type] = s.get(self.typeuri, [])
 
-            return [SearchResult(r.pop("concepturi"), r) for r in results]
-        else:
-            log.debug(f"No {self.__class__.__name__} results for {search}")
+                yield [SearchResult(r.pop("concepturi"), r) for r in results]
+            else:
+                log.debug(f"No {self.__class__.__name__} results for {search}")
+                yield []
 
 
 class DBpediaLookup(Searcher, Lookup):
@@ -307,28 +309,32 @@ class DBpediaLookup(Searcher, Lookup):
         return str(redir).replace("/page/", "/resource/")
 
     def search_entities(
-        self, search: str, context=(), limit: int = 1, **kwargs,
+        self, query_contexts, limit: int = 1, **kwargs,
     ) -> typing.List[SearchResult]:
         """Searches for entities using the Keyword Search API.
         The Keyword Search API can be used to find related DBpedia resources for a
         given string. The string may consist of a single or multiple words.
 
         """
-        if not search:
-            return {}
-        results = self._query(
-            QueryString=search,
-            MaxHits=limit or 1000,
-            #   language=self.language,
-        )
-        if results:
-            sr = []
-            for r in results.get("results", []):
-                if "classes" in r:
-                    r[RDF_type] = r.pop("classes")
-                score = 1 - (1 / (1 + r.get("refCount", 0)))
-                sr.append(SearchResult(r.pop("uri"), r, score=score))
-            return sr
+        for search, _ in query_contexts:
+            if not search:
+                yield []
+                continue
+            results = self._query(
+                QueryString=search,
+                MaxHits=limit or 1000,
+                #   language=self.language,
+            )
+            if results:
+                sr = []
+                for r in results.get("results", []):
+                    if "classes" in r:
+                        r[RDF_type] = r.pop("classes")
+                    score = 1 - (1 / (1 + r.get("refCount", 0)))
+                    sr.append(SearchResult(r.pop("uri"), r, score=score))
+                yield sr
+            else:
+                yield []
 
 
 if __name__ == "__main__":
@@ -349,7 +355,7 @@ if __name__ == "__main__":
             limit: Limit results
         """
         result = kind.value().search_entities(
-            query, context=(), limit=limit, add_about=add_about
+            [(query, ())], context=(), limit=limit, add_about=add_about
         )
         return result
 

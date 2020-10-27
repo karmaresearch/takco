@@ -318,71 +318,80 @@ class SQLiteSearcher(SQLiteCache, Searcher):
         self.graph.__exit__(*args)
         return SQLiteCache.__exit__(self, *args)
 
-    def search_entities(self, query: str, context=(), limit=1, add_about=False):
-        if not query:
-            return []
+    def get_parts(self, query):
+        for char in "([,:":
+            for qpart in query.split(char):
+                qpart = qpart.translate(str.maketrans("", "", ")]")).strip()
+                if qpart != query:
+                    yield qpart
 
-        if self.lower:
-            query = query.lower()
+    def search_entities(self, query_contexts, limit=1, add_about=False):
+        for query, context in query_contexts:
+            if not query:
+                yield []
+                continue
 
-        queries = [query]
+            if self.lower:
+                query = query.lower()
 
-        all_results = []
-        knownempty = False
-        for con in self.cons:
-            cur = con.cursor()
-            params = {"query": query, "limit": limit}
-            q = self._EXACTQUERY if self.exact else self._LIKEQUERY
+            queries = [query]
 
-            results = cur.execute(q, params).fetchall()
-            for uri, txt, score in results:
-                if uri == "-1":
-                    query_knownempty = True
+            all_results = []
+            knownempty = False
+            for con in self.cons:
+                cur = con.cursor()
+                params = {"query": query, "limit": limit}
+                q = self._EXACTQUERY if self.exact else self._LIKEQUERY
+
+                results = cur.execute(q, params).fetchall()
+                for uri, txt, score in results:
+                    if uri == "-1":
+                        knownempty = True
+                    else:
+                        if self.baseuri:
+                            uri = self.baseuri + uri
+                        if self.refsort:
+                            c = self.graph.count([None, None, rdflib.URIRef(uri)])
+                            log.debug(f"{uri} scored {score} * {1-1/(5+c):.4f}")
+                            score *= 1 - 1 / (5 + c)
+                        sr = SearchResult(uri, score=score)
+                        all_results.append(sr)
+
+            n = len(all_results)
+            log.debug(f"{self.__class__.__name__} got {n} results for {query}")
+
+            q = "insert or replace into label(uri, txt, score) values (?,?,?)"
+            if (self.fallback is not None) and not (knownempty or all_results):
+                for srs in self.fallbac([(query,())], limit=None):
+                    all_results += list(srs)
+                if all_results:
+                    new = []
+                    for sr in all_results:
+                        uri = sr.uri.replace(self.baseuri, "") if sr.uri else "-1"
+                        new.append((uri, query, sr.score))
+                    self._addcache(new)
                 else:
-                    if self.baseuri:
-                        uri = self.baseuri + uri
-                    if self.refsort:
-                        c = self.graph.count([None, None, rdflib.URIRef(uri)])
-                        log.debug(f"{uri} scored {score} * {1-1/(5+c):.4f}")
-                        score *= 1 - 1 / (5 + c)
-                    sr = SearchResult(uri, score=score)
-                    all_results.append(sr)
+                    self._addcache([("-1", query, 1)])
+                    log.debug(f"Added SQLiteSearcher empty-result-value for '{query}' ")
 
-        n = len(all_results)
-        log.debug(f"{self.__class__.__name__} got {n} results for {query}")
+            if add_about and self.graph:
+                all_results = [
+                    SearchResult(sr.uri, self.graph.about(sr.uri), sr.score)
+                    for sr in all_results
+                ]
 
-        q = "insert or replace into label(uri, txt, score) values (?,?,?)"
-        if (self.fallback is not None) and not (knownempty or all_results):
-            all_results += list(self.fallback.search_entities(query, limit=None))
-            if all_results:
-                new = []
-                for sr in all_results:
-                    uri = sr.uri.replace(self.baseuri, "") if sr.uri else "-1"
-                    new.append((uri, query, sr.score))
-                self._addcache(new)
-            else:
-                self._addcache([("-1", query, 1)])
-                log.debug(f"Added SQLiteSearcher empty-result-value for '{query}' ")
+            if not all_results:
+                if self.parts:
+                    part_results = self.search_entities(
+                        [(p, context) for p in self.get_parts(query)],
+                        limit=limit, add_about=add_about
+                    )
+                    for srs in part_results:
+                        all_results += srs
 
-        if add_about and self.graph:
-            all_results = [
-                SearchResult(sr.uri, self.graph.about(sr.uri), sr.score)
-                for sr in all_results
-            ]
+            all_results = sorted(all_results, key=lambda x: -x.score)
 
-        if not all_results:
-            if self.parts:
-                for char in "([,:":
-                    for qpart in query.split(char):
-                        qpart = qpart.translate(str.maketrans("", "", ")]")).strip()
-                        if qpart != query:
-                            all_results += self.search_entities(
-                                qpart, limit=limit, add_about=add_about
-                            )
-
-        all_results = sorted(all_results, key=lambda x: -x.score)
-
-        return all_results[:limit]
+            yield all_results[:limit]
 
     @staticmethod
     def createdb(
@@ -487,7 +496,7 @@ class SQLiteSearcher(SQLiteCache, Searcher):
         import json
 
         s = cls(files=sqlitedir.glob("*.sqlitedb"))
-        return json.dumps(s.search_entities(query, limit=limit))
+        return json.dumps(list(s.search_entities([(query, ())], limit=limit)))
 
 
 if __name__ == "__main__":

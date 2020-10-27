@@ -141,45 +141,47 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
     def __exit__(self, *args):
         self.close()
 
-    def search_entities(self, query: str, context=(), limit=1, add_about=False):
-        if self.encoding and (query != query.encode("ascii", errors="ignore").decode()):
-            if self.encoding == "wikidata":
-                query = encode_wikidata(query)
+    def search_entities(self, query_contexts, limit=1, add_about=False):
+        for query, _ in query_contexts:
+            is_ascii = (query == query.encode("ascii", errors="ignore").decode())
+            if self.encoding and not is_ascii:
+                if self.encoding == "wikidata":
+                    query = encode_wikidata(query)
+                else:
+                    query = query.encode(self.encoding)
+            result_uris = [
+                e
+                for l in self.labelProperties
+                for lang in [None, self.language]
+                for e, _, _ in self.triples((None, l, Literal(query, lang=lang)))
+            ][:limit]
+
+            if not result_uris:
+                ls = [Literal(query, lang=lang).n3() for lang in [None, self.language]]
+                ls = " or ".join(ls)
+                log.debug(f"No {self.__class__.__name__} results for {query} ({ls})")
             else:
-                query = query.encode(self.encoding)
-        result_uris = [
-            e
-            for l in self.labelProperties
-            for lang in [None, self.language]
-            for e, _, _ in self.triples((None, l, Literal(query, lang=lang)))
-        ][:limit]
+                log.debug(
+                    f"{len(result_uris):2d} {self.__class__.__name__} results for {query}"
+                )
 
-        if not result_uris:
-            ls = [Literal(query, lang=lang).n3() for lang in [None, self.language]]
-            ls = " or ".join(ls)
-            log.debug(f"No {self.__class__.__name__} results for {query} ({ls})")
-        else:
-            log.debug(
-                f"{len(result_uris):2d} {self.__class__.__name__} results for {query}"
-            )
+            e_score = {}
+            if self.refsort:
+                # sort by inverse refCount score
+                for e in result_uris:
+                    e_score[e] = 1 - 1 / (1 + self.count([None, None, URIRef(e)]))
 
-        e_score = {}
-        if self.refsort:
-            # sort by inverse refCount score
-            for e in result_uris:
-                e_score[e] = 1 - 1 / (1 + self.count([None, None, URIRef(e)]))
+            results = [
+                SearchResult(
+                    str(e), self.about(e) if add_about else {}, score=e_score.get(e, 1)
+                )
+                for e in result_uris
+            ]
 
-        results = [
-            SearchResult(
-                str(e), self.about(e) if add_about else {}, score=e_score.get(e, 1)
-            )
-            for e in result_uris
-        ]
+            if self.refsort:
+                results = sorted(results, key = lambda sr: -sr.score)
 
-        if self.refsort:
-            results = sorted(results, key = lambda sr: -sr.score)
-
-        return results
+            yield results
 
     def label_match(self, uri, surface):
         if isinstance(uri, URIRef):

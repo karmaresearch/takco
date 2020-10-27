@@ -59,61 +59,76 @@ SETTINGS = {
         }
     },
 }
-
-
-def make_query_body(q, context=(), classes=(), limit=1, lenient=False):
-
-    classes = [c.split("/")[-1] for c in classes]
-
-    return {
-        "query": {
-            "function_score": {
-                "query": {
-                    "bool": {
-                        "must": {
-                            "nested": {
-                                "path": "surface",
-                                "score_mode": "max",
-                                "query": {
-                                    "function_score": {
-                                        "query": (
-                                            {"match": {"surface.value": q}}
-                                            if lenient
-                                            else {"match_phrase": {"surface.value": q}}
-                                        ),
-                                        "functions": [
-                                            {
-                                                "field_value_factor": {
-                                                    "field": "surface.score",
-                                                    "modifier": "sqrt",
+QUERY_SCRIPT = """
+{
+    "query": {
+        "function_score": {
+            "query": {
+                "bool": {
+                    "must": {
+                        "nested": {
+                            "path": "surface",
+                            "score_mode": "max",
+                            "query": {
+                                "function_score": {
+                                    "query": {
+                                        "dis_max": {
+                                            "queries": [
+                                                {
+                                                    "match_phrase": {
+                                                        "surface.value": {
+                                                            "query": "{{query}}"
+                                                        }
+                                                    }
                                                 },
-                                            },
-                                        ],
-                                        "boost_mode": "multiply",
-                                        "boost": 2,
+                                                {
+                                                    "match_phrase": {
+                                                        "surface.value": {
+                                                            "query": "{{query}}",
+                                                            "boost": 0.5
+                                                        },
+                                                        "slop": 2
+                                                    }
+                                                },
+                                            ]
+                                        }
                                     },
-                                },
-                            },
-                        },
-                        "should": [
-                            {"match_phrase": {"context": {"query": c, "boost": 0.2}}}
-                            for c in context
-                        ]
-                        + [
-                            {"match": {"context": {"query": c, "boost": 0.2}}}
-                            for c in context
-                        ]
-                        + [{"term": {"type": t}} for t in classes],
+                                    "functions": [
+                                        {
+                                            "field_value_factor": {
+                                                "field": "surface.score",
+                                                "modifier": "sqrt"
+                                            }
+                                        }
+                                    ],
+                                    "boost_mode": "multiply",
+                                    "boost": "{{query_boost}}{{^query_boost}}2{{/query_boost}}"
+                                }
+                            }
+                        }
                     },
-                },
-                "functions": [
-                    {"field_value_factor": {"field": "refs", "modifier": "log1p",}}
-                ],
-                "boost_mode": "sum",
+                    "should": [
+                        {{#context}}
+                            {"match_phrase": {"context": {"query": "{{value}}", "boost": 0.2}}},
+                            {"match": {"context": {"query": "{{value}}", "boost": 0.2}}},
+                        {{/context}}
+                        {{#classes}}
+                            {"term": {"type": {"value":"{{value}}", "boost":4}}},
+                        {{/classes}}
+                        {"match_all":{}}
+                    ]
+                }
             },
-        },
-        "size": limit,
-    }
+            "functions": [
+                {"field_value_factor": {"field": "refs", "modifier": "log1p"}}
+            ],
+            "boost_mode": "sum"
+        }
+    },
+    "size": "{{limit}}{{^limit}}1{{/limit}}"
+}
+"""
+
 
 
 class ElasticSearcher(Searcher):
@@ -155,60 +170,70 @@ class ElasticSearcher(Searcher):
                 about[k] = [(baseuri + v if isinstance(v, str) else v) for v in vs]
         return about
 
+    def get_parts(self, query):
+        for char in "([,:":
+            for qpart in query.split(char):
+                qpart = qpart.translate(str.maketrans("", "", ")]")).strip()
+                if qpart != query:
+                    yield qpart
+
+    def make_query_body(self, query, **kwargs):
+        return { "id": "query", "params": {"query":query, **kwargs}}
+
     def search_entities(
         self,
-        query: str,
-        context=(),
+        query_contexts,
         classes=(),
         limit=1,
         add_about=False,
-        lenient=False,
         ispart=False,
     ):
+        # Simplify classes
+        query_contexts = tuple(query_contexts)
+        if not query_contexts:
+            return
 
-        context = [c for c in context if not self.NUM.match(c)]
-        body = make_query_body(
-            query, context=context, classes=classes, limit=limit, lenient=lenient
-        )
-        esresults = self.es.search(index=self.index, body=body)
-
-        results = []
-        for hit in esresults.get("hits", []).get("hits", []):
-            uri = hit.get("_source", {}).get("id")
-            if self.baseuri:
-                uri = self.baseuri + uri
-            score = hit.get("_score", 0)
-            about = self._about(hit.get("_source", {}))
-
-            sr = SearchResult(uri, about, score=score)
-            results.append(sr)
-
-        if not results:
-            log.debug(f"No {self} results for {query}")
-            if self.parts and (not ispart):
-                for char in "([,:":
-                    for qpart in query.split(char):
-                        qpart = qpart.translate(str.maketrans("", "", ")]")).strip()
-                        if qpart != query:
-                            more = self.search_entities(
-                                qpart,
-                                context=context,
-                                limit=limit,
-                                add_about=add_about,
-                                ispart=True,
-                            )
-                            if more:
-                                return more
-                            else:
-                                log.debug(f"No {self} results for {qpart}")
-
-        if (not results) and (not lenient) and (not ispart):
-            log.debug(f"No {self} STRICT results for {query}")
-            return self.search_entities(
-                query, context=context, limit=limit, add_about=add_about, lenient=True,
+        bodies = []
+        for query, context in query_contexts:
+            context = [{"value":c} for c in context if not self.NUM.match(c)]
+            classes = [{"value":c.split("/")[-1]} for c in classes]
+            
+            body = self.make_query_body(
+                query, context=context, classes=classes, limit=limit
             )
+            bodies.append(())
+            bodies.append(body)
+        
+        esresponses = self.es.msearch_template(
+            index=self.index, 
+            body=bodies
+        ).get('responses', [])
+        for (query, context), esresponse in zip(query_contexts, esresponses):
+            results = []
+            for hit in esresponse.get("hits", []).get("hits", []):
+                uri = hit.get("_source", {}).get("id")
+                if self.baseuri:
+                    uri = self.baseuri + uri
+                score = hit.get("_score", 0)
+                about = self._about(hit.get("_source", {}))
 
-        return results
+                sr = SearchResult(uri, about, score=score)
+                results.append(sr)
+
+            if not results:
+                log.debug(f"No {self} results for {query}")
+                if self.parts and (not ispart):
+                    partqueries = [(p, context) for p in self.get_parts(query)]
+                    more = self.search_entities(
+                        partqueries,
+                        limit=limit,
+                        add_about=add_about,
+                        ispart=True,
+                    )
+                    for srs in more:
+                        results += srs
+
+            yield results
 
     @classmethod
     def load_synonyms(cls, redirects_label: Path):
@@ -308,6 +333,7 @@ class ElasticSearcher(Searcher):
         ntask: int = None,
         tasktotal: int = None,
     ):
+        """Create documents from Trident DB (without extra surface forms)"""
         import trident, tqdm, json
 
         db = trident.Db(str(trident_path))
@@ -317,7 +343,7 @@ class ElasticSearcher(Searcher):
         assert (prefLabel is not None) or (altLabel is not None)
 
         for s, _ in tqdm.tqdm(db.os(prefLabel)):
-            if ntotal and ((s % (tasktotal + 1)) != ntask):
+            if tasktotal and ((s % (tasktotal + 1)) != ntask):
                 continue
             docs = cls.yield_doc(
                 s, db, baseuris, prefLabel, altLabel, p_type, unescape=unescape
@@ -357,6 +383,7 @@ class ElasticSearcher(Searcher):
             es.indices.delete(index=index, ignore=[400, 404])
             print("Creating index...", file=sys.stderr)
             es.indices.create(index=index, body=SETTINGS)
+            self.store_template(index=index, es_kwargs=es_kwargs)
 
         action = {"_index": index}
 
@@ -460,14 +487,29 @@ class ElasticSearcher(Searcher):
 
     @classmethod
     def test(
-        cls, index: str, query: str, limit: int = 1, es_kwargs: typing.Dict = None
+        cls, index: str, *query: str, limit: int = 1, es_kwargs: typing.Dict = None
     ):
         """Search an Elasticsearch index for a query string """
         import json
 
         es_kwargs = es_kwargs or {}
-        es = cls(index, es_kwargs=es_kwargs)
-        return json.dumps(es.search_entities(query, limit=limit))
+        with cls(index, es_kwargs=es_kwargs) as es:
+            queries = [(q, ()) for q in query]
+            return json.dumps(list(es.search_entities(queries, limit=limit)))
+
+    @classmethod
+    def store_template(cls, index: str, es_kwargs:typing.Dict = None):
+        es_kwargs = es_kwargs or {}
+        body = {
+            "script": {
+                "lang": "mustache",
+                "source": QUERY_SCRIPT
+            }
+        }
+        host = es_kwargs.get('host', 'localhost')
+        port = es_kwargs.get('port', '9200')
+        import requests
+        return requests.post(f"http://{host}:{port}/_scripts/query", json=body).text
 
 
 class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
@@ -582,7 +624,6 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
                         self.cache.setdefault(triplepattern, set()).add(triple)
 
     def count(self, triplepattern):
-        s, p, o = triplepattern
         body = self._triple_body(triplepattern)
         try:
             result = self.es.count(index=self.index, body=body)
@@ -679,6 +720,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
 
     @classmethod
     def db_docs(cls, file: Path):
+        """Convert Wikidata entity documents to minimalist ES documents"""
         import json
 
         for line in Path(file).open():
@@ -719,6 +761,7 @@ if __name__ == "__main__":
             ElasticSearcher.create,
             ElasticSearcher.test,
             ElasticSearcher.docs,
+            ElasticSearcher.store_template,
             ElasticDB.db_docs,
         ],
         strict_kwonly=False,

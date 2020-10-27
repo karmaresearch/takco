@@ -86,14 +86,17 @@ class Searcher(Asset):
     """For searching and matching for Knowledge Base entities."""
 
     def search_entities(
-        self, query: str, context=(), limit: int = 1, add_about: bool = False
-    ) -> Iterator[SearchResult]:
-        """Search for entities using a label query.
+        self, query_contexts: Container[Tuple[str,Container[str]]], limit: int = 1, add_about: bool = False
+    ) -> Container[Container[SearchResult]]:
+        """Search for entities using label queries.
 
         Args:
-            query: Label query
+            query_contexts: Label queries and contexts
             limit: Maximum number of results to return
             add_about: Include facts about the result entity
+        
+        Returns:
+            Search results per query
         """
         return
 
@@ -156,7 +159,7 @@ class Linker(Asset):
         self.searcher = searcher
         self.limit = limit
 
-    def _rowcol_results(
+    def get_rowcol_searchresults(
         self,
         rows,
         contextual=False,
@@ -170,57 +173,34 @@ class Linker(Asset):
         existing_entities = existing_entities or {}
         col_classes = col_classes or {}
 
-        rowcol_results = {}
-        if contextual:
-            for ri, row in enumerate(rows):
-                if (not skiprows) or (ri not in skiprows):
-                    for ci, cell in enumerate(row):
-                        if (not usecols) or (ci in usecols):
-                            existing = existing_entities.get(ci, {}).get(ri, {})
-                            if not existing:
+        rowcol_searchresults = {}
+        query_rowcols = {}
+        for ri, row in enumerate(rows):
+            if (not skiprows) or (ri not in skiprows):
+                for ci, cell in enumerate(row):
+                    context = tuple(row[:ci] + row[ci+1:])
+                    query = (cell, context) if contextual else (cell, () )
 
-                                results = self.searcher.search_entities(
-                                    cell,
-                                    context=[
-                                        cell2
-                                        for ci2, cell2 in enumerate(row)
-                                        if ci != ci2
-                                    ],
-                                    classes=col_classes.get(ci, []),
-                                    **kwargs,
-                                )
-                                rowcol_results[(ri, ci)] = results
-                            else:
-                                rowcol_results[(ri, ci)] = [
-                                    SearchResult(e, score=score)
-                                    for e, score in existing.items()
-                                ]
-        else:
-            cell_rowcols = {}
-            for ri, row in enumerate(rows):
-                if (not skiprows) or (ri not in skiprows):
-                    for ci, cell in enumerate(row):
-                        if (not usecols) or (ci in usecols):
-                            existing = existing_entities.get(ci, {}).get(ri, {})
-                            if not existing:
-                                cell_rowcols.setdefault(cell, set()).add((ri, ci))
-                            else:
-                                rowcol_results[(ri, ci)] = [
-                                    SearchResult(e, score=score)
-                                    for e, score in existing.items()
-                                ]
-
-            for cell, rowcols in cell_rowcols.items():
-                results = self.searcher.search_entities(cell, **kwargs)
-                for rowcol in rowcols:
-                    rowcol_results[rowcol] = results
-        return rowcol_results
+                    if (not usecols) or (ci in usecols):
+                        existing = existing_entities.get(ci, {}).get(ri, {})
+                        if not existing:
+                            query_rowcols.setdefault(query, set()).add((ri, ci))
+                        else:
+                            rowcol_searchresults[(ri, ci)] = [
+                                SearchResult(e, score=score)
+                                for e, score in existing.items()
+                            ]
+        allresults = self.searcher.search_entities(query_rowcols, **kwargs)
+        for (query, rowcols), results in zip(query_rowcols.items(), allresults):
+            for rowcol in rowcols:
+                rowcol_searchresults[rowcol] = results
+        return rowcol_searchresults
 
     def link(self, rows, usecols=None, skiprows=None, existing=None):
         existing = existing or {}
 
         existing_entities = (existing or {}).get("entities", {})
-        rowcol_results = self._rowcol_results(
+        rowcol_searchresults = self.get_rowcol_searchresults(
             rows,
             usecols=usecols,
             skiprows=skiprows,
@@ -229,7 +209,7 @@ class Linker(Asset):
         )
 
         entities = {}
-        for (ri, ci), results in rowcol_results.items():
+        for (ri, ci), results in rowcol_searchresults.items():
             entities.setdefault(str(ci), {})[str(ri)] = {r.uri: 1 for r in results}
 
         return {"entities": entities}

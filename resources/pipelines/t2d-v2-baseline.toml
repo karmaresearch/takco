@@ -6,35 +6,37 @@ cache = false
 [input_tables]
 input = 'dataset'
 params = 't2d-v2'
+#sample = 5
 
 [[step]]
     [[step.split]]
     step = 'link'
-    #usecols = 'non_numeric_cols'
-    usecols = 'heuristic_key' # only works for literal props
+    usecols = 'non_numeric_cols'
+    #usecols = 'heuristic_key' # only works for literal props
+    lookup_config = {}
+        [step.split.linker_config]
+        class = 'First'
+        searcher = {resolve = 'dbpedia_t2ksubset_es'}
+
+
+    [[step.split]]
+    step = 'link'
+    usecols = 'non_numeric_cols'
+    #usecols = 'heuristic_key' # only works for literal props
     lookup_config = {}
         [step.split.linker_config]
         class = 'Salient'
         graph = {resolve = 'dbpedia_t2ksubset'}
         prop_cover = 0.2
         class_cover = 0.2
-        searcher = {resolve = 'dbpedia_t2ksubset_extralabels'}
+        searcher = {resolve = 'dbpedia_t2ksubset_es'}
     
-    [[step.split]]
-    step = 'link'
-    #usecols = 'non_numeric_cols'
-    usecols = 'heuristic_key' # only works for literal props
-    lookup_config = {}
-        [step.split.linker_config]
-        class = 'First'
-        searcher = {resolve = 'dbpedia_t2ksubset_extralabels'}
-
+    
 
 [[step]]
 step = 'score'
 labels = 't2d-v2'
 keycol_only = true
-report = ['pdf', 'md']
 
 [[step]]
 step = 'triples'

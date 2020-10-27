@@ -62,8 +62,8 @@ class First(Linker):
         existing_classes = (existing or {}).get("classes", {})
         existing_classes = {int(ci): cs for ci, cs in existing_classes.items()}
 
-        def get_rowcol_results(col_classes):
-            return self._rowcol_results(
+        def get_rowcol_searchresults(col_classes):
+            return self.get_rowcol_searchresults(
                 rows,
                 limit=max(self.search_limit, self.limit),
                 contextual=self.contextual,
@@ -74,14 +74,14 @@ class First(Linker):
                 col_classes=col_classes,
             )
 
-        rowcol_results = get_rowcol_results(existing_classes)
+        rowcol_searchresults = get_rowcol_searchresults(existing_classes)
 
         # TODO: lookup facts about existing entities
 
         if self.majority_class:
             # Keep track of the most frequent attribute of a certain predicate
             ci_att_count = {}
-            for (_, ci), results in rowcol_results.items():
+            for (_, ci), results in rowcol_searchresults.items():
                 for result in results[:1]:
                     for att in result.get(self.majority_class, []):
                         ci_att_count.setdefault(ci, {}).setdefault(att, 0)
@@ -95,27 +95,27 @@ class First(Linker):
 
             if self.majority_class_search:
                 log.debug(f"Re-searching {self} with classes {ci_classes}")
-                rowcol_results = get_rowcol_results(ci_classes)
+                rowcol_searchresults = get_rowcol_searchresults(ci_classes)
             else:
                 log.debug(f"Filtering {self} with classes {ci_classes}")
                 atts = lambda r: r.get(self.majority_class, [])
-                for (ri, ci), results in rowcol_results.items():
-                    rowcol_results[(ri, ci)] = [
+                for (ri, ci), results in rowcol_searchresults.items():
+                    rowcol_searchresults[(ri, ci)] = [
                         r for r in results if ci_majoratt.get(ci) in atts(r)
                     ]
 
         if self.exclude_about:
-            for k, results in rowcol_results.items():
+            for k, results in rowcol_searchresults.items():
                 for p, os in self.exclude_about.items():
 
                     def isbad(r):
                         return any(o in r.get(p, []) for o in os)
 
                     results = [r for r in results if not isbad(r)]
-                rowcol_results[k] = results
+                rowcol_searchresults[k] = results
 
         entities = existing_entities
-        for (ri, ci), results in rowcol_results.items():
+        for (ri, ci), results in rowcol_searchresults.items():
             results = results[: self.limit]
             if self.normalize:
                 total_score = sum(r.score for r in results)
@@ -201,7 +201,7 @@ class Salient(Linker):
     ) -> Dict[str, Dict[str, Dict[str, float]]]:
 
         existing_entities = (existing or {}).get("entities", {})
-        rowcol_results = self._rowcol_results(
+        rowcol_searchresults = self.get_rowcol_searchresults(
             rows,
             limit=self.limit,
             contextual=self.contextual,
@@ -212,10 +212,10 @@ class Salient(Linker):
         )
         # TODO: lookup facts about existing entities
 
-        ci_ri_results = {}
-        for (ri, ci), results in rowcol_results.items():
+        ci_ri_searchresults = {}
+        for (ri, ci), results in rowcol_searchresults.items():
             results = sorted(results, key=len)[::-1][: self.limit]
-            ci_ri_results.setdefault(ci, {})[ri] = results
+            ci_ri_searchresults.setdefault(ci, {})[ri] = results
 
         from collections import Counter, defaultdict
 
@@ -223,14 +223,14 @@ class Salient(Linker):
         fromci_toci_props = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
         for toci, tocol in enumerate(zip(*rows)):
 
-            ri_toresults = ci_ri_results.get(toci, {})
-            for fromci, fromri_results in list(ci_ri_results.items()):
+            ri_toresults = ci_ri_searchresults.get(toci, {})
+            for fromci, fromri_searchresults in list(ci_ri_searchresults.items()):
                 if fromci == toci:
                     continue
 
                 prop_count = Counter()
                 for ri, celltext in enumerate(tocol):
-                    for fr in fromri_results.get(ri, {}):
+                    for fr in fromri_searchresults.get(ri, {}):
                         # Loop over 'from' attributes
                         for p, os in fr.items():
 
@@ -253,8 +253,10 @@ class Salient(Linker):
                     log.debug(f"Prop count for col {fromci}->{toci}: {prop_count}")
 
                 ntotal = len(ri_toresults)
+                from rdflib import URIRef
+
                 prop_salience = {
-                    p: n / self.graph.count((None, p, None))
+                    p: n / (self.graph.count((None, URIRef(p), None)) + 1)
                     for p, n in prop_count.items()
                     if n >= ntotal * self.prop_cover
                 }
@@ -268,29 +270,29 @@ class Salient(Linker):
                     if not self.expand:
                         continue
                     for ri, row in enumerate(rows):
-                        if not ci_ri_results.get(toci, {}).get(ri):
+                        if not ci_ri_searchresults.get(toci, {}).get(ri):
                             rs = []
                             celltext = row[toci]
-                            for fr in fromri_results.get(ri, {}):
+                            for fr in fromri_searchresults.get(ri, {}):
                                 for o in fr.get(p, []):
                                     matches = self.graph.label_match(o, celltext)
                                     for m in matches:
                                         log.debug(f"Matched {o} to {celltext}")
                                         rs.append(SearchResult(str(o), {}, m.score))
                             rs = sorted(rs, key=lambda m: -m.score)
-                            ci_ri_results.setdefault(toci, {})[ri] = rs
+                            ci_ri_searchresults.setdefault(toci, {})[ri] = rs
 
                         # add backward links if there's a graph
                         if self.graph is not None:
                             from rdflib import URIRef
 
-                            if not ci_ri_results.get(fromci, {}).get(ri):
+                            if not ci_ri_searchresults.get(fromci, {}).get(ri):
                                 rs = []
                                 celltext = row[fromci]
-                                for tr in ci_ri_results.get(toci, {}).get(ri, {}):
+                                for tr in ci_ri_searchresults.get(toci, {}).get(ri, {}):
                                     o = URIRef(tr.uri)
                                     if (
-                                        self.graph.count([None, p, o])
+                                        self.graph.count([None, URIRef(p), o])
                                         > self.max_backlink
                                     ):
                                         continue
@@ -300,18 +302,18 @@ class Salient(Linker):
                                             log.debug(f"Matched back {s} to {celltext}")
                                             rs.append(SearchResult(str(s), {}, m.score))
                                 rs = sorted(rs, key=lambda m: -m.score)
-                                ci_ri_results.setdefault(fromci, {})[ri] = rs
+                                ci_ri_searchresults.setdefault(fromci, {})[ri] = rs
 
         # Select only candidate entities that are salient properties
-        for ci, ri_results in ci_ri_results.items():
-            for ri, results in ri_results.items():
+        for ci, ri_searchresults in ci_ri_searchresults.items():
+            for ri, results in ri_searchresults.items():
                 for r in results:
 
                     ok = not fromci_toci_props
                     # Check if r.uri is the salient-prop object of another cell
                     for fromci, toci_props in fromci_toci_props.items():
                         for prop in toci_props.get(str(ci), {}):
-                            ros = ci_ri_results.get(int(fromci), {}).get(int(ri), {})
+                            ros = ci_ri_searchresults.get(int(fromci), {}).get(int(ri), {})
                             other_vals = set(
                                 str(v) for ro in ros for v in ro.get(prop, [])
                             )
@@ -321,19 +323,19 @@ class Salient(Linker):
 
                     # Check if another cell is the salient-prop of r
                     for toci, props in fromci_toci_props.get(str(ci), {}).items():
-                        ros = ci_ri_results.get(int(toci), {}).get(int(ri), {})
+                        ros = ci_ri_searchresults.get(int(toci), {}).get(int(ri), {})
                         vals = set(str(v) for p in props for v in r.get(p, []))
                         if any(str(ro.uri) in vals for ro in ros):
                             ok = True
 
                     if ok:
-                        ri_results[ri] = [r]
+                        ri_searchresults[ri] = [r]
                         break
 
         # Most salient class per column
         ci_classes = {}
-        for ci, ri_results in ci_ri_results.items():
-            ent_result = {r.uri: r for rs in ri_results.values() for r in rs}
+        for ci, ri_searchresults in ci_ri_searchresults.items():
+            ent_result = {r.uri: r for rs in ri_searchresults.values() for r in rs}
             ntotal = len(ent_result)
 
             cls_count = Counter()
@@ -342,7 +344,7 @@ class Salient(Linker):
                     for cls in r.get(t, []):
                         cls_count[cls] += 1
             cls_salience = {
-                cls: n / self.graph.count((None, None, cls))
+                cls: n / (self.graph.count((None, None, cls)) + 1)
                 for cls, n in cls_count.items()
                 if n >= ntotal * self.class_cover
             }
@@ -351,8 +353,8 @@ class Salient(Linker):
                 ci_classes[str(ci)] = {str(cls): s}
 
         ci_ri_ents = existing_entities
-        for ci, ri_results in ci_ri_results.items():
-            for ri, results in ri_results.items():
+        for ci, ri_searchresults in ci_ri_searchresults.items():
+            for ri, results in ri_searchresults.items():
                 for r in results:
                     ci_ri_ents.setdefault(str(ci), {})[str(ri)] = {r.uri: 1}
                     break

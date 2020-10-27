@@ -317,6 +317,7 @@ def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None):
 
             tableCaption = table.find("caption")
             tableCaption = tableCaption.text if tableCaption else sectionTitle
+            tableCaption = tableCaption.strip()
 
             extractor = Extractor(table, transformer=lambda x: x)
             extractor.parse()

@@ -595,7 +595,7 @@ class TableSet:
                     kind_novelty_hashes
                 )
 
-        return data
+        return tables.__class__([data])
 
     @classmethod
     def run(
@@ -707,6 +707,8 @@ class TableSet:
                     tablefile = str(stepdir) + "/*.jsonl"
                     yield workdir, TableSet(executor.load(tablefile, **exkw))
             elif "split" in stepargs:
+                # Persist pre-split tables
+                tableset.tables.persist()
                 for split, splitargs in enumerate(stepargs["split"]):
                     splitname = f"{si}-split-{split}"
                     splitdir = workdir / Path(splitname)
