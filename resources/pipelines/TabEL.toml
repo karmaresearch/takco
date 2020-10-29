@@ -31,7 +31,7 @@ path = 'data/TabEL/part-*'
 step = 'reshape'
 restructure = true
 prefix_header_rules = [{find='Precededby ',header='Preceded by'}, {find='Succeededby ',header='Succeeded by'}]
-split_compound_columns = true
+compound_splitter_config = {class = "SpacyCompoundSplitter"}
 
     [[step.unpivot_configs]]
     class = 'NumSuffix'

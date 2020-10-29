@@ -256,41 +256,41 @@ def unpivot_tables(
             yield table
 
 
-def split_compound_columns(tables, **kwargs):
+def split_compound_columns(tables, splitter):
     """Using an NLP pipeline, detect and split compound columns"""
 
-    splitter = SpacyCompoundSplitter(**kwargs)
     log.info(f"Splitting compound columns using {splitter}")
 
-    for table in tables:
+    with splitter:
+        for table in tables:
 
-        newcols = []
-        headcols = list(zip(*table.get("tableHeaders", [])))
-        datacols = list(zip(*table.get("tableData", [])))
-        numheaders = len(headcols[0]) if headcols else 0
+            newcols = []
+            headcols = list(zip(*table.get("tableHeaders", [])))
+            datacols = list(zip(*table.get("tableData", [])))
+            numheaders = len(headcols[0]) if headcols else 0
 
-        for ci, (hcol, dcol) in enumerate(zip(headcols, datacols)):
-            splits = list(splitter.find_splits(dcol))
-            if splits:
-                log.debug(
-                    f"Found {len(splits)} splits in column {ci} of {table.get('_id')}: {list(zip(*splits))[:2]}"
-                )
-                for part, typ, newcol in splits:
-                    newhcol = list(hcol)
-                    if newhcol:
-                        newhcol[-1] = dict(newhcol[-1])
-                        part = part or ""
-                        newhcol[-1]["text"] = newhcol[-1].get("text", "") + " " + part
-                    newcols.append((newhcol, newcol))
-            else:
-                newcols.append((hcol, dcol))
+            for ci, (hcol, dcol) in enumerate(zip(headcols, datacols)):
+                splits = list(splitter.find_splits(dcol))
+                if splits:
+                    log.debug(
+                        f"Found {len(splits)} splits in column {ci} of {table.get('_id')}: {list(zip(*splits))[:2]}"
+                    )
+                    for part, typ, newcol in splits:
+                        newhcol = list(hcol)
+                        if newhcol:
+                            newhcol[-1] = dict(newhcol[-1])
+                            part = part or ""
+                            newhcol[-1]["text"] = newhcol[-1].get("text", "") + " " + part
+                        newcols.append((newhcol, newcol))
+                else:
+                    newcols.append((hcol, dcol))
 
-        if newcols:
-            headcols, datacols = zip(*newcols)
-            table["tableHeaders"] = list(zip(*headcols))
-            table["tableData"] = list(zip(*datacols))
+            if newcols:
+                headcols, datacols = zip(*newcols)
+                table["tableHeaders"] = list(zip(*headcols))
+                table["tableData"] = list(zip(*datacols))
 
-        yield table
+            yield table
 
 
 def restructure(tables: Iterator[Dict], prefix_header_rules=()) -> Iterator[Dict]:

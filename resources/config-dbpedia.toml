@@ -25,6 +25,7 @@ class = 'ElasticSearcher'
 index = 'dbpediasub-6'
 baseuri = 'http://dbpedia.org/resource/'
 es_kwargs.hosts = ['bricks07']
+es_kwargs.timeout = 60
 prop_uri.type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 prop_baseuri.type = 'http://dbpedia.org/ontology/'
 

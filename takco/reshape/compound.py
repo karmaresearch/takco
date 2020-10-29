@@ -2,7 +2,6 @@ from typing import List, Dict, Tuple, NamedTuple, Any, Iterator
 import re
 import datetime
 from collections import Counter
-
 import logging as log
 
 OffsetLinks = Dict[Tuple[int, int], str]
@@ -37,8 +36,28 @@ def get_cell_offsetlinks(column: List[Cell]) -> List[Tuple[str, OffsetLinks]]:
 
 
 class CompoundSplitter:
-    pass
+    def __enter__(self):
+        return self
 
+    def __exit__(self, *args):
+        return
+        
+
+class SuffixCompoundSplitter(CompoundSplitter):
+
+    def find_splits(self, column: List[Cell]) -> Iterator[CompoundSplit]:
+        import os
+
+        column = [c.get('text','') for c in column]
+        suffix = os.path.commonprefix([c[::-1] for c in column])[::-1]
+        if suffix:
+            cover = sum(1 for c in column if c.endswith(suffix)) / len(column)
+            if cover > .5:
+                newcol = [c.replace(suffix, '') for c in column]
+                if any(newcol):
+                    newcol = [{'text':c} for c in newcol]
+                    yield CompoundSplit(suffix, 'string', newcol)
+    
 
 class SpacyCompoundSplitter(CompoundSplitter):
     CARDINAL = re.compile(r"[\d,.]+")
@@ -50,9 +69,12 @@ class SpacyCompoundSplitter(CompoundSplitter):
     DASHES = "-–—"
 
     def __init__(self, model="en_core_web_sm"):
+        self.model = model
+
+    def __enter__(self):
         import spacy
 
-        self.nlp = spacy.load(model)
+        self.nlp = spacy.load(self.model)
 
         suffixes = self.nlp.Defaults.infixes + tuple(self.DASHES)
         suffix_regex = spacy.util.compile_infix_regex(suffixes)
@@ -97,6 +119,10 @@ class SpacyCompoundSplitter(CompoundSplitter):
         ]
         ruler.add_patterns(patterns)
         self.nlp.add_pipe(ruler)
+
+    def __exit__(self, *args):
+        if hasattr(self, 'nlp'):
+            del self.nlp
 
     @staticmethod
     def make_linked_doc(doc, links):

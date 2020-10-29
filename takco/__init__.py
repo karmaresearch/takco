@@ -140,7 +140,7 @@ class TableSet:
         prefix_header_rules: typing.List[Config] = (),
         unpivot_configs: typing.List[Config] = (),
         centralize_pivots: bool = False,
-        split_compound_columns: bool = False,
+        compound_splitter_config: Config = None,
         discard_headerless_tables: bool = False,
         assets: typing.List[Config] = (),
     ):
@@ -152,7 +152,7 @@ class TableSet:
             restructure: Whether to restructure tables heuristically
             unpivot_configs: Use a subset of available heuristics
             centralize_pivots: If True, find pivots on unique headers instead of tables
-            split_compound_columns: Whether to split compound columns (with NER)
+            compound_splitter_config: Splitter for compound columns
 
         """
         tables = TableSet(self).tables
@@ -190,8 +190,11 @@ class TableSet:
                 reshape.unpivot_tables, headerId_pivot, heuristics=unpivot_heuristics,
             )
 
-        if split_compound_columns:
-            tables = tables.pipe(reshape.split_compound_columns)
+        if compound_splitter_config is not None:
+            from .reshape import compound
+            compound_splitter = Config(compound_splitter_config, assets)
+            compound_splitter = compound_splitter.init_class(**compound.__dict__)
+            tables = tables.pipe(reshape.split_compound_columns, compound_splitter)
 
         if discard_headerless_tables:
             def filter_headerless(ts):

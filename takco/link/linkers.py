@@ -185,12 +185,14 @@ class Salient(Linker):
     
     def __enter__(self):
         self.searcher.__enter__()
-        self.graph.__enter__()
+        if self.graph != self.searcher:
+            self.graph.__enter__()
         return self
     
     def __exit__(self, *args):
         self.searcher.__exit__(*args)
-        self.graph.__exit__(*args)
+        if self.graph != self.searcher:
+            self.graph.__exit__(*args)
 
     def link(
         self,

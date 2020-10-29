@@ -18,6 +18,18 @@ params = 't2d-v2'
         class = 'First'
         searcher = {resolve = 'dbpedia_t2ksubset_es'}
 
+    [[step.split]]
+    step = 'link'
+    usecols = 'non_numeric_cols'
+    #usecols = 'heuristic_key' # only works for literal props
+    lookup_config = {}
+        [step.split.linker_config]
+        class = 'First'
+        searcher = {resolve = 'dbpedia_t2ksubset_es'}
+        contextual = true
+        search_limit = 1
+        majority_class = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+        majority_class_search = true
 
     [[step.split]]
     step = 'link'

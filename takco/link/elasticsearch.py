@@ -85,11 +85,11 @@ QUERY_SCRIPT = """
                                                     "match_phrase": {
                                                         "surface.value": {
                                                             "query": "{{query}}",
-                                                            "boost": 0.5
-                                                        },
-                                                        "slop": 2
+                                                            "boost": 0.5,
+                                                            "slop": 2
+                                                        }
                                                     }
-                                                },
+                                                }
                                             ]
                                         }
                                     },
@@ -159,7 +159,8 @@ class ElasticSearcher(Searcher):
         return self
     
     def __exit__(self, *args):
-        del self.es
+        if hasattr(self, 'es'):
+            del self.es
 
     def _about(self, source):
         about = {}
@@ -210,7 +211,7 @@ class ElasticSearcher(Searcher):
         ).get('responses', [])
         for (query, context), esresponse in zip(query_contexts, esresponses):
             results = []
-            for hit in esresponse.get("hits", []).get("hits", []):
+            for hit in esresponse.get("hits", {}).get("hits", []):
                 uri = hit.get("_source", {}).get("id")
                 if self.baseuri:
                     uri = self.baseuri + uri
