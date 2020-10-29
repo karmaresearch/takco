@@ -39,6 +39,7 @@ extensions = [
     'sphinx_autodoc_typehints',
 #     'sphinx.ext.autosummary',
     'sphinx.ext.doctest',
+    'sphinx.ext.linkcode',
 ]
 
 apidoc_module_dir = '../takco'
@@ -78,3 +79,35 @@ html_static_path = ['_static']
 html_css_files = [
     'custom.css',
 ]
+
+def linkcode_resolve(domain, info):
+    if domain != 'py':
+        return None
+    if not info['module']:
+        return None
+    filename = info['module'].replace('.', '/')
+
+
+    import inspect
+    import importlib
+
+    module, fullname = info['module'], info['fullname']
+    obj = importlib.import_module(module)
+    for item in fullname.split('.'):
+        obj = getattr(obj, item, None)
+
+    if obj is None:
+        return None
+
+    # get original from decorated methods
+    try: obj = getattr(obj, '_orig')
+    except AttributeError: pass
+
+    try:
+        _, line = inspect.getsourcelines(obj)
+    except (TypeError, IOError):
+        # obj doesn't have a module, or something
+        return None
+
+
+    return "https://github.com/karmaresearch/takco/blob/master/%s.py#L%s" % (filename, line)

@@ -362,7 +362,7 @@ class SQLiteSearcher(SQLiteCache, Searcher):
 
             q = "insert or replace into label(uri, txt, score) values (?,?,?)"
             if (self.fallback is not None) and not (knownempty or all_results):
-                for srs in self.fallbac([(query,())], limit=None):
+                for srs in self.fallbac([(query, ())], limit=None):
                     all_results += list(srs)
                 if all_results:
                     new = []
@@ -384,7 +384,8 @@ class SQLiteSearcher(SQLiteCache, Searcher):
                 if self.parts:
                     part_results = self.search_entities(
                         [(p, context) for p in self.get_parts(query)],
-                        limit=limit, add_about=add_about
+                        limit=limit,
+                        add_about=add_about,
                     )
                     for srs in part_results:
                         all_results += srs

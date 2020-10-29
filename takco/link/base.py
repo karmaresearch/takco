@@ -86,7 +86,10 @@ class Searcher(Asset):
     """For searching and matching for Knowledge Base entities."""
 
     def search_entities(
-        self, query_contexts: Container[Tuple[str,Container[str]]], limit: int = 1, add_about: bool = False
+        self,
+        query_contexts: Container[Tuple[str, Container[str]]],
+        limit: int = 1,
+        add_about: bool = False,
     ) -> Container[Container[SearchResult]]:
         """Search for entities using label queries.
 
@@ -143,7 +146,7 @@ class Database(Asset):
         for (_, p, o) in self.triples((e, None, None)):
             about.setdefault(p, []).append(o)
         return about
-    
+
     def triples(self, pattern):
         return []
 
@@ -178,8 +181,8 @@ class Linker(Asset):
         for ri, row in enumerate(rows):
             if (not skiprows) or (ri not in skiprows):
                 for ci, cell in enumerate(row):
-                    context = tuple(row[:ci] + row[ci+1:])
-                    query = (cell, context) if contextual else (cell, () )
+                    context = tuple(row[:ci] + row[ci + 1 :])
+                    query = (cell, context) if contextual else (cell, ())
 
                     if (not usecols) or (ci in usecols):
                         existing = existing_entities.get(ci, {}).get(ri, {})

@@ -76,7 +76,7 @@ class Config(dict, typing.Generic[T]):
                 log.warn(f"Skipped config: {val} (context: {context})")
                 for cpi, e in attempts.items():
                     log.debug(f"Did not parse {val} with parser {cpi} due to error {e}")
-                self['name'] = val
+                self["name"] = val
 
     def init_class(self, **context):
         if isinstance(self, dict) and "class" in self:
@@ -268,7 +268,7 @@ try:
                 client = Client(**kwargs)
             except Exception as e:
                 log.warn(e)
-        
+
         def __init__(self, it, npartitions=None, **kwargs):
             if kwargs:
                 self.start_client(**kwargs)

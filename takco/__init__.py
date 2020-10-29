@@ -192,17 +192,19 @@ class TableSet:
 
         if compound_splitter_config is not None:
             from .reshape import compound
+
             compound_splitter = Config(compound_splitter_config, assets)
             compound_splitter = compound_splitter.init_class(**compound.__dict__)
             tables = tables.pipe(reshape.split_compound_columns, compound_splitter)
 
         if discard_headerless_tables:
+
             def filter_headerless(ts):
                 for t in ts:
-                    headers = t.get('tableHeaders',[])
-                    if any(h.get('text') for hrow in headers for h in hrow):
+                    headers = t.get("tableHeaders", [])
+                    if any(h.get("text") for hrow in headers for h in hrow):
                         yield t
-                        
+
             tables = tables.pipe(filter_headerless)
 
         return TableSet(tables)
@@ -507,7 +509,7 @@ class TableSet:
         table_annot = dset.get_annotated_tables()
         log.info(f"Loaded {len(table_annot)} annotated tables")
 
-        pairs = tables.__class__([(t, table_annot.get(t['_id'], {})) for t in tables])
+        pairs = tables.__class__([(t, table_annot.get(t["_id"], {})) for t in tables])
         tables = pairs.pipe(evaluate.table_score, keycol_only=keycol_only)
         return TableSet(tables)
 
@@ -698,7 +700,7 @@ class TableSet:
                         )
 
                     sig = signature(stepfunc)
-                    local_config = {'self': tableset, **conf, 'workdir': stepdir}
+                    local_config = {"self": tableset, **conf, "workdir": stepdir}
                     for k, v in local_config.items():
                         if (k in sig.parameters) and (k not in stepargs):
                             stepargs[k] = v
@@ -720,8 +722,8 @@ class TableSet:
                 raise Exception(f"Pipeline step {si} has no step type")
 
         log.info(f"Running pipeline '{name}' in {workdir} using {executor}")
-        
-        streams = [ (Path(conf["workdir"]), []) ]
+
+        streams = [(Path(conf["workdir"]), [])]
         for si, args in enumerate(pipeline.get("step", [])):
             streams = [c for wd, ts in streams for c in chain_step(ts, wd, si, args)]
 

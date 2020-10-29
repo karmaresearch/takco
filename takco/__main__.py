@@ -36,7 +36,6 @@ class SetConfig(argparse.Action):
             log.info(f"Loaded config from environment")
 
 
-
 class SetExecutor(argparse.Action):
     DEFAULT = {"class": "TqdmHashBag"}
 
@@ -130,11 +129,11 @@ def main():
                     action=SetVerbosity,
                     help="Log debugging information",
                 )
-    
+
     args = parser.parse_args(sys.argv[1:])
     for k, v in config.items():
         if isinstance(v, list):
-            setattr(args, k, v + list(args.__dict__.get(k, [])) )
+            setattr(args, k, v + list(args.__dict__.get(k, [])))
         else:
             setattr(args, k, v)
 
@@ -144,7 +143,7 @@ def main():
         try:
             if isinstance(result, TableSet):
                 result = result.tables
-            
+
             if isinstance(result, HashBag):
                 out = args.out if hasattr(args, "out") and args.out else sys.stdout
                 log.info(f"Writing {result} to {out}")

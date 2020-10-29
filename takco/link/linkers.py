@@ -38,11 +38,11 @@ class First(Linker):
         self.exclude_about = exclude_about
         self.add_about = bool(majority_class or exclude_about)
         self.normalize = normalize
-    
+
     def __enter__(self):
         self.searcher.__enter__()
         return self
-    
+
     def __exit__(self, *args):
         self.searcher.__exit__(*args)
 
@@ -182,13 +182,13 @@ class Salient(Linker):
         else:
             self.graph = graph
         self.max_backlink = max_backlink
-    
+
     def __enter__(self):
         self.searcher.__enter__()
         if self.graph != self.searcher:
             self.graph.__enter__()
         return self
-    
+
     def __exit__(self, *args):
         self.searcher.__exit__(*args)
         if self.graph != self.searcher:
@@ -315,7 +315,9 @@ class Salient(Linker):
                     # Check if r.uri is the salient-prop object of another cell
                     for fromci, toci_props in fromci_toci_props.items():
                         for prop in toci_props.get(str(ci), {}):
-                            ros = ci_ri_searchresults.get(int(fromci), {}).get(int(ri), {})
+                            ros = ci_ri_searchresults.get(int(fromci), {}).get(
+                                int(ri), {}
+                            )
                             other_vals = set(
                                 str(v) for ro in ros for v in ro.get(prop, [])
                             )

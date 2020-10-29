@@ -143,7 +143,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
 
     def search_entities(self, query_contexts, limit=1, add_about=False):
         for query, _ in query_contexts:
-            is_ascii = (query == query.encode("ascii", errors="ignore").decode())
+            is_ascii = query == query.encode("ascii", errors="ignore").decode()
             if self.encoding and not is_ascii:
                 if self.encoding == "wikidata":
                     query = encode_wikidata(query)
@@ -179,7 +179,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
             ]
 
             if self.refsort:
-                results = sorted(results, key = lambda sr: -sr.score)
+                results = sorted(results, key=lambda sr: -sr.score)
 
             yield results
 

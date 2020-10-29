@@ -41,23 +41,22 @@ class CompoundSplitter:
 
     def __exit__(self, *args):
         return
-        
+
 
 class SuffixCompoundSplitter(CompoundSplitter):
-
     def find_splits(self, column: List[Cell]) -> Iterator[CompoundSplit]:
         import os
 
-        column = [c.get('text','') for c in column]
+        column = [c.get("text", "") for c in column]
         suffix = os.path.commonprefix([c[::-1] for c in column])[::-1]
         if suffix:
             cover = sum(1 for c in column if c.endswith(suffix)) / len(column)
-            if cover > .5:
-                newcol = [c.replace(suffix, '') for c in column]
+            if cover > 0.5:
+                newcol = [c.replace(suffix, "") for c in column]
                 if any(newcol):
-                    newcol = [{'text':c} for c in newcol]
-                    yield CompoundSplit(suffix, 'string', newcol)
-    
+                    newcol = [{"text": c} for c in newcol]
+                    yield CompoundSplit(suffix, "string", newcol)
+
 
 class SpacyCompoundSplitter(CompoundSplitter):
     CARDINAL = re.compile(r"[\d,.]+")
@@ -121,7 +120,7 @@ class SpacyCompoundSplitter(CompoundSplitter):
         self.nlp.add_pipe(ruler)
 
     def __exit__(self, *args):
-        if hasattr(self, 'nlp'):
+        if hasattr(self, "nlp"):
             del self.nlp
 
     @staticmethod

@@ -130,7 +130,6 @@ QUERY_SCRIPT = """
 """
 
 
-
 class ElasticSearcher(Searcher):
     NUM = re.compile("^[\d\W]+$")
 
@@ -157,9 +156,9 @@ class ElasticSearcher(Searcher):
     def __enter__(self):
         self.es = Elasticsearch(**self.es_kwargs)
         return self
-    
+
     def __exit__(self, *args):
-        if hasattr(self, 'es'):
+        if hasattr(self, "es"):
             del self.es
 
     def _about(self, source):
@@ -179,15 +178,10 @@ class ElasticSearcher(Searcher):
                     yield qpart
 
     def make_query_body(self, query, **kwargs):
-        return { "id": "query", "params": {"query":query, **kwargs}}
+        return {"id": "query", "params": {"query": query, **kwargs}}
 
     def search_entities(
-        self,
-        query_contexts,
-        classes=(),
-        limit=1,
-        add_about=False,
-        ispart=False,
+        self, query_contexts, classes=(), limit=1, add_about=False, ispart=False,
     ):
         # Simplify classes
         query_contexts = tuple(query_contexts)
@@ -196,19 +190,18 @@ class ElasticSearcher(Searcher):
 
         bodies = []
         for query, context in query_contexts:
-            context = [{"value":c} for c in context if not self.NUM.match(c)]
-            classes = [{"value":c.split("/")[-1]} for c in classes]
-            
+            context = [{"value": c} for c in context if not self.NUM.match(c)]
+            classes = [{"value": c.split("/")[-1]} for c in classes]
+
             body = self.make_query_body(
                 query, context=context, classes=classes, limit=limit
             )
             bodies.append(())
             bodies.append(body)
-        
-        esresponses = self.es.msearch_template(
-            index=self.index, 
-            body=bodies
-        ).get('responses', [])
+
+        esresponses = self.es.msearch_template(index=self.index, body=bodies).get(
+            "responses", []
+        )
         for (query, context), esresponse in zip(query_contexts, esresponses):
             results = []
             for hit in esresponse.get("hits", {}).get("hits", []):
@@ -226,10 +219,7 @@ class ElasticSearcher(Searcher):
                 if self.parts and (not ispart):
                     partqueries = [(p, context) for p in self.get_parts(query)]
                     more = self.search_entities(
-                        partqueries,
-                        limit=limit,
-                        add_about=add_about,
-                        ispart=True,
+                        partqueries, limit=limit, add_about=add_about, ispart=True,
                     )
                     for srs in more:
                         results += srs
@@ -499,17 +489,13 @@ class ElasticSearcher(Searcher):
             return json.dumps(list(es.search_entities(queries, limit=limit)))
 
     @classmethod
-    def store_template(cls, index: str, es_kwargs:typing.Dict = None):
+    def store_template(cls, index: str, es_kwargs: typing.Dict = None):
         es_kwargs = es_kwargs or {}
-        body = {
-            "script": {
-                "lang": "mustache",
-                "source": QUERY_SCRIPT
-            }
-        }
-        host = es_kwargs.get('host', 'localhost')
-        port = es_kwargs.get('port', '9200')
+        body = {"script": {"lang": "mustache", "source": QUERY_SCRIPT}}
+        host = es_kwargs.get("host", "localhost")
+        port = es_kwargs.get("port", "9200")
         import requests
+
         return requests.post(f"http://{host}:{port}/_scripts/query", json=body).text
 
 

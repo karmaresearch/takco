@@ -280,7 +280,9 @@ def split_compound_columns(tables, splitter):
                         if newhcol:
                             newhcol[-1] = dict(newhcol[-1])
                             part = part or ""
-                            newhcol[-1]["text"] = newhcol[-1].get("text", "") + " " + part
+                            newhcol[-1]["text"] = (
+                                newhcol[-1].get("text", "") + " " + part
+                            )
                         newcols.append((newhcol, newcol))
                 else:
                     newcols.append((hcol, dcol))

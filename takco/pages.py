@@ -6,6 +6,7 @@ import glob
 
 from .link import *
 
+
 class WikiPages:
     """
     Download Wikipedia articles
@@ -36,7 +37,7 @@ class WikiPages:
         self.encoding = encoding
 
         from . import link
-        
+
         with Config(dbconfig, assets).init_class(**link.__dict__) as db:
 
             ent_abouturl = []
@@ -49,8 +50,7 @@ class WikiPages:
 
     @staticmethod
     def download(
-        ent_abouturl: typing.Collection[typing.Tuple[str, str]],
-        encoding: str
+        ent_abouturl: typing.Collection[typing.Tuple[str, str]], encoding: str
     ):
         """Download html pages from urls
 
@@ -60,7 +60,6 @@ class WikiPages:
         """
         import requests
 
-        
         for e, url in ent_abouturl:
             result = requests.get(url)
             if encoding:
@@ -75,9 +74,8 @@ class WikiPages:
                     "html": result.text,
                 }
 
-    def get(self,
-        executor: Config = None,
-        assets: typing.List[Config] = (),
+    def get(
+        self, executor: Config = None, assets: typing.List[Config] = (),
     ):
         executor, exkw = get_executor_kwargs(executor, assets)
         ent_abouturl = self.ent_abouturl
@@ -85,8 +83,7 @@ class WikiPages:
             return ({"entity": e, "page": url} for e, url in ent_abouturl)
         log.info(f"Downloading {len(ent_abouturl)} pages with executor {executor}")
         return executor(ent_abouturl, **exkw).pipe(
-            self.download, 
-            encoding=self.encoding
+            self.download, encoding=self.encoding
         )
 
 
@@ -100,9 +97,7 @@ class WarcPages:
     """
 
     def __init__(
-        self,
-        globstrings: typing.List[str] = (),
-        datadir: Path = None,
+        self, globstrings: typing.List[str] = (), datadir: Path = None,
     ):
         if not isinstance(globstrings, list):
             globstrings = [globstrings]
@@ -132,9 +127,8 @@ class WarcPages:
                             "html": text,
                         }
 
-    def get(self,
-        executor: Config = None,
-        assets: typing.List[Config] = (),
+    def get(
+        self, executor: Config = None, assets: typing.List[Config] = (),
     ):
         executor, exkw = get_executor_kwargs(executor, assets)
         fnames = self.fnames
@@ -145,7 +139,6 @@ class WarcPages:
 
 
 class LinePages:
-
     def __init__(
         self,
         globstrings: typing.List[str] = (),
@@ -163,8 +156,9 @@ class LinePages:
         self.lookup = lookup_config
 
         import re
+
         self.title_regex = re.compile(title_regex) if title_regex else None
-    
+
     @staticmethod
     def parse_line(fnames, lookup, title_regex):
         import json
@@ -176,7 +170,7 @@ class LinePages:
             for line in open(fname):
                 try:
                     url, html = line.rstrip().split(None, 1)
-                    
+
                     title = url
                     if title_regex:
                         title = title_regex.match(url).group(1)
@@ -186,9 +180,9 @@ class LinePages:
                         about = lookup.lookup_title(title)
 
                     yield {
-                        'url': url,
-                        'about': about,
-                        'html': json.loads(html),
+                        "url": url,
+                        "about": about,
+                        "html": json.loads(html),
                     }
 
                 except Exception as e:
@@ -198,16 +192,16 @@ class LinePages:
                     lookup.flush()
 
         if lookup is not None:
-            lookup.__exit__(None,None,None)
+            lookup.__exit__(None, None, None)
 
-
-    def get(self,
-        executor: Config = None,
-        assets: typing.List[Config] = (),
+    def get(
+        self, executor: Config = None, assets: typing.List[Config] = (),
     ):
         executor, exkw = get_executor_kwargs(executor, assets)
         fnames = self.fnames
         log.info(
             f"Extracting pages from {len(fnames)} line files using executor {executor}"
         )
-        return executor(fnames, **exkw).pipe(self.parse_line, self.lookup, self.title_regex)
+        return executor(fnames, **exkw).pipe(
+            self.parse_line, self.lookup, self.title_regex
+        )
