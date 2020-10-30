@@ -12,6 +12,7 @@ from pathlib import Path
 import logging as log
 
 from .util import *
+from . import pages, reshape, link, cluster, evaluate
 
 __all__ = [
     "TableSet",
@@ -98,7 +99,6 @@ class TableSet:
         executor, exkw = get_executor_kwargs(executor, assets)
 
         import itertools
-        from . import evaluate
 
         params = Config(params, assets)
         log.info(f"Loading dataset {params}")
@@ -121,7 +121,6 @@ class TableSet:
             source: Source of HTML files
         """
         if isinstance(source, Config):
-            from . import pages
 
             source = Config(source, assets)
             htmlpages = source.init_class(**pages.__dict__).get(executor, assets)
@@ -156,8 +155,6 @@ class TableSet:
 
         """
         tables = TableSet(self).tables
-        from . import reshape
-        from . import link
 
         if restructure:
             log.info(f"Restructuring with rules: {prefix_header_rules}")
@@ -176,8 +173,7 @@ class TableSet:
             headerId_pivot = None
             if centralize_pivots:
                 tables.persist()
-                headers = tables.fold(reshape.table_get_headerId, lambda x, y: x)
-                headers = headers.pipe(reshape.get_headerobjs)
+                headers = tables.fold(reshape.table_get_headerId, reshape.get_header)
 
                 pivots = headers.pipe(
                     reshape.yield_pivots, heuristics=unpivot_heuristics
@@ -213,7 +209,6 @@ class TableSet:
     def get_tables_index(tables):
         """Make a dataframe of table and column indexes"""
         import pandas as pd
-        from . import cluster
 
         tables = tables.offset("tableIndex", "tableIndex", default=1)
         tables = tables.offset("numCols", "columnIndexOffset")
@@ -267,7 +262,6 @@ class TableSet:
         import tqdm
         import sqlite3
         import pandas as pd
-        from . import cluster
 
         if addcontext:
             tables = tables.pipe(cluster.tables_add_context_rows, fields=addcontext)
@@ -400,8 +394,6 @@ class TableSet:
         """
         tables = TableSet(self).tables
 
-        from . import link
-
         typer = Config(typer_config, assets).init_class(**link.__dict__)
         return TableSet(tables.pipe(link.coltypes, typer=typer))
 
@@ -428,7 +420,6 @@ class TableSet:
                 prediction
         """
         tables = TableSet(self).tables
-        from . import link
 
         db = Config(db_config, assets).init_class(**link.__dict__)
         log.info(f"Integrating with {db}")
@@ -466,7 +457,6 @@ class TableSet:
             usecols: Columns to use
         """
         tables = TableSet(self).tables
-        from . import link
 
         if lookup_config:
             lookup = Config(lookup_config, assets).init_class(**link.__dict__)
@@ -502,7 +492,6 @@ class TableSet:
             keycol_only: Only calculate results for key column
         """
         tables = TableSet(self).tables
-        from . import evaluate
 
         annot = Config(labels, assets)
         dset = evaluate.dataset.load(resourcedir=resourcedir, datadir=datadir, **annot)
@@ -519,8 +508,6 @@ class TableSet:
         assets: typing.List[Config] = (),
     ):
         tables = TableSet(self).tables
-        from . import evaluate
-        from . import link
 
         searcher = Config(searcher_config, assets).init_class(**link.__dict__)
         return TableSet(tables.pipe(evaluate.table_novelty, searcher))
@@ -528,7 +515,6 @@ class TableSet:
     def triples(self: TableSet, include_type: bool = True):
         """Make triples for predictions"""
         tables = TableSet(self).tables
-        from . import evaluate
 
         tables = tables.pipe(evaluate.table_triples, include_type=include_type)
         return TableSet(tables)
@@ -541,7 +527,6 @@ class TableSet:
             curve: Calculate precision-recall tradeoff curve
         """
         tables = TableSet(self).tables
-        from . import evaluate
 
         data = {}
 

@@ -453,12 +453,15 @@ def tableobj_to_html(table, nrows=None, uniq=None, number=False):
 
     tableData = tableData[:nrows]
 
-    body = [[c.get("tdHtmlString", "<td></td>") for c in r] for r in tableData]
+    body = [
+        [c.get("tdHtmlString", f"<td>{c.get('text')}</td>") for c in r]
+        for r in tableData
+    ]
     body = [[c.replace("span=", "=") for c in row] for row in body]
     body = "".join(f'<tr>{"".join(row)}</tr>' for row in body)
 
     head = [
-        [c.get("tdHtmlString", "<th></th>") for c in r]
+        [c.get("tdHtmlString", f"<th>{c.get('text')}</th>") for c in r]
         for r in table.get("tableHeaders", [])
     ]
     head = [[c.replace("span=", "=") for c in row] for row in head]

@@ -18,6 +18,5 @@ def table_get_headerId(table):
         return get_headerId(headertext)
 
 
-def get_headerobjs(tables):
-    for table in tables:
-        yield table.get("tableHeaders", [])
+def get_header(table1, table2):
+    return table1.get("tableHeaders", [])

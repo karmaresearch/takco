@@ -268,33 +268,27 @@ class ElasticSearcher(Searcher):
             top = max(surface_score.values())
             surface_score = {sur: score / top for sur, score in surface_score.items()}
 
+        def get_label(l):
+            label = db.lookup_str(l)
+            if unescape:
+                label = label.encode().decode("unicode-escape")
+            if label.endswith("@en"):
+                yield label[1:-4].lower()
+            elif label.strip().endswith('"'):
+                yield label[1:-1].lower()
+
         for plabel, score in plabel_score.items():
             for l in db.o(s, plabel):
-                label = db.lookup_str(l)
-                if unescape:
-                    label = label.encode().decode("unicode-escape")
-                if label.endswith("@en"):
-                    label = label[1:-4].lower()
-                elif label.strip().endswith('"'):
-                    label = label[1:-1].lower()
-                else:
-                    continue
-
-                labels = get_synonyms(label) if get_synonyms else [label]
-                for label in labels:
-                    surface_score.setdefault(label, score)
+                for label in get_label(l):
+                    for label in get_synonyms(label) if get_synonyms else [label]:
+                        surface_score.setdefault(label, score)
 
         if surface_score:
             context = set()
             for _, o in db.po(s):
                 for l in db.o(o, prefLabel):
-                    label = db.lookup_str(l)
-                    if unescape:
-                        label = label.encode().decode("unicode-escape")
-                    if label.endswith("@en"):
-                        context.add(label[1:-4])
-                    elif label.strip().endswith('"'):
-                        context.add(label[1:-1])
+                    for label in get_label(l):
+                        context.add(label)
 
             types = set()
             if p_type is not None:

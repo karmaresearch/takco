@@ -1,3 +1,6 @@
+"""
+This module is executable. Run ``python -m takco.link.types -h`` for help.
+"""
 __all__ = ["SimpleTyper", "EntityTyper"]
 
 import logging as log
@@ -181,6 +184,13 @@ class SimpleTyper(Typer):
 
 
 class EntityTyper(SimpleTyper):
+    """Select ``topn`` KB types with highest cover
+    
+    Looks up entities in DB, and looks up types of those entities.
+    The types ``topn`` that occur more than ``cover_threshold`` of the column are kept.
+
+    """
+
     def __init__(
         self,
         db: Database,
@@ -222,6 +232,7 @@ class EntityTyper(SimpleTyper):
                 if ts:
                     counts.update(set.union(*ts))
 
+            # Select topn types with highest cover
             scores = [
                 (t, c / n)
                 for t, c in counts.most_common()
@@ -230,3 +241,18 @@ class EntityTyper(SimpleTyper):
             if scores:
                 return dict(scores)
         return types
+
+
+if __name__ == "__main__":
+    import defopt, json, os, typing
+
+    def make_entitybloom():
+        pass
+
+    r = defopt.run(
+        [make_entitybloom],
+        strict_kwonly=False,
+        show_types=True,
+        parsers={typing.Dict: json.loads},
+    )
+    print(r)

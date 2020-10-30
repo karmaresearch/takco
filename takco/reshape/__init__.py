@@ -1,6 +1,6 @@
 import logging as log
 
-from .headers import table_get_headerId, get_headerId, get_headerobjs
+from .headers import table_get_headerId, get_headerId, get_header
 from .compound import SpacyCompoundSplitter
 from .findpivot import *
 from .clean import (
@@ -134,7 +134,7 @@ def yield_pivots(headerobjs: Iterator[Dict], heuristics: Dict[str, PivotFinder])
                         log.debug(f"Failed to unpivot header {headertext} due to {e}")
 
 
-def try_unpivot(table, pivot):
+def try_unpivot(table, pivot, heuristics):
     headerText = [[c.get("text", "") for c in hrow] for hrow in table["tableHeaders"]]
     log.debug(f"Unpivoting {table.get('_id')}")
     try:
@@ -172,7 +172,7 @@ def try_unpivot(table, pivot):
 
         # If pivot spans entire header, discard table!
         if (level == colfrom == 0) and (colto == len(headerText[0]) - 1):
-            log.info(f"Discarded table {pgId}-{tbNr}")
+            log.info("Discarded table {_id}".format(**table))
             return
 
         leftcolheader = {
@@ -250,7 +250,7 @@ def unpivot_tables(
         pivot = headerId_pivot.get(table["headerId"])
 
         if pivot and headerText:
-            table = try_unpivot(table, pivot)
+            table = try_unpivot(table, pivot, heuristics)
 
         if table:
             yield table

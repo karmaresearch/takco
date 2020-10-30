@@ -60,3 +60,4 @@ searcher_config = {resolve = 'dbpedia_t2ksubset'}
 [[step]]
 step = 'report'
 keycol_only = true
+curve = true
