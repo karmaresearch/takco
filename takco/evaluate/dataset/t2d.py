@@ -223,6 +223,13 @@ def surfaceforms_from_prefixuri(uri, prefix):
 def all_surface(
     uri_pagetitle_file: Path, surfaceformscore_file: Path, redirect_file: Path = None,
 ):
+    """Collect all surfaceforms, print as (URI, surfaceform-json) TSV
+
+    Args:
+        uri_pagetitle_file: TSV of (uri, page title) pairs
+        surfaceformscore_file: surfaceFormsScore file
+        redirect_file: Redirect file
+    """
     import sys, tqdm, json
 
     assert uri_pagetitle_file.exists()
@@ -313,7 +320,7 @@ if __name__ == "__main__":
         print(json.dumps(T2D(path, version=version).tables))
 
     def dbpedia_subset(fname: Path):
-        """Process Dbpedia subset
+        """Convert Dbpedia subset tables to triples.
 
         Download the subset file from:
         ``http://data.dws.informatik.uni-mannheim.de/webtables/dbpedia_subset.tar.gz``

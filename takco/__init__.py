@@ -205,17 +205,13 @@ class TableSet:
 
         return TableSet(tables)
 
-    @staticmethod
-    def get_tables_index(tables):
+    def number_table_columns(self):
         """Make a dataframe of table and column indexes"""
-        import pandas as pd
 
+        tables = TableSet(self).tables
         tables = tables.offset("tableIndex", "tableIndex", default=1)
         tables = tables.offset("numCols", "columnIndexOffset")
-        tables.persist()
-
-        index = pd.concat(list(tables.pipe(cluster.make_column_index_df)))
-        return tables, index
+        return tables
 
     def cluster(
         self: TableSet,
@@ -276,37 +272,30 @@ class TableSet:
             ## Partition table similarity graph
 
             # Collect index
-            tables, index = TableSet.get_tables_index(tables)
-
-            Path(workdir or ".").mkdir(exist_ok=True, parents=True)
-            fpath = Path(workdir) / Path("indices.sqlite")
-            if fpath.exists():
-                fpath.unlink()
-            log.info(f"Writing {len(index)} index rows to {fpath}")
-            with sqlite3.connect(fpath) as con:
-                index.to_sql("indices", con, index_label="i", if_exists="replace")
-                con.execute("create index colOffset on indices(columnIndexOffset)")
+            tables = TableSet.number_table_columns(tables)
 
             log.info(f"Creating matchers: {', '.join(m.name for m in matchers)}")
-            matchers = tables.pipe(cluster.matcher_add_tables, matchers)
-
-            matchers = matchers.fold(lambda x: x.name, lambda a, b: a.merge(b))
-            matchers = list(matchers)
+            matchers = list(
+                tables.pipe(cluster.matcher_add_tables, matchers).fold(
+                    lambda x: x.name, lambda a, b: a.merge(b)
+                )
+            )
             for m in matchers:
                 log.info(f"Indexing {m.name}")
                 m.index()
 
             # Get blocked column match scores
-            table_numcols = pd.Series({t["tableIndex"]: t["numCols"] for t in tables})
+            tableid_colids = dict(tables.pipe(cluster.get_table_ids))
             log.info(f"Blocking tables; computing and aggregating column sims...")
-            tablesim = tables.__class__(table_numcols).pipe(
-                cluster.get_colsims,
-                matchers=matchers,
-                agg_func=agg_func,
-                agg_threshold=agg_threshold,
-                table_numcols=table_numcols,
+            tablesim = pd.concat(
+                tables.pipe(
+                    cluster.get_colsims,
+                    matchers=matchers,
+                    agg_func=agg_func,
+                    agg_threshold=agg_threshold,
+                    tableid_colids=tableid_colids,
+                )
             )
-            tablesim = pd.concat(tablesim)
             log.info(f"Got {len(tablesim)} table similarities")
             # tablesim.to_csv(Path(workdir) / Path("tablesim.csv"))
 

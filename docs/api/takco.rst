@@ -26,4 +26,5 @@ Submodules
    :maxdepth: 4
 
    takco.pages
+   takco.table
    takco.util

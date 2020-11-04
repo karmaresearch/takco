@@ -1,4 +1,4 @@
-from typing import List, Dict, Container, Tuple, Iterator
+from typing import List, Dict, Collection, Set, Tuple, Iterator
 from pathlib import Path
 import logging as log
 from collections import Counter
@@ -8,13 +8,15 @@ import hashlib
 import contextlib
 import time
 
-from .matchers import Matcher
+from .matchers import Matcher, ScoredMatch
+
+Table = dict
 
 try:
-    from pandas import DataFrame, Series
-    import pandas as pd
-    import numpy as np
-    from sklearn.cluster import AgglomerativeClustering
+    from pandas import DataFrame, Series  # type: ignore
+    import pandas as pd  # type: ignore
+    import numpy as np  # type: ignore
+    from sklearn.cluster import AgglomerativeClustering  # type: ignore
 except:
     import typing
 
@@ -33,11 +35,28 @@ class Timer(dict):
             self[name] = self.get(name, 0) + (time.time() - t0)
 
 
+def progress(it, desc=None):
+    if log.getLogger().level <= log.INFO:
+        try:
+            import tqdm
+
+            return tqdm.tqdm(it, desc=desc)
+        except:
+            pass
+    return it
+
+
 def get_headerId(header):
     # header is a tuple of tuples.
     header = tuple(tuple(c for c in r) for r in header)
     h = hashlib.sha224(str(header).encode()).hexdigest()
     return int(h[:16], 16) // 2  # integer between 0 and SQLite MAX_VAL
+
+
+def get_table_ids(tables):
+    for t in tables:
+        cols = range(t["columnIndexOffset"], t["columnIndexOffset"] + t["numCols"])
+        yield int(t["tableIndex"]), set(cols)
 
 
 def louvain(tablesim, edge_exp=1) -> List[List[int]]:
@@ -61,7 +80,7 @@ def louvain(tablesim, edge_exp=1) -> List[List[int]]:
         - `Louvain modularity <https://en.wikipedia.org/wiki/Louvain_modularity>`_
 
     """
-    import igraph as ig
+    import igraph as ig  # type: ignore
 
     # Make graph
     G = ig.Graph(
@@ -71,10 +90,10 @@ def louvain(tablesim, edge_exp=1) -> List[List[int]]:
     louvain_partition = G.community_multilevel(
         weights=G.es["weight"], return_levels=False
     )
-    return [tuple(part) for part in louvain_partition]
+    return [[int(p) for p in part] for part in louvain_partition]
 
 
-def matcher_add_tables(tables: Container[dict], matchers: List[Matcher]):
+def matcher_add_tables(tables: Collection[Table], matchers: List[Matcher]):
     """Add tables to matchers
 
     Args:
@@ -94,36 +113,52 @@ def matcher_add_tables(tables: Container[dict], matchers: List[Matcher]):
 
 
 def get_colsims(
-    table_indices: Container[int],
+    tables: Collection[Table],
     matchers: List[Matcher],
     agg_func: str,
     agg_threshold: float,
-    table_numcols: Dict[int, int],
+    tableid_colids: Dict[int, Set[int]],
 ):
-    """Block and match tables for column sims, then aggregate and threshold them. """
-    simdf = make_blocked_matches_df(table_indices, matchers)
+    """Block and match tables for column sims, then aggregate and threshold them.
+
+    Args:
+        tables: Tables
+        matchers: Matchers
+        agg_func: Aggregation function for :meth:`takco.cluster.aggregate_similarities`
+        agg_threshold: Threshold value
+        tableid_colids: Mapping of global table IDs to column IDs
+
+    Yields:
+        Column similarity dataframes
+    """
+
+    simdf = make_blocked_matches_df(tables, tableid_colids, matchers)
     if simdf is not None:
         simdf = aggregate_similarities(simdf, agg_func)
-        yield threshold_softjacc(simdf, agg_threshold, table_numcols)
+        yield threshold_softjacc(simdf, agg_threshold, tableid_colids)
 
 
-def make_blocked_matches_df(table_indices: Container[int], matchers: List[Matcher]):
+def make_blocked_matches_df(
+    tables: Collection[Table],
+    tableid_colids: Dict[int, Set[int]],
+    matchers: List[Matcher],
+):
     """Yield a dataframe for similarities from blocked matches
     
     Args:
-        table_indices: Set of table indices
+        tableid_colids: Mapping of table indices to column indices
         matchers: Matcher instances
     """
 
     with contextlib.ExitStack() as matcherstack:
         matchers = [matcherstack.enter_context(m) for m in matchers]
 
-        matches = yield_blocked_matches(table_indices, matchers)
-        simdf = {mi: {} for mi, _ in enumerate(matchers)}
+        matches = yield_blocked_matches(tables, tableid_colids, matchers)
+        simscore = {mi: {} for mi, _ in enumerate(matchers)}
         for mi, indexes, score in matches:
-            simdf[mi][indexes] = score
+            simscore[mi][indexes] = score
 
-        simdf = pd.DataFrame.from_dict(simdf)
+        simdf = pd.DataFrame.from_dict(simscore)
         if len(simdf):
             simdf.index.names = ["ti1", "ti2", "ci1", "ci2"]
             simdf.columns = [m.name for m in matchers]
@@ -173,23 +208,27 @@ def max_align(g: Series, return_total=False):
         Either the total alignment score, or the max alignment dict ``{left: right}``
     """
     lr, rl, t = {}, {}, 0
-    for (_, _, l, r), v in g.sort_values(ascending=False).items():
+    for (_, _, l, r), v in g.iteritems():
         if (l not in lr) and (r not in rl):
             lr[l], rl[r], t = r, l, t + v
     return t if return_total else lr
 
 
-def threshold_softjacc(aggsim, agg_threshold, table_numcols):
+def threshold_softjacc(aggsim, agg_threshold, tableid_colids):
 
     # Compute soft column alignment jaccard
-    if log.getLogger().level < log.INFO:
+    if log.getLogger().level <= log.INFO:
         import warnings, tqdm
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=FutureWarning)
             tqdm.tqdm.pandas(desc="Aggregating column scores")
 
-    aligned_total = aggsim.groupby(level=[0, 1]).aggregate(max_align, return_total=True)
+    table_numcols = pd.Series({ti: len(cis) for ti, cis in tableid_colids.items()})
+    aggsim.sort_values(ascending=False, inplace=True)
+    aligned_total = aggsim.groupby(level=[0, 1]).progress_aggregate(
+        max_align, return_total=True
+    )
     aligned_total[aligned_total < 0] = 0
     j = (
         pd.DataFrame({"total": aligned_total})
@@ -200,93 +239,54 @@ def threshold_softjacc(aggsim, agg_threshold, table_numcols):
     return tablesim[tablesim > agg_threshold]
 
 
-def make_column_index_df(tables):
-    """Yield a dataframe for the tables' column indexes"""
-
-    df = pd.DataFrame(
-        [
-            {
-                "i": t["tableIndex"],
-                "numCols": t["numCols"],
-                "columnIndexOffset": t["columnIndexOffset"],
-            }
-            for t in tables
-        ]
-    )
-
-    if len(df):
-        df = df.set_index("i")
-        log.debug(f"Indexed {len(df)} tables")
-        yield df
-
-
-def yield_blocked_matches(table_indices: Container[int], matchers: List[Matcher]):
+def yield_blocked_matches(
+    tables: Collection[Table],
+    tableid_colids: Dict[int, Set[int]],
+    matchers: List[Matcher],
+):
     """Match table columns using matchers
 
     Args:
-        table_indices: Table indices
+        tableid_colids: Mapping of table indices to column indices
         matchers: Matcher instances
 
     Yields:
         (matcher index, ``(t1, t2, c1, c2)``, score)
     """
-    table_indices = set(table_indices)
 
     timer = Timer()
+
+    partition_tableid_colids = dict(get_table_ids(tables))
 
     for matcher in matchers:
         log.debug(f"Preparing block for matcher {matcher.name}")
         with timer.track(f"prepare-{matcher.name}"):
-            matcher.prepare_block(table_indices)
+            matcher.prepare_block(partition_tableid_colids)
 
     table_block = {}
-    for ti in table_indices:
+    for ti, cis in progress(partition_tableid_colids.items(), "Blocking"):
         block = set()
         for matcher in matchers:
             with timer.track(f"block-{matcher.name}"):
-                block |= set(matcher.block(ti) or [])
+                block |= set(matcher.block(ti, cis) or [])
         table_block[ti] = block
 
-    table_index_pairs = set(
-        (ti1, ti2) for ti1, block in table_block.items() for ti2 in block if ti1 != ti2
-    )
+    tableid_colids_pairs = [
+        ((ti1, partition_tableid_colids[ti1]), (ti2, tableid_colids[ti2]))
+        for ti1, tis2 in table_block.items()
+        for ti2 in tis2
+    ]
     for mi, matcher in enumerate(matchers):
-        log.debug(f"Matching {len(table_index_pairs)} pairs with {matcher.name}...")
-        if log.getLogger().level < log.INFO:
-            try:
-                import tqdm
-
-                table_index_pairs = tqdm.tqdm(table_index_pairs)
-            except:
-                pass
-
+        pairs = progress(tableid_colids_pairs, f"Matching with {matcher.name}")
         with timer.track(f"match-{matcher.name}"):
-            for pairs, score in matcher.match(table_index_pairs):
-                yield mi, pairs, score
+            for indices, score in matcher.match(pairs):
+                yield mi, indices, score
 
     log.debug(f"times: {timer}")
 
 
-def yield_tablepairs_matches(
-    table_index_pairs: Container[Tuple[int, int]], matchers: List[Matcher]
-):
-    """Get matches for table pairs
-
-    Args:
-        table_index_pairs: Table index pairs
-        matchers: Matcher instances
-
-    Yields:
-        (matcher index, ``(t1, t2, c1, c2)``, score)
-    """
-    table_index_pairs = set(table_index_pairs)
-    for mi, matcher in enumerate(matchers):
-        for indexes, score in matcher.match(table_index_pairs):
-            yield mi, indexes, score
-
-
 def cluster_partition_columns(
-    partitions: Container[Tuple[int, List[int]]],
+    partitions: Collection[Tuple[int, List[int]]],
     clus: AgglomerativeClustering,
     agg_func: str,
     agg_threshold: float,

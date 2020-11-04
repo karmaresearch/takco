@@ -1,14 +1,17 @@
 from pathlib import Path
+from typing import Dict, List, Tuple, Set, Any
 import logging as log
 import collections
 import shutil
+import pickle
+import typing
 
-from .matcher import Matcher
+from .matcher import Matcher, default_tokenize
 
 try:
-    import faiss
-    import pandas as pd
-    import numpy as np
+    import faiss  # type: ignore
+    import pandas as pd  # type: ignore
+    import numpy as np  # type: ignore
 except:
     log.error(f"Cannot import faiss/pandas/numpy")
 
@@ -18,33 +21,32 @@ class EmbeddingMatcher(Matcher):
 
     def __init__(
         self,
-        fdir: Path,
+        fdir: Path = None,
+        wordvec_fname: Path = None,
         name=None,
         source="body",
-        wordvec_fname: Path = None,
+        tokenize=default_tokenize,
         topn=100,
-        threshold=0,
+        threshold=0.9,
         create=False,
         **kwargs,
     ):
         """Matcher based on embeddings and FAISS"""
         self.name = name or self.__class__.__name__
-        self.mdir = Path(fdir) / Path(self.name)
+        self.mdir = (Path(fdir) / Path(self.name)).resolve() if fdir else None
         self.indexed = False
 
         self.source = source
-        self.wordvec_fname = str(wordvec_fname)
         self.topn = topn
         self.threshold = threshold
-        self.wordvec_fname = Path(self.wordvec_fname)
+        self.wordvec_fname = Path(wordvec_fname) if wordvec_fname else None
+        self.tokenize = tokenize
 
-        self.ci_vi = collections.OrderedDict()
-        self.vi_ci = collections.OrderedDict((v, k) for k, v in self.ci_vi.items())
+        self.vi_tici: List[Tuple[int, int]] = []
+        self.ci_vi: Dict[int, int] = {}
 
-        self.vecs = []
-        self.ti_block = {}
-
-        super().__init__(fdir)
+        self.vecs: List[Any] = []
+        self.ti_block: Dict[int, Set[int]] = {}
 
     def add(self, table):
         # Extract tokens from columns and create embeddings
@@ -72,20 +74,21 @@ class EmbeddingMatcher(Matcher):
         ci_range = range(
             table["columnIndexOffset"], table["columnIndexOffset"] + table["numCols"]
         )
+        ti = table["tableIndex"]
         for colnum, (ci, cells) in enumerate(zip(ci_range, cols)):
             if colnum not in table.get("numericColumns", []):
                 cells = set(c for c in cells if c)
                 if len(cells) > 0:
                     cell_vec = self.get_vec(cells)
                     if cell_vec is not None:
-                        self.ci_vi[ci] = len(self.vecs)
+                        self.vi_tici.append((ti, ci))
                         self.vecs.append(cell_vec)
 
     def get_vec(self, cells):
         cell_locs = [
             [
                 self.word_i[w]
-                for w in Matcher.tokenize(cell)
+                for w in self.tokenize(cell)
                 if (len(w) > 1) and (w in self.word_i)
             ]
             for cell in cells
@@ -96,42 +99,44 @@ class EmbeddingMatcher(Matcher):
             ]
             return np.vstack(cell_vecs).mean(axis=0)
 
-    def merge(self, matcher: Matcher):
+    def merge(self, matcher: "EmbeddingMatcher"):
         if matcher is not None:
             self.vecs += matcher.vecs
-            self.ci_vi.update(matcher.ci_vi)
+            self.vi_tici += matcher.vi_tici
         return self
 
     def index(self):
-        try:
-            self.means = np.array(self.vecs).astype("float32")
-            del self.vecs
-            self.vi_ci = collections.OrderedDict(
-                (vi, ci) for ci, vi in self.ci_vi.items()
-            )
+        if self.indexed:
+            return
 
-            # Create FAISS index
-            V = np.ascontiguousarray(self.means)
-            V /= np.sqrt((V ** 2).sum(axis=1))[:, None]
+        self.means = np.array(self.vecs).astype("float32")
+        del self.vecs
+        self.ci_vi = {ci: vi for vi, (_, ci) in enumerate(self.vi_tici)}
 
-            faissindex = faiss.IndexFlatIP(V.shape[1])  # build the index
-            faissindex.add(np.array(V))  # add vectors to the index
+        # Create FAISS index
+        V = np.ascontiguousarray(self.means)
+        V /= np.sqrt((V ** 2).sum(axis=1))[:, None]
 
-            log.debug("faiss info: %s", faiss.MatrixStats(V).comments)
+        self.faissindex = faiss.IndexFlatIP(V.shape[1])  # build the index
+        # add vectors to the index
+        self.faissindex.add(np.array(V))  # type: ignore
+        log.debug("faiss info: %s", faiss.MatrixStats(V).comments)
+        self.indexed = True
+
+        if self.mdir:
             faissindex_fname = self.mdir / Path("index.faiss")
             Path(faissindex_fname).parent.mkdir(parents=True, exist_ok=True)
-            faiss.write_index(faissindex, str(faissindex_fname))
+            faiss.write_index(self.faissindex, str(faissindex_fname))
+            del self.faissindex
 
-            self.indexed = True
             self.mdir.mkdir(parents=True, exist_ok=True)
             np.save(self.mdir / Path("means.npy"), self.means)
-            np.save(self.mdir / Path("ci_vi.npy"), np.array(list(self.ci_vi.keys())))
+            with open(self.mdir / Path("vi_tici.pickle"), "wb") as fw:
+                pickle.dump(self.vi_tici, fw)
             self.__exit__()
 
-        except Exception as e:
-            log.warn(e)
-
     def __enter__(self):
+        super().__enter__()
         log.info(f"Loading word vectors {self.wordvec_fname}")
         if str(self.wordvec_fname).endswith(".pickle"):
             wordvecs = pd.read_pickle(self.wordvec_fname)
@@ -143,42 +148,46 @@ class EmbeddingMatcher(Matcher):
         self.word_i = {w: i for i, w in enumerate(wordvecs.index)}
         self.wordvecarray = np.array(wordvecs)
 
-        if self.indexed:
+        if self.indexed and self.mdir:
             self.means = np.load(self.mdir / Path("means.npy"), mmap_mode="r")
-            self.ci_vi = collections.OrderedDict(
-                (ci, vi) for vi, ci in enumerate(np.load(self.mdir / Path("ci_vi.npy")))
-            )
-            self.vi_ci = collections.OrderedDict((v, k) for k, v in self.ci_vi.items())
+            with open(self.mdir / Path("vi_tici.pickle"), "rb") as fo:
+                self.vi_tici = pickle.load(fo)
+            self.ci_vi = {ci: vi for vi, (_, ci) in enumerate(self.vi_tici)}
 
         return self
 
     def __exit__(self, *args):
+        super().__exit__(*args)
         if hasattr(self, "wordvecarray"):
             del self.wordvecarray
         if hasattr(self, "word_i"):
             del self.word_i
 
-        if self.indexed:
+        if self.indexed and self.mdir:
             del self.means
+            del self.vi_tici
             del self.ci_vi
-            del self.vi_ci
 
-    def prepare_block(self, tis):
-        faissindex_fname = self.mdir / Path("index.faiss")
-        if not faissindex_fname.exists():
-            return
-        faissindex = faiss.read_index(str(faissindex_fname))
+    def prepare_block(self, tableid_colids: Dict[int, Set[int]]):
+        if self.mdir:
+            faissindex_fname = self.mdir / Path("index.faiss")
+            if not faissindex_fname.exists():
+                return
+            faissindex = faiss.read_index(str(faissindex_fname))
+        else:
+            faissindex = self.faissindex
 
-        ci_ti = {ci: ti for ti in tis for ci in self.get_columns(ti)}
-        qi_mean, ci_qi = [], {}
+        ci_ti = {ci: ti for ti, cs in tableid_colids.items() for ci in cs}
+        qi_mean, ci_qi = [], {}  # type: ignore
         for ci in ci_ti:
             if ci in self.ci_vi:
                 ci_qi[ci] = len(qi_mean)
                 qi_mean.append(self.means[self.ci_vi[ci]])
 
         if not len(qi_mean):
-            log.debug(
-                f"No column embeddings found in {self.name} for any of tables {tis}"
+            log.error(
+                f"No column embeddings found in {self.name} for any of tables"
+                f"{list(tableid_colids)}"
             )
         else:
             xq = np.vstack(qi_mean)  # query vectors
@@ -193,12 +202,11 @@ class EmbeddingMatcher(Matcher):
                 indexes, similarities = I[qi], np.maximum(D[qi], 0)
                 ti1 = ci_ti[ci1]
                 for qi2 in set(indexes[(similarities > self.threshold)]) - set([ci1]):
-                    if qi2 in self.vi_ci:
-                        ti2 = self.get_table(self.vi_ci[qi2])
-                        if ti2 != ti1:
-                            self.ti_block.setdefault(ti1, set()).add(ti2)
+                    ti2, _ = self.vi_tici[qi2]
+                    if ti2 != ti1:
+                        self.ti_block.setdefault(ti1, set()).add(ti2)
 
-    def block(self, ti: int):
+    def block(self, ti: int, cis):
         return self.ti_block.get(ti, set())
 
     def vecsim(self, m1, m2):
@@ -206,14 +214,14 @@ class EmbeddingMatcher(Matcher):
         n = ((m1 ** 2).sum(1) ** 0.5) * ((m2 ** 2).sum(1) ** 0.5)
         return np.round(np.maximum(0, (m1 * m2).sum(1) / n), 5)
 
-    def match(self, table_index_pairs):
-        tis = set(ti for pair in table_index_pairs for ti in pair)
+    def match(self, tableid_colids_pairs):
         ti_vis = {}
-        for ti, cs in self.get_columns_multi(tis):
-            ti_vis[ti] = [(ci, self.ci_vi[ci]) for ci in cs if ci in self.ci_vi]
+        for pair in tableid_colids_pairs:
+            for ti, cis in pair:
+                ti_vis[ti] = [(ci, self.ci_vi[ci]) for ci in cis if ci in self.ci_vi]
 
         vi_pairs = []
-        for ti1, ti2 in table_index_pairs:
+        for (ti1, _), (ti2, _) in tableid_colids_pairs:
             for ci1, vi1 in ti_vis.get(ti1, []):
                 for ci2, vi2 in ti_vis.get(ti2, []):
                     vi_pairs.append(((ti1, ti2, ci1, ci2), vi1, vi2))

@@ -1,9 +1,12 @@
 from pathlib import Path
+from typing import Dict, Set, FrozenSet
 import logging as log
 import pickle
 import shutil
 
-from .matcher import Matcher
+from .matcher import Matcher, default_tokenize
+
+Cell = FrozenSet[str]
 
 
 class CellJaccMatcher(Matcher):
@@ -11,25 +14,23 @@ class CellJaccMatcher(Matcher):
 
     def __init__(
         self,
-        fdir: Path,
+        fdir: Path = None,
         name=None,
         source="head",
-        tokenize=True,
+        tokenize=default_tokenize,
         create=False,
         **kwargs,
     ):
         self.name = name or self.__class__.__name__
-        self.mdir = Path(fdir) / Path(self.name)
+        self.mdir = (Path(fdir) / Path(self.name)).resolve() if fdir else None
         self.indexed = False
 
         self.source = source
         self.tokenize = tokenize
 
-        self.cell_tables = {}
-        self.table_cells = {}
+        self.cell_tables: Dict[Cell, Set[int]] = {}
+        self.table_cells: Dict[int, Dict[Cell, Set[int]]] = {}
         self.pickles = ["cell_tables", "table_cells"]
-
-        super().__init__(fdir)
 
     def _get_cells(self, table):
         rows = []
@@ -44,11 +45,7 @@ class CellJaccMatcher(Matcher):
             )
             for ci, cell in zip(ci_range, row):
                 txt = cell.get("text", "").lower()
-                txt = (
-                    frozenset(Matcher.tokenize(txt))
-                    if self.tokenize
-                    else frozenset([txt])
-                )
+                txt = frozenset(self.tokenize(txt))
                 if txt:
                     yield ci, txt
 
@@ -60,7 +57,7 @@ class CellJaccMatcher(Matcher):
                     self.cell_tables.setdefault(cell, set()).add(ti)
                 self.table_cells.setdefault(ti, {}).setdefault(cell, set()).add(ci)
 
-    def merge(self, matcher: Matcher):
+    def merge(self, matcher: "CellJaccMatcher"):
         if matcher is not None:
             for cell, tables in matcher.cell_tables.items():
                 self.cell_tables.setdefault(cell, set()).update(tables)
@@ -75,14 +72,16 @@ class CellJaccMatcher(Matcher):
     def index(self):
         if not self.indexed:
             self.indexed = True
-            self.mdir.mkdir(parents=True, exist_ok=True)
-            for p in self.pickles:
-                with (self.mdir / Path(f"{p}.pickle")).open("wb") as fw:
-                    pickle.dump(getattr(self, p), fw)
-            self.__exit__()
+            if self.mdir:
+                self.mdir.mkdir(parents=True, exist_ok=True)
+                for p in self.pickles:
+                    with (self.mdir / Path(f"{p}.pickle")).open("wb") as fw:
+                        pickle.dump(getattr(self, p), fw)
+                self.__exit__()
 
     def __enter__(self):
-        if self.indexed:
+        super().__enter__()
+        if self.indexed and self.mdir:
             for p in self.pickles:
                 fpath = self.mdir / Path(f"{p}.pickle")
                 if fpath.exists():
@@ -90,18 +89,19 @@ class CellJaccMatcher(Matcher):
         return self
 
     def __exit__(self, *args):
-        if self.indexed:
+        super().__exit__(*args)
+        if self.indexed and self.mdir:
             for p in self.pickles:
                 delattr(self, p)
 
-    def block(self, ti: int):
+    def block(self, ti: int, cis):
         """Block tables on having some cell in common."""
         for cell in self.table_cells.get(ti, []):
             yield from self.cell_tables.get(cell, [])
 
-    def match(self, table_index_pairs):
+    def match(self, tableid_colids_pairs):
         """Match columns on token jaccard."""
-        for ti1, ti2 in table_index_pairs:
+        for (ti1, _), (ti2, _) in tableid_colids_pairs:
             cells1 = self.table_cells.get(ti1, {})
             cells2 = self.table_cells.get(ti2, {})
 

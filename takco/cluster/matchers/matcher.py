@@ -3,19 +3,24 @@ import logging as log
 import sqlite3
 import re
 import pickle
+from typing import *
+from abc import ABC, abstractmethod
 
 import toml
 
 
-class Matcher:
-    @staticmethod
-    def tokenize(text):
-        if text.startswith("_"):
-            return [text]
-        return re.split(r"\W+", text.lower())
+def default_tokenize(text):
+    if text.startswith("_"):
+        return [text]
+    return re.split(r"\W+", text.lower())
 
-    def __init__(self, fdir: Path, **kwargs):
-        self.indices_fname = Path(fdir) / Path("indices.sqlite")
+
+ScoredMatch = Tuple[Tuple[int, int, int, int], float]
+Table = dict
+
+
+class Matcher(ABC):
+    name = None
 
     def __enter__(self):
         return self
@@ -30,78 +35,68 @@ class Matcher:
     def __sizeof__(self):
         return len(pickle.dumps(self))
 
-    def get_table(self, ci):
-        with sqlite3.connect(self.indices_fname) as indices:
-            r = indices.execute(
-                """
-                select i from indices
-                where (columnIndexOffset <= :1) and (columnIndexOffset + numCols > :1)
-            """,
-                [int(ci)],
-            ).fetchone()
-            if r:
-                return r[0]
-            else:
-                log.error(f"Could not find column {ci} in {self.indices_fname}")
-                raise KeyError(ci)
+    @abstractmethod
+    def add(self, table: Table):
+        """Add table to matcher index structures
 
-    def get_columns(self, ti):
-        with sqlite3.connect(self.indices_fname) as indices:
-            r = indices.execute(
-                """
-                 select columnIndexOffset, numCols from indices
-                 where (i == ?)
-            """,
-                [int(ti)],
-            ).fetchone()
-            if r:
-                columnIndexOffset, numCols = r
-                return range(columnIndexOffset, columnIndexOffset + numCols)
-            else:
-                log.error(f"Could not find table {ti} in {self.indices_fname}")
-                raise KeyError(ti)
-
-    def get_columns_multi(self, tis):
-        tis = list(set(tis))
-        size = 99
-        with sqlite3.connect(self.indices_fname) as indices:
-            for xi in range(0, len(tis), size):
-                tis_chunk = tis[xi : (xi + size)]
-                rs = indices.execute(
-                    f"""
-                     select i, columnIndexOffset, numCols from indices
-                     where (i in ({', '.join('?' for _ in tis_chunk)}))
-                """,
-                    [int(ti) for ti in tis_chunk],
-                ).fetchall()
-                if rs:
-                    for ti, columnIndexOffset, numCols in rs:
-                        yield ti, range(columnIndexOffset, columnIndexOffset + numCols)
-                else:
-                    log.error(f"Could not find table {tis} in {self.indices_fname}")
-                    raise KeyError(tis)
-
-    def add(self, table):
+        Args:
+            table: Table to add
+        """
         pass
 
-    def merge(self, matcher):
-        """Merge this matcher with another"""
+    @abstractmethod
+    def merge(self, matcher) -> "Matcher":
+        """Merge this matcher with another
+
+        Args:
+            matcher (Matcher): Other matcher
+
+        Returns:
+            Merged matcher
+        """
         return self
 
+    @abstractmethod
     def index(self):
+        """Create efficient index structures, possibly serialize to disk"""
         pass
 
     def close(self):
         pass
 
-    def prepare_block(self, tableIds):
+    def prepare_block(self, tableid_colids: Dict[int, Set[int]]):
+        """Prepare matcher for blocking
+
+        Args:
+            tableid_colids: Mapping of global table IDs to column IDs
+        """
         pass
 
-    def block(self, tableId):
-        return set([tableId])
+    def block(self, tableid: int, colids: Collection[int]) -> Iterable[int]:
+        """Find probably similar tables quickly
 
-    def match(self, table_index_pairs):
-        for ti1, ti2 in table_index_pairs:
-            for ci1 in self.get_columns(ti1):
-                for ci2 in self.get_columns(ti2):
-                    yield (ti1, ti2, ci1, ci2), int(ci1 == ci2)
+        Args:
+            tableid: Table ID
+            colids: Column IDs
+
+        Returns:
+            Global table IDs of similar tables
+        """
+        return ()
+
+    @abstractmethod
+    def match(
+        self,
+        tableid_colids_pairs: Iterable[
+            Tuple[Tuple[int, Set[int]], Tuple[int, Set[int]]]
+        ],
+    ) -> Iterable[ScoredMatch]:
+        """Calculate column similarities
+
+        Args:
+            tableid_colids_pairs: Pairs of table IDs and their column IDs
+
+        Returns:
+            Scored matches
+        """
+        pass

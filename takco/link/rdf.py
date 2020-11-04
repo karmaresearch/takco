@@ -65,7 +65,7 @@ class GraphDB(Database, rdflib.Graph):
             return n
         else:
             ts = self.triples(triplepattern)
-            return len(ts) if hasattr(t, "__len__") else sum(1 for _ in ts)
+            return len(ts) if hasattr(ts, "__len__") else sum(1 for _ in ts)
 
     def __len__(self):
         return self.store.__len__()

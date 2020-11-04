@@ -227,248 +227,183 @@ class ElasticSearcher(Searcher):
             yield results
 
     @classmethod
-    def load_synonyms(cls, redirects_label: Path):
-        import urllib.parse as ul
-
-        for line in Path(redirects_label).open():
-            line = ul.unquote_plus(line)
-            try:
-                a, b = line.split("\t", 1)
-                a, b = a.strip(), b.strip()
-                if a and b and (a != b):
-                    yield b, a
-                    yield a, b
-            except:
-                pass
-
-    @classmethod
-    def yield_doc(
-        cls,
-        s,
-        db,
-        baseuris,
-        prefLabel,
-        altLabel=None,
-        p_type=None,
-        ent_surface_scores=None,
-        unescape=False,
-        normalize_scores=True,
-        get_synonyms=None,
-    ):
-        ent_surface_scores = ent_surface_scores or {}
-        plabel_score = {prefLabel: 1}
-        if altLabel is not None:
-            plabel_score[altLabel] = 0.5
-        id = db.lookup_str(s)[1:-1]
-        for baseuri in baseuris:
-            id = id.replace(baseuri, "")
-
-        surface_score = ent_surface_scores.get(id, {})
-        if normalize_scores and surface_score:
-            top = max(surface_score.values())
-            surface_score = {sur: score / top for sur, score in surface_score.items()}
-
-        def get_label(l):
-            label = db.lookup_str(l)
-            if unescape:
-                label = label.encode().decode("unicode-escape")
-            if label.endswith("@en"):
-                yield label[1:-4].lower()
-            elif label.strip().endswith('"'):
-                yield label[1:-1].lower()
-
-        for plabel, score in plabel_score.items():
-            for l in db.o(s, plabel):
-                for label in get_label(l):
-                    for label in get_synonyms(label) if get_synonyms else [label]:
-                        surface_score.setdefault(label, score)
-
-        if surface_score:
-            context = set()
-            for _, o in db.po(s):
-                for l in db.o(o, prefLabel):
-                    for label in get_label(l):
-                        context.add(label)
-
-            types = set()
-            if p_type is not None:
-                for t in db.o(s, p_type):
-                    t = db.lookup_str(t)[1:-1]
-                    for baseuri in baseuris:
-                        t = t.replace(baseuri, "")
-                    types.add(t)
-
-            yield {
-                "id": id,
-                "type": list(types),
-                "surface": [{"value": l, "score": c} for l, c in surface_score.items()],
-                "context": list(context),
-                "refs": db.count_o(s),
-            }
-
-    @classmethod
-    def docs(
-        cls,
-        trident_path: Path,
-        baseuris: typing.List[str] = (),
-        uri_prefLabel: str = "http://www.w3.org/2004/02/skos/core#prefLabel",
-        uri_altLabel: str = "http://www.w3.org/2004/02/skos/core#altLabel",
-        uri_type: str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-        unescape: bool = False,
-        ntask: int = None,
-        tasktotal: int = None,
-    ):
-        """Create documents from Trident DB (without extra surface forms)"""
-        import trident, tqdm, json
-
-        db = trident.Db(str(trident_path))
-        prefLabel = db.lookup_id(f"<{uri_prefLabel}>")
-        altLabel = db.lookup_id(f"<{uri_altLabel}>")
-        p_type = db.lookup_id(f"<{uri_type}>")
-        assert (prefLabel is not None) or (altLabel is not None)
-
-        for s, _ in tqdm.tqdm(db.os(prefLabel)):
-            if tasktotal and ((s % (tasktotal + 1)) != ntask):
-                continue
-            docs = cls.yield_doc(
-                s, db, baseuris, prefLabel, altLabel, p_type, unescape=unescape
-            )
-            for doc in docs:
-                print(json.dumps(doc))
-
-    @classmethod
     def create(
         cls,
-        trident_path: Path,
-        index: str,
-        surfaceFormsScores: Path = None,
-        normalize_scores: bool = True,
-        synonym_file: Path = None,
+        input: Path = None,
+        format: str = "ttl",
+        surfaces: Path = None,
+        es_index: str = None,
+        es_kwargs: typing.Dict = None,
         recreate: bool = True,
-        chunksize: int = 10 ** 4,
-        limit: int = None,
         thread_count: int = 8,
         baseuris: typing.List[str] = (),
         uri_prefLabel: str = "http://www.w3.org/2004/02/skos/core#prefLabel",
         uri_altLabel: str = "http://www.w3.org/2004/02/skos/core#altLabel",
         uri_type: str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-        unescape: bool = False,
-        es_kwargs: typing.Dict = None,
+        lang: str = "en",
+        extract_surface: bool = False,
+        uri_ignore: str = None,
+        surface_norm: str = "[^\s\w]",
     ):
-        """Create Elasticsearch index from surfaceFormsScores file
-        and optional trident db
-        """
-        from elasticsearch import Elasticsearch, helpers
-        import tqdm, time, sys
+        import re
 
-        es_kwargs = es_kwargs or {}
-        es = Elasticsearch(timeout=1000, **es_kwargs)
+        baseuris = [re.compile(b) for b in baseuris]
+        uri_ignore = re.compile(uri_ignore) if uri_ignore else None
 
-        if recreate:
-            es.indices.delete(index=index, ignore=[400, 404])
-            print("Creating index...", file=sys.stderr)
-            es.indices.create(index=index, body=SETTINGS)
-            self.store_template(index=index, es_kwargs=es_kwargs)
+        surface_norm = re.compile(surface_norm)
 
-        action = {"_index": index}
+        def normalize_surface(s):
+            if isinstance(s, dict):
+                s = "".join(s.values())
+            return surface_norm.sub(" ", s.replace("_", " ").lower()).strip()
 
-        syn, check_syn = {}, ()
-        if synonym_file:
-            print("Loading synonyms from", synonym_file, file=sys.stderr)
-            t = 0
-            if Path(synonym_file).is_file():
+        def debase(uri):
+            for baseuri in baseuris:
+                uri = baseuri.sub("", uri)
+            return uri
+
+        id_surfaceformscores = {}
+        if surfaces and surfaces.exists():
+            import tqdm, json, sys
+            import urllib.parse as ul
+
+            for line in tqdm.tqdm(open(surfaces)):
                 try:
-                    from subprocess import run
+                    id, surf = line.split("\t", 1)
+                    id = debase(ul.unquote_plus(id))
+                    id_surfaceformscores[id] = json.loads(surf)
+                except Exception as e:
+                    print(e, file=sys.stderr)
 
-                    wc = run(["wc", "-l", synonym_file], capture_output=True)
-                    t = int(wc.stdout.split()[0])
-                except:
-                    pass
-            syn = dict(tqdm.tqdm(cls.load_synonyms(synonym_file), total=t))
+        def parse_n3(node, base=False):
+            import urllib.parse as ul
 
-            try:
-                from pybloomfilter import BloomFilter
+            if node:
+                if node[0] == "<" and node[-1] == ">":
+                    uri = ul.unquote_plus(node[1:-1])
+                    return {"id": uri if base else debase(uri)}
+                elif '"^^' in node:
+                    val, dtype = node.rsplit("^^", 1)
+                    if dtype.endswith(">"):
+                        dtype = ul.unquote_plus(dtype[1:-1])
+                    return {(dtype if base else debase(dtype)): val[1:-1]}
+                elif '"@' in node:
+                    val, l = node.rsplit("@", 1)
+                    if l == lang:
+                        return {"str": val[1:-1]}
+                elif node[0] == '"' and node[-1] == '"':
+                    return {"str": node[1:-1]}
 
-                print(f"Making Bloom filter", file=sys.stderr)
-                check_syn = BloomFilter(len(syn), 0.1, "/tmp/filter.bloom")
-                check_syn.update(syn)
-            except:
-                check_syn = syn
+        def parse_ttl(fname):
+            for line in open(fname):
+                try:
+                    s_n3, claims = line.split(None, 1)
+                    id = parse_n3(s_n3)["id"]
+                    statements = []
+                    surface_score = {}
+                    for claim in claims.rstrip().rstrip(".").rstrip().split(" ; "):
+                        p, o = claim.split(None, 1)
+                        p, o = parse_n3(p)["id"], parse_n3(o)
+                        if p == uri_prefLabel and ("str" in o):
+                            surface_score[normalize_surface(o["str"])] = 1
+                        elif p == uri_altLabel and ("str" in o):
+                            surface_score[normalize_surface(o["str"])] = 0.5
+                        else:
+                            statements.append({"prop": p, **o})
+                    yield id, surface_score, statements
+                except Exception as e:
+                    pass  # raise e
 
-        print(f"Using {len(syn)} synonyms", file=sys.stderr)
+        def parse_json(fname):
+            for line in open(fname):
+                try:
+                    if line[0] == "[":
+                        continue
+                    doc = json.loads(line if line[-2] != "," else line[:-2])
+                    label = doc.get("labels", {}).get(lang, {}).get("value")
+                    surface_score = {}
+                    if label:
+                        surface_score[normalize_surface(label)] = 1
+                    for alias in doc.get("aliases", {}).get(lang, []):
+                        if alias.get("value"):
+                            surface_score[normalize_surface(alias["value"])] = 0.5
+                    yield doc.get("id"), surface_score, ElasticDB._wd_statements(doc)
+                except Exception as e:
+                    raise e
 
-        def get_synonyms(s, path=()):
-            if s and (s not in path):
-                yield s
-                if s in check_syn:
-                    yield from get_synonyms(syn.get(s), path + (s,))
+        def stream():
+            lines = parse_ttl(input) if format == "ttl" else parse_json(input)
+            for id, surface_score, statements in lines:
+                if uri_ignore and uri_ignore.match(id):
+                    continue
 
-        def stream(chunksize=10 ** 4, limit=None):
-            import trident
+                if extract_surface:
+                    surface_score[normalize_surface(id)] = 1
 
-            db = trident.Db(str(trident_path))
-            prefLabel = db.lookup_id(f"<{uri_prefLabel}>")
-            altLabel = db.lookup_id(f"<{uri_altLabel}>")
-            p_type = db.lookup_id(f"<{uri_type}>")
-            assert (prefLabel is not None) or (altLabel is not None)
+                types = set()
+                context_statements = []
+                for st in statements:
+                    if uri_ignore and uri_ignore.match(st.get("id", "")):
+                        continue
 
-            ent_surface_scores = {}
-            if surfaceFormsScores:
-                print("Loading surface forms from", surfaceFormsScores, file=sys.stderr)
-                with tqdm.tqdm(total=limit) as bar:
-                    with Path(surfaceFormsScores).open() as fo:
-                        for i, line in enumerate(fo):
-                            try:
-                                ent, surface, score = line.split("\t")
-                                score = float(score)
-                                surface = surface.encode().decode("unicode-escape")
-                                for val in get_synonyms(surface):
-                                    ss = ent_surface_scores.setdefault(ent, {})
-                                    ss[val] = max(ss.get(val, 0), score)
-                            except Exception as e:
-                                pass
+                    if st.get("prop") == uri_type and ("id" in st):
+                        types.add(st["id"])
+                    else:
+                        if "id" in st:
+                            st["str"] = set()
+                            if extract_surface:
+                                st["str"].add(normalize_surface(st["id"]))
+                            for l in id_surfaceformscores.get(st.get("id"), []):
+                                st["str"].add(l)
+                            st["str"] = list(st["str"])
+                            if not st["str"]:
+                                del st["str"]
+                        context_statements.append(st)
 
-                            if not i % chunksize:
-                                bar.update(chunksize)
+                surface_score.update(id_surfaceformscores.get(id, {}))
 
-            for s in tqdm.tqdm(db.all_s()):
-                if db.count_s(s):
+                yield {
+                    "id": id,
+                    "type": list(types),
+                    "surface": [
+                        {"value": l, "score": c} for l, c in surface_score.items()
+                    ],
+                    "statements": list(context_statements),
+                    # "refs": db.count_o(s),
+                }
 
-                    docs = cls.yield_doc(
-                        s,
-                        db,
-                        baseuris,
-                        prefLabel,
-                        altLabel,
-                        p_type,
-                        ent_surface_scores,
-                        unescape,
-                        normalize_scores=normalize_scores,
-                        get_synonyms=get_synonyms,
-                    )
-                    for doc in docs:
-                        yield {**action, **doc}
+        if es_index:
+            from elasticsearch import Elasticsearch, helpers
+            import time, sys
 
-        if (limit is None) and Path(surfaceFormsScores).is_file():
-            try:
-                from subprocess import run
+            es_kwargs = es_kwargs or {}
+            es = Elasticsearch(timeout=1000, **es_kwargs)
 
-                wc = run(["wc", "-l", surfaceFormsScores], capture_output=True)
-                limit = int(wc.stdout.split()[0])
-            except:
-                pass
+            if recreate:
+                es.indices.delete(index=es_index, ignore=[400, 404])
+                print("Creating index...", file=sys.stderr)
+                es.indices.create(index=es_index, body=SETTINGS)
+                cls.store_template(index=es_index, es_kwargs=es_kwargs)
 
-        results = helpers.parallel_bulk(
-            es, stream(limit=limit), thread_count=thread_count
-        )
-        for i, (status, r) in enumerate(results):
-            if not status:
-                print("ERROR", r, file=sys.stderr)
+            results = helpers.parallel_bulk(
+                es,
+                ({"_index": es_index, **d} for d in stream()),
+                thread_count=thread_count,
+            )
+            for i, (status, r) in enumerate(results):
+                if not status:
+                    print("ERROR", r, file=sys.stderr)
 
-        time.sleep(1)
-        print(
-            f"Indexed {es.count(index=index).get('count')} documents", file=sys.stderr
-        )
+            time.sleep(1)
+            print(
+                f"Indexed {es.count(index=es_index).get('count')} documents",
+                file=sys.stderr,
+            )
+        else:
+            import json
+
+            for doc in stream():
+                print(json.dumps(doc))
 
     @classmethod
     def test(
@@ -507,7 +442,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
 
     def __init__(self, cellType: Typer = SimpleTyper, cache=False, *args, **kwargs):
         self.cellType = cellType
-        self.cache = {} if cache else None
+        self.cache = {} if cache else ()
         ElasticSearcher.__init__(self, *args, **kwargs)
         GraphDB.__init__(self)
 
@@ -582,9 +517,8 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
 
     def triples(self, triplepattern, **kwargs):
         triplepattern = tuple(triplepattern)
-        if self.cache is not None:
-            if triplepattern in self.cache:
-                return self.cache[triplepattern]
+        if triplepattern in self.cache:
+            return self.cache[triplepattern]
         s, p, o = triplepattern
         body = self._triple_body(triplepattern)
         try:
@@ -601,7 +535,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
                 if s_ok and p_ok and o_ok:
                     triple = s_, p_, o_
                     yield triple
-                    if self.cache is not None:
+                    if self.cache is not ():
                         self.cache.setdefault(triplepattern, set()).add(triple)
 
     def count(self, triplepattern):
@@ -686,7 +620,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
 
     @staticmethod
     def _wd_att(snak):
-        att = {"prop": snak.get("property")}
+        att = {}
         val = snak.get("datavalue", {}).get("value", {})
         if isinstance(val, dict):
             if "id" in val:
@@ -697,7 +631,23 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
                 att["decimal"] = val.get("amount")
         else:
             att["str"] = val
-        return att
+        if att:
+            att["prop"] = snak.get("property")
+            return att
+
+    @classmethod
+    def _wd_statements(cls, doc):
+        for claims in doc.get("claims", {}).values():
+            for claim in claims:
+                st = cls._wd_att(claim.get("mainsnak", {}))
+                if st:
+                    qualifiers = []
+                    for qs in claim.get("qualifiers", {}).values():
+                        for q in qs:
+                            qualifiers.append(cls._wd_att(q))
+                    if qualifiers:
+                        st["qualifiers"] = qualifiers
+                    yield st
 
     @classmethod
     def db_docs(cls, file: Path):
@@ -714,17 +664,8 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
 
                 indoc = json.loads(line)
                 doc = {"id": indoc.get("id")}
-                statements = []
-                for claims in indoc.get("claims", {}).values():
-                    for claim in claims:
-                        st = cls._wd_att(claim.get("mainsnak", {}))
-                        qualifiers = []
-                        for qs in claim.get("qualifiers", {}).values():
-                            for q in qs:
-                                qualifiers.append(cls._wd_att(q))
-                        if qualifiers:
-                            st["qualifiers"] = qualifiers
-                        statements.append(st)
+                statements = [cls._wd_statements(indoc)]
+
                 if statements:
                     doc["statements"] = statements
                 print(json.dumps(doc))
@@ -741,7 +682,6 @@ if __name__ == "__main__":
         [
             ElasticSearcher.create,
             ElasticSearcher.test,
-            ElasticSearcher.docs,
             ElasticSearcher.store_template,
             ElasticDB.db_docs,
         ],

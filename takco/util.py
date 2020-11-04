@@ -42,16 +42,6 @@ class Config(dict, typing.Generic[T]):
         elif isinstance(val, str) and val in context:
             self["name"] = val
             self.update(context[val])
-        elif isinstance(val, str) and val.endswith(".toml"):
-            try:
-                val = {
-                    "name": Path(val).name.split(".")[0],
-                    **toml.load(Path(val).open()),
-                }
-                self.__init__(val, context=context.values())
-            except Exception as e:
-                log.error(e)
-                raise e
         else:
             config_parsers = {
                 "json-file": lambda val: {
@@ -135,7 +125,11 @@ class HashBag:
         self.it = list(self.wrap(self.it))
 
     def __iter__(self):
-        return iter(self.it)
+        for x in self.it:
+            try:
+                yield x
+            except GeneratorExit:
+                return
 
     def pipe(self, func, *args, **kwargs):
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
@@ -200,35 +194,38 @@ class HashBag:
             if type(files) != list:
                 files = [files]
             for f in files:
-                if isinstance(f, TextIOBase):
-                    for li, l in enumerate(f):
-                        try:
-                            yield json.loads(l)
-                        except:
-                            log.debug(f"Failed to read json in line {li} of {f}")
-                elif f == "-":
-                    log.debug(f"Loading json from standard input")
-                    import sys
+                try:
+                    if isinstance(f, TextIOBase):
+                        for li, l in enumerate(f):
+                            try:
+                                yield json.loads(l)
+                            except:
+                                log.debug(f"Failed to read json in line {li} of {f}")
+                    elif f == "-":
+                        log.debug(f"Loading json from standard input")
+                        import sys
 
-                    yield from cls.load(sys.stdin)
-                elif Path(f).exists() and not Path(f).is_dir():
-                    log.debug(f"Opening {f}")
-                    with Path(f).open() as o:
-                        yield from cls.load(o)
-                elif "*" in str(f):
-                    import glob
+                        yield from cls.load(sys.stdin)
+                    elif Path(f).exists() and not Path(f).is_dir():
+                        log.debug(f"Opening {f}")
+                        with Path(f).open() as o:
+                            yield from cls.load(o)
+                    elif "*" in str(f):
+                        import glob
 
-                    yield from cls.load(glob.glob(str(f)))
-                elif Path(f).exists() and Path(f).is_dir():
-                    yield from cls.load(Path(f).glob("*.jsonl"))
-                else:
-                    raise Exception(f"Could not load {f}!")
+                        yield from cls.load(glob.glob(str(f)))
+                    elif Path(f).exists() and Path(f).is_dir():
+                        yield from cls.load(Path(f).glob("*.jsonl"))
+                    else:
+                        raise Exception(f"Could not load {f}!")
+                except GeneratorExit:
+                    return
 
         return cls(it(files))
 
 
 try:
-    import tqdm, inspect
+    import tqdm, inspect  # type: ignore
 
     class TqdmHashBag(HashBag):
         """A HashBag that displays `tqdm <https://tqdm.github.io/>`_ progress bars."""
@@ -259,17 +256,17 @@ try:
     class DaskHashBag(HashBag):
         """A HashBag that uses the `Dask <http://dask.org>`_ library."""
 
-        @staticmethod
-        def start_client(**kwargs):
+        def start_client(self, **kwargs):
             global client
             from dask.distributed import Client
 
             try:
-                client = Client(**kwargs)
+                self.client = Client(**kwargs)
             except Exception as e:
                 log.warn(e)
 
         def __init__(self, it, npartitions=None, **kwargs):
+            self.client = None
             if kwargs:
                 self.start_client(**kwargs)
 
@@ -303,6 +300,11 @@ try:
             return iter(self.bag.compute())
 
         def pipe(self, func, *args, **kwargs):
+
+            if self.client:
+                args = tuple([self.client.scatter(a) for a in args])
+                kwargs = {k: self.client.scatter(a) for k, a in kwargs.items()}
+
             @functools.wraps(func)
             def listify(x, *args, **kwargs):
                 return list(func(x, *args, **kwargs))
@@ -347,7 +349,7 @@ def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
     """Show table previews in Jupyter"""
     import json
     from jinja2 import Environment, PackageLoader
-    from IPython.display import HTML
+    from IPython.display import HTML  # type: ignore
 
     if isinstance(tables, dict):
         tables = [tables]
@@ -424,7 +426,7 @@ def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
 
 
 def tableobj_to_dataframe(table):
-    import pandas as pd
+    import pandas as pd  # type: ignore
 
     body = [[c.get("text", "") for c in r] for r in table.get("tableData", [])]
     head = [[c.get("text", "") for c in r] for r in table.get("tableHeaders", [])]
@@ -458,7 +460,7 @@ def tableobj_to_html(table, nrows=None, uniq=None, number=False):
         for r in tableData
     ]
     body = [[c.replace("span=", "=") for c in row] for row in body]
-    body = "".join(f'<tr>{"".join(row)}</tr>' for row in body)
+    body_html = "".join(f'<tr>{"".join(row)}</tr>' for row in body)
 
     head = [
         [c.get("tdHtmlString", f"<th>{c.get('text')}</th>") for c in r]
@@ -467,5 +469,5 @@ def tableobj_to_html(table, nrows=None, uniq=None, number=False):
     head = [[c.replace("span=", "=") for c in row] for row in head]
     if number and head:
         head = [[f"<th>{i}</th>" for i in range(len(head[0]))]] + head
-    head = "".join(f'<tr>{"".join(row)}</tr>' for row in head)
-    return "<table>" + head + body + "</table>"
+    head_html = "".join(f'<tr>{"".join(row)}</tr>' for row in head)
+    return "<table>" + head_html + body_html + "</table>"

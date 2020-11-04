@@ -1,4 +1,5 @@
 from pathlib import Path
+import typing
 import logging as log
 import shutil
 import pickle
@@ -8,22 +9,16 @@ from .matcher import Matcher
 
 class TypeCosMatcher(Matcher):
     def __init__(
-        self, fdir: Path, name=None, create=False, **kwargs,
+        self, fdir: Path = None, name=None, create=False, **kwargs,
     ):
         self.name = name or self.__class__.__name__
-        mdir = Path(fdir) / Path(self.name)
-        # if create:
-        #     shutil.rmtree(mdir, ignore_errors=True)
-        # mdir.mkdir(parents=True, exist_ok=True)
+        self.mdir = (Path(fdir) / Path(self.name)).resolve() if fdir else None
 
-        self.coltypes_fname = Path(mdir) / Path("coltypes.pickle")
-        if self.coltypes_fname.exists():
-            pass
-            # self.coltypes = pickle.load(self.coltypes_fname.open("rb"))
-        else:
-            self.coltypes = {}
+        if self.mdir:
+            self.coltypes_fname = Path(self.mdir) / Path("coltypes.pickle")
+        self.coltypes: typing.Dict[int, typing.Any] = {}
 
-        super().__init__(fdir)
+        self.indexed = False
 
     def add(self, table):
         if table:
@@ -38,21 +33,34 @@ class TypeCosMatcher(Matcher):
                     norm = sum(v ** 2 for v in classes.values()) ** 0.5
                     self.coltypes.setdefault(ti, {})[ci] = (classes, norm)
 
-    def merge(self, matcher: Matcher):
+    def merge(self, matcher: "TypeCosMatcher"):
         if matcher is not None:
             log.debug(f"merging {self} with {matcher}")
             for ti, ci_classes in matcher.coltypes.items():
                 self.coltypes.setdefault(ti, {}).update(ci_classes)
         return self
 
+    def __enter__(self):
+        super().__enter__()
+        if self.indexed and self.mdir:
+            self.coltypes = pickle.load(self.coltypes_fname.open("rb"))
+
+    def __exit__(self, *args):
+        super().__exit__(*args)
+        if self.indexed and self.mdir:
+            del self.coltypes
+
     def index(self):
         log.debug(f"TypeCos index is len {len(self.coltypes)}")
-        # with self.coltypes_fname.open("wb") as fw:
-        #     pickle.dump(self.coltypes, fw)
+        if self.mdir:
+            with self.coltypes_fname.open("wb") as fw:
+                pickle.dump(self.coltypes, fw)
+            del self.coltypes
+            self.indexed = True
 
-    def match(self, table_index_pairs):
+    def match(self, tableid_colids_pairs):
         """Match columns on token jaccard."""
-        for ti1, ti2 in table_index_pairs:
+        for (ti1, _), (ti2, _) in tableid_colids_pairs:
             ci_classes1 = self.coltypes.get(ti1, {})
             ci_classes2 = self.coltypes.get(ti2, {})
 
