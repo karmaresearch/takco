@@ -279,15 +279,12 @@ try:
 
         @classmethod
         def load(cls, f, **kwargs):
-            if kwargs:
-                cls.start_client(**kwargs)
-
             from io import TextIOBase
 
             if isinstance(f, TextIOBase):
-                cls(json.loads(line) for line in f)
+                return cls((json.loads(line) for line in f), **kwargs)
             else:
-                return cls(db.read_text(f).map(json.loads))
+                return cls(db.read_text(f).map(json.loads), **kwargs)
 
         @classmethod
         def concat(cls, hashbags):
@@ -302,8 +299,18 @@ try:
         def pipe(self, func, *args, **kwargs):
 
             if self.client:
-                args = tuple([self.client.scatter(a) for a in args])
-                kwargs = {k: self.client.scatter(a) for k, a in kwargs.items()}
+                for k, a in enumerate(args):
+                    log.debug(f"Scattering arg {k}")
+                    try:
+                        args[k] = self.client.scatter(a)
+                    except:
+                        log.debug(f"Scattering arg {k} failed")
+                for k, a in kwargs.items():
+                    log.debug(f"Scattering {k}")
+                    try:
+                        kwargs[k] = self.client.scatter(a)
+                    except:
+                        log.debug(f"Scattering {k} failed")
 
             @functools.wraps(func)
             def listify(x, *args, **kwargs):

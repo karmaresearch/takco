@@ -219,8 +219,12 @@ class TableSet:
         addcontext: typing.List[str] = (),
         headerunions: bool = True,
         matcher_configs: typing.List[Config] = (),
+        filters: typing.List[str] = (),
         agg_func: str = "mean",
         agg_threshold: float = 0,
+        align_columns: str = "greedy",
+        align_width_norm: str = "jacc",
+        align_use_total_width: bool = True,
         edge_exp: float = 1,
         agg_threshold_col: float = None,
         store_align_meta: typing.List[str] = ["tableHeaders"],
@@ -236,10 +240,14 @@ class TableSet:
             workdir: Working Directory
 
             addcontext: Add these context types
-            headerunions: make header unions
-            matcher_configs: Use only these matchers
-            agg_func: Matcher aggregation function
-            agg_threshold: Matcher aggregation threshold
+            headerunions: Make header unions
+            matcher_configs: Matcher configs
+            filters: Names of matchers to only use as filter
+            agg_func: Aggregation function for :meth:`takco.cluster.aggregate_match_sims`
+            agg_threshold: Threshold value
+            align_columns ({'max1', 'max2', 'greedy'}): Alignment method.
+            align_width_norm ({'wide', 'narrow', 'jacc'}): Table width difference normalisation method.
+            align_use_total_width: Whether to use total table width. Defaults to True. 
             edge_exp : Exponent of edge weight for Louvain modularity
             agg_threshold_col: Matcher aggregation threshold (default: agg_threshold)
             mergeheaders_topn: Number of top headers to keep when merging
@@ -284,22 +292,30 @@ class TableSet:
                 log.info(f"Indexing {m.name}")
                 m.index()
 
+            filter_names = filters
+            filters = [m for m in matchers if m.name in filter_names]
+            matchers = [m for m in matchers if m.name not in filter_names]
+
             # Get blocked column match scores
             tableid_colids = dict(tables.pipe(cluster.get_table_ids))
             log.info(f"Blocking tables; computing and aggregating column sims...")
             tablesim = pd.concat(
                 tables.pipe(
-                    cluster.get_colsims,
+                    cluster.get_tablesims,
+                    tableid_colids=tableid_colids,
                     matchers=matchers,
+                    filters=filters,
                     agg_func=agg_func,
                     agg_threshold=agg_threshold,
-                    tableid_colids=tableid_colids,
+                    align_columns = align_columns,
+                    align_width_norm = align_width_norm,
+                    align_use_total_width = align_use_total_width,
                 )
             )
             log.info(f"Got {len(tablesim)} table similarities")
             # tablesim.to_csv(Path(workdir) / Path("tablesim.csv"))
 
-            for ti in table_numcols.index:
+            for ti in tableid_colids:
                 tablesim.loc[(ti, ti)] = 1  # assure all tables are clustered
             louvain_partition = cluster.louvain(tablesim, edge_exp=edge_exp)
 
@@ -317,20 +333,23 @@ class TableSet:
             log.info(f"Found {len(nonsingle)}/{len(louvain_partition)} >1 partitions")
             chunks = tables.__class__(enumerate(nonsingle)).pipe(
                 cluster.cluster_partition_columns,
-                clus,
-                agg_func,
-                agg_threshold_col,
-                matchers,
+                clus = clus,
+                tableid_colids = tableid_colids,
+                matchers = matchers,
+                agg_func = agg_func,
+                agg_threshold_col = agg_threshold_col,
             )
             ti_pi, pi_ncols, ci_pci = {}, {}, {}
-            colsimdir = Path(workdir) / Path("colsims")
-            colsimdir.mkdir(exist_ok=True, parents=True)
+            if workdir:
+                colsimdir = Path(workdir) / Path("colsims")
+                colsimdir.mkdir(exist_ok=True, parents=True)
             for chunk_ti_pi, chunk_pi_ncols, chunk_ci_pci, chunk_ti_colsim in chunks:
                 ti_pi.update(chunk_ti_pi)
                 pi_ncols.update(chunk_pi_ncols)
                 ci_pci.update(chunk_ci_pci)
-                for ti, colsim in chunk_ti_colsim.items():
-                    colsim.to_csv(colsimdir / Path(f"{ti}.csv"), header=True)
+                if workdir:
+                    for ti, colsim in chunk_ti_colsim.items():
+                        colsim.to_csv(colsimdir / Path(f"{ti}.csv"), header=True)
 
             def set_alignment(tables, ti_pi, pi_ncols, ci_pci):
                 for table in tables:

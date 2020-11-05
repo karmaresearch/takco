@@ -5,6 +5,7 @@ import shutil
 import pickle
 
 from .matcher import Matcher
+from .. import cluster
 
 
 class TypeCosMatcher(Matcher):
@@ -60,7 +61,8 @@ class TypeCosMatcher(Matcher):
 
     def match(self, tableid_colids_pairs):
         """Match columns on token jaccard."""
-        for (ti1, _), (ti2, _) in tableid_colids_pairs:
+        pairs = cluster.progress(tableid_colids_pairs, f"Looking up {self.name}")
+        for (ti1, _), (ti2, _) in pairs:
             ci_classes1 = self.coltypes.get(ti1, {})
             ci_classes2 = self.coltypes.get(ti2, {})
 

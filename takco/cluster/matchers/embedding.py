@@ -7,6 +7,7 @@ import pickle
 import typing
 
 from .matcher import Matcher, default_tokenize
+from .. import cluster
 
 try:
     import faiss  # type: ignore
@@ -149,6 +150,7 @@ class EmbeddingMatcher(Matcher):
         self.wordvecarray = np.array(wordvecs)
 
         if self.indexed and self.mdir:
+            log.debug(f"Loading {self} from disk...")
             self.means = np.load(self.mdir / Path("means.npy"), mmap_mode="r")
             with open(self.mdir / Path("vi_tici.pickle"), "rb") as fo:
                 self.vi_tici = pickle.load(fo)
@@ -215,19 +217,22 @@ class EmbeddingMatcher(Matcher):
         return np.round(np.maximum(0, (m1 * m2).sum(1) / n), 5)
 
     def match(self, tableid_colids_pairs):
-        ti_vis = {}
-        for pair in tableid_colids_pairs:
-            for ti, cis in pair:
-                ti_vis[ti] = [(ci, self.ci_vi[ci]) for ci in cis if ci in self.ci_vi]
+        pairs = cluster.progress(tableid_colids_pairs, f"Looking up {self.name}")
+        inds, vis1, vis2 = [], [], []
+        for (ti1, cis1), (ti2, cis2) in pairs:
+            for ci1 in cis1:
+                if ci1 in self.ci_vi:
+                    vi1 = self.ci_vi[ci1]
+                    for ci2 in cis2:
+                        if ci2 in self.ci_vi:
+                            vi2 = self.ci_vi[ci2]
+                            inds.append((ti1, ti2, ci1, ci2))
+                            vis1.append(vi1)
+                            vis2.append(vi2)
 
-        vi_pairs = []
-        for (ti1, _), (ti2, _) in tableid_colids_pairs:
-            for ci1, vi1 in ti_vis.get(ti1, []):
-                for ci2, vi2 in ti_vis.get(ti2, []):
-                    vi_pairs.append(((ti1, ti2, ci1, ci2), vi1, vi2))
-
-        if vi_pairs:
-            inds, vis1, vis2 = zip(*vi_pairs)
+        if inds:
+            log.debug(f"Calculating {len(inds)} {self.name} scores")
             scores = self.vecsim(self.means[vis1, :], self.means[vis2, :])
+            inds = cluster.progress(inds, f"Yielding {self.name}")
             for ind, score in zip(inds, scores):
                 yield ind, score

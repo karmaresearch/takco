@@ -3,7 +3,14 @@ import logging as log
 import sqlite3
 import re
 import pickle
-from typing import *
+from typing import (
+    Optional,
+    Dict,
+    Set,
+    Collection,
+    Iterable,
+    Tuple,
+)
 from abc import ABC, abstractmethod
 
 import toml
@@ -12,7 +19,7 @@ import toml
 def default_tokenize(text):
     if text.startswith("_"):
         return [text]
-    return re.split(r"\W+", text.lower())
+    return re.split(r"\W+", text.lower()) # pylint: disable=no-member
 
 
 ScoredMatch = Tuple[Tuple[int, int, int, int], float]
@@ -20,7 +27,7 @@ Table = dict
 
 
 class Matcher(ABC):
-    name = None
+    name: Optional[str] = None
 
     def __enter__(self):
         return self

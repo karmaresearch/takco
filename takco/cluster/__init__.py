@@ -1,7 +1,7 @@
 from pathlib import Path
 import logging as log
 
-from .headerunions import combine_by_first_header
+from .headerunions import combine_by_first_header, get_headerId
 from .context import tables_add_context_rows
 from .cluster import *
 
@@ -18,6 +18,6 @@ def table_get_headerId(table):
         headerText = tuple(
             tuple([cell.get("text", "").lower() for cell in r]) for r in tableHeaders
         )
-        return util.get_headerId(headerText)
+        return get_headerId(headerText)
     else:
         return table["headerId"]

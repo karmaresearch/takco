@@ -5,9 +5,10 @@ import pickle
 import shutil
 
 from .matcher import Matcher, default_tokenize
+from .. import cluster
+
 
 Cell = FrozenSet[str]
-
 
 class CellJaccMatcher(Matcher):
     """Jaccard similarity of table cells from header and/or body"""
@@ -34,18 +35,25 @@ class CellJaccMatcher(Matcher):
 
     def _get_cells(self, table):
         rows = []
-        if self.source != "head":
-            rows += table.get("tableData", [])
-        if self.source != "body":
-            rows += table.get("tableHeaders", [])
-        for row in rows:
+        if self.source in table:
+            r = table[self.source]
+            rows = zip(*[r if isinstance(r, list) else [r]])
+            ci_range = [table['tableIndex']]
+        else:
+            if self.source != "head":
+                rows += table.get("tableData", [])
+            if self.source != "body":
+                rows += table.get("tableHeaders", [])
+            
+            rows = [[c.get('text', '') for c in r] for r in rows]
             ci_range = range(
                 table["columnIndexOffset"],
                 table["columnIndexOffset"] + table["numCols"],
             )
+        
+        for row in rows:
             for ci, cell in zip(ci_range, row):
-                txt = cell.get("text", "").lower()
-                txt = frozenset(self.tokenize(txt))
+                txt = frozenset(self.tokenize(cell))
                 if txt:
                     yield ci, txt
 
@@ -101,7 +109,8 @@ class CellJaccMatcher(Matcher):
 
     def match(self, tableid_colids_pairs):
         """Match columns on token jaccard."""
-        for (ti1, _), (ti2, _) in tableid_colids_pairs:
+        pairs = cluster.progress(tableid_colids_pairs, f"Looking up {self.name}")
+        for (ti1, _), (ti2, _) in pairs:
             cells1 = self.table_cells.get(ti1, {})
             cells2 = self.table_cells.get(ti2, {})
 

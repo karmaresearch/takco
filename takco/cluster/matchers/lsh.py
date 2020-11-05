@@ -10,6 +10,7 @@ import typing
 import toml
 
 from .matcher import Matcher
+from .. import cluster
 
 try:
     import datasketch  # type: ignore
@@ -30,7 +31,7 @@ class LSHMatcher(Matcher):
         basename=None,
         port=6379,
         host="localhost",
-        num_perm=256,
+        num_perm=128,
         threshold=0.5,
         create=False,
         **kwargs,
@@ -157,13 +158,8 @@ class LSHMatcher(Matcher):
         del self.digests_list
 
         with self.lshindex.insertion_session() as session:
-            try:
-                import tqdm  # type: ignore
-
-                dis = tqdm.tqdm(self.ci_tidi.items(), desc="Inserting MinHash LSH")
-            except:
-                dis = self.ci_tidi.items()
-            for ci, (ti, di) in dis:
+            ci_tidis = cluster.progress(self.ci_tidi.items(), f"Indexing {self.name}")
+            for ci, (ti, di) in ci_tidis:
                 mh = self.digests[di]
                 name = f"{ti}-{ci}"
                 m = datasketch.MinHash(
@@ -187,6 +183,7 @@ class LSHMatcher(Matcher):
     def __enter__(self):
         super().__enter__()
         if self.indexed and self.mdir:
+            log.debug(f"Loading {self} from disk...")
             self.digests = np.load(self.mdir / Path("digests.npy"), mmap_mode="r")
             with open(self.mdir / Path("ci_tidi.pickle"), "rb") as fr:
                 self.ci_tidi = pickle.load(fr)
@@ -201,6 +198,11 @@ class LSHMatcher(Matcher):
             del self.ci_tidi
             del self.lshindex
 
+    def close(self):
+        if self.redis_dir:
+            r = self.cli("shutdown")
+            log.info(f"Shutdown redis with code {r.returncode}")
+
     def block(self, ti: int, cis: typing.Collection[int]):
         for ci in cis:
             if ci in self.ci_tidi:
@@ -214,24 +216,22 @@ class LSHMatcher(Matcher):
                     yield ti
 
     def match(self, tableid_colids_pairs):
-
-        di_pairs = []
-        for (ti1, cis1), (ti2, cis2) in tableid_colids_pairs:
+        pairs = cluster.progress(tableid_colids_pairs, f"Looking up {self.name}")
+        inds, dis1, dis2 = [], [], []
+        for (ti1, cis1), (ti2, cis2) in pairs:
             for ci1 in cis1:
                 if ci1 in self.ci_tidi:
                     _, di1 = self.ci_tidi[ci1]
                     for ci2 in cis2:
                         if ci2 in self.ci_tidi:
                             _, di2 = self.ci_tidi[ci2]
-                            di_pairs.append(((ti1, ti2, ci1, ci2), di1, di2))
+                            inds.append((ti1, ti2, ci1, ci2))
+                            dis1.append(di1)
+                            dis2.append(di2)
 
-        if di_pairs:
-            inds, dis1, dis2 = zip(*di_pairs)
+        if inds:
+            log.debug(f"Calculating {len(inds)} {self.name} scores")
             scores = (self.digests[dis1, :] == self.digests[dis2, :]).mean(1)
+            inds = cluster.progress(inds, f"Yielding {self.name}")
             for ind, score in zip(inds, scores):
                 yield ind, score
-
-    def close(self):
-        if self.redis_dir:
-            r = self.cli("shutdown")
-            log.info(f"Shutdown redis with code {r.returncode}")
