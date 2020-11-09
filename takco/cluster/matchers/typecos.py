@@ -10,14 +10,21 @@ from .. import cluster
 
 class TypeCosMatcher(Matcher):
     def __init__(
-        self, fdir: Path = None, name=None, create=False, **kwargs,
+        self,
+        fdir: Path = None,
+        name=None,
+        create=False,
+        exclude_types = ['https://www.w3.org/2001/XMLSchema#string'],
+        **kwargs,
     ):
         self.name = name or self.__class__.__name__
-        self.mdir = (Path(fdir) / Path(self.name)).resolve() if fdir else None
+        self.mdir = (Path(fdir) / Path(self.name)) if fdir else None
 
         if self.mdir:
+
             self.coltypes_fname = Path(self.mdir) / Path("coltypes.pickle")
         self.coltypes: typing.Dict[int, typing.Any] = {}
+        self.exclude_types = exclude_types
 
         self.indexed = False
 
@@ -31,6 +38,7 @@ class TypeCosMatcher(Matcher):
             for ci, c in zip(ci_range, range(table["numCols"])):
                 classes = table.get("classes", {}).get(str(c))
                 if classes:
+                    classes = {k:v for k,v in classes.items() if k not in self.exclude_types}
                     norm = sum(v ** 2 for v in classes.values()) ** 0.5
                     self.coltypes.setdefault(ti, {})[ci] = (classes, norm)
 
@@ -45,19 +53,21 @@ class TypeCosMatcher(Matcher):
         super().__enter__()
         if self.indexed and self.mdir:
             self.coltypes = pickle.load(self.coltypes_fname.open("rb"))
+        return self
 
-    def __exit__(self, *args):
-        super().__exit__(*args)
+    def close(self):
         if self.indexed and self.mdir:
             del self.coltypes
 
     def index(self):
         log.debug(f"TypeCos index is len {len(self.coltypes)}")
         if self.mdir:
+            log.debug(f"Serializing {self} to {self.mdir}")
+            self.mdir.mkdir(parents=True, exist_ok=True)
             with self.coltypes_fname.open("wb") as fw:
                 pickle.dump(self.coltypes, fw)
-            del self.coltypes
             self.indexed = True
+            self.close()
 
     def match(self, tableid_colids_pairs):
         """Match columns on token jaccard."""

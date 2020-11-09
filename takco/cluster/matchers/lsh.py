@@ -37,9 +37,7 @@ class LSHMatcher(Matcher):
         **kwargs,
     ):
         self.name = name or self.__class__.__name__
-        self.mdir = (Path(fdir) / Path(self.name)).resolve() if fdir else None
-        if self.mdir:
-            self.mdir.mkdir(parents=True, exist_ok=True)
+        self.mdir = (Path(fdir) / Path(self.name)) if fdir else None
         self.indexed = False
 
         self.source = source
@@ -51,9 +49,21 @@ class LSHMatcher(Matcher):
         self.perm = datasketch.MinHash(num_perm=self.num_perm).permutations
         self.threshold = threshold
 
+        self.lshindex = None
+        self.ci_tidi = {}
+        self.digests: typing.Any = None
+        self.digests_list: typing.List[typing.Any] = []
+
+    def cli(self, command):
+        return subprocess.run(
+            [self.redis_cli, "-h", self.host, "-p", str(self.port), command],
+            capture_output=True,
+        )
+
+    def make_lshindex(self):
         if self.redis_dir:
             self.redis_dir = Path(self.redis_dir)
-            self.redis_cli = str((self.redis_dir / Path("redis-cli")).resolve())
+            self.redis_cli = str((self.redis_dir / Path("redis-cli")))
 
             log.info(f"redis cli: {self.redis_cli}")
 
@@ -68,9 +78,9 @@ class LSHMatcher(Matcher):
                         "--port",
                         str(self.port),
                         "--pidfile",
-                        Path(self.mdir or ".") / Path(f"redis-port-{self.port}.pid"),
+                        Path(f"redis-port-{self.port}.pid"),
                         "--dbfilename",
-                        f"{self.name}.rdb",
+                        f"redis-{self.name}.rdb",
                     ],
                     cwd=Path(self.mdir or "."),
                 )
@@ -79,7 +89,7 @@ class LSHMatcher(Matcher):
                 ping = self.cli("ping")
                 log.info(f"Ping redis: {'offline' if ping.returncode else 'online'}")
 
-            self.lshindex = datasketch.MinHashLSH(
+            return datasketch.MinHashLSH(
                 num_perm=self.num_perm,
                 threshold=self.threshold,
                 storage_config={
@@ -89,19 +99,9 @@ class LSHMatcher(Matcher):
                 },
             )
         else:
-            self.lshindex = datasketch.MinHashLSH(
+            return datasketch.MinHashLSH(
                 num_perm=self.num_perm, threshold=self.threshold,
             )
-
-        self.ci_tidi = {}
-        self.digests: typing.Any = None
-        self.digests_list: typing.List[typing.Any] = []
-
-    def cli(self, command):
-        return subprocess.run(
-            [self.redis_cli, "-h", self.host, "-p", str(self.port), command],
-            capture_output=True,
-        )
 
     def add(self, table):
 
@@ -156,7 +156,8 @@ class LSHMatcher(Matcher):
 
         self.digests = np.array(self.digests_list)
         del self.digests_list
-
+        
+        self.lshindex = self.make_lshindex()
         with self.lshindex.insertion_session() as session:
             ci_tidis = cluster.progress(self.ci_tidi.items(), f"Indexing {self.name}")
             for ci, (ti, di) in ci_tidis:
@@ -173,12 +174,14 @@ class LSHMatcher(Matcher):
 
         self.indexed = True
         if self.mdir:
+            self.mdir.mkdir(parents=True, exist_ok=True)
+            log.debug(f"Serializing {self} to {self.mdir}")
             np.save(self.mdir / Path("digests.npy"), self.digests)
             with open(self.mdir / Path("ci_tidi.pickle"), "wb") as fw:
                 pickle.dump(self.ci_tidi, fw)
             with open(self.mdir / Path("lshindex.pickle"), "wb") as fw:
                 pickle.dump(self.lshindex, fw)
-            self.__exit__()
+            self.close()
 
     def __enter__(self):
         super().__enter__()
@@ -191,14 +194,12 @@ class LSHMatcher(Matcher):
                 self.lshindex = pickle.load(fr)
         return self
 
-    def __exit__(self, *args):
-        super().__exit__(*args)
+    def close(self):
         if self.indexed and self.mdir:
             del self.digests
             del self.ci_tidi
             del self.lshindex
 
-    def close(self):
         if self.redis_dir:
             r = self.cli("shutdown")
             log.info(f"Shutdown redis with code {r.returncode}")

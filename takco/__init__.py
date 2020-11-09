@@ -121,9 +121,8 @@ class TableSet:
             source: Source of HTML files
         """
         if isinstance(source, Config):
-
-            source = Config(source, assets)
-            htmlpages = source.init_class(**pages.__dict__).get(executor, assets)
+            source = Config.create(source, assets, pages.__dict__)
+            htmlpages = source.get(executor, assets)
         elif isinstance(source, HashBag):
             htmlpages = source
         else:
@@ -160,12 +159,11 @@ class TableSet:
             log.info(f"Restructuring with rules: {prefix_header_rules}")
             tables = tables.pipe(reshape.restructure, prefix_header_rules)
 
-        unpivot_heuristics = {}
-        for h in unpivot_configs:
-            name = h.get("name", h.get("class"))
-            unpivot_heuristics[name] = Config(h, assets).init_class(
-                **{**reshape.__dict__, **link.__dict__}
-            )
+        classes = {**reshape.__dict__, **link.__dict__}
+        unpivot_heuristics = {
+            getattr(h, "name", h.__class__.__name__): h
+            for h in Config.create(unpivot_configs, assets, classes)
+        }
 
         if unpivot_heuristics:
             log.info(f"Unpivoting with heuristics: {', '.join(unpivot_heuristics)}")
@@ -189,8 +187,9 @@ class TableSet:
         if compound_splitter_config is not None:
             from .reshape import compound
 
-            compound_splitter = Config(compound_splitter_config, assets)
-            compound_splitter = compound_splitter.init_class(**compound.__dict__)
+            compound_splitter = Config.create(
+                compound_splitter_config, assets, compound.__dict__
+            )
             tables = tables.pipe(reshape.split_compound_columns, compound_splitter)
 
         if discard_headerless_tables:
@@ -205,13 +204,26 @@ class TableSet:
 
         return TableSet(tables)
 
-    def number_table_columns(self):
-        """Make a dataframe of table and column indexes"""
+    @staticmethod
+    def number_table_columns(tables):
+        """Create global table and column IDs"""
 
-        tables = TableSet(self).tables
+        log.info(f"Numbering tables...")
         tables = tables.offset("tableIndex", "tableIndex", default=1)
         tables = tables.offset("numCols", "columnIndexOffset")
         return tables
+
+    @staticmethod
+    def build_matchers(matchers, tables):
+        matchers = list(
+            tables.pipe(cluster.matcher_add_tables, matchers).fold(
+                lambda x: x.name, lambda a, b: a.merge(b)
+            )
+        )
+        for m in matchers:
+            log.info(f"Indexing {m.name}")
+            m.index()
+        return matchers
 
     def cluster(
         self: TableSet,
@@ -219,7 +231,7 @@ class TableSet:
         addcontext: typing.List[str] = (),
         headerunions: bool = True,
         matcher_configs: typing.List[Config] = (),
-        filters: typing.List[str] = (),
+        filter_configs: typing.List[Config] = (),
         agg_func: str = "mean",
         agg_threshold: float = 0,
         align_columns: str = "greedy",
@@ -227,7 +239,7 @@ class TableSet:
         align_use_total_width: bool = True,
         edge_exp: float = 1,
         agg_threshold_col: float = None,
-        store_align_meta: typing.List[str] = ["tableHeaders"],
+        keep_partition_meta: typing.List[str] = ["tableHeaders"],
         mergeheaders_topn: int = None,
         assets: typing.List[Config] = (),
     ):
@@ -242,25 +254,26 @@ class TableSet:
             addcontext: Add these context types
             headerunions: Make header unions
             matcher_configs: Matcher configs
-            filters: Names of matchers to only use as filter
+            filter_configs: Filter configs
             agg_func: Aggregation function for :meth:`takco.cluster.aggregate_match_sims`
             agg_threshold: Threshold value
-            align_columns ({'max1', 'max2', 'greedy'}): Alignment method.
-            align_width_norm ({'wide', 'narrow', 'jacc'}): Table width difference normalisation method.
+            align_columns: Column alignment method  ({'max1', 'max2', 'greedy'}).
+            align_width_norm: Table width difference normalisation method ({'wide', 'narrow', 'jacc'}).
             align_use_total_width: Whether to use total table width. Defaults to True. 
             edge_exp : Exponent of edge weight for Louvain modularity
             agg_threshold_col: Matcher aggregation threshold (default: agg_threshold)
+            keep_partition_meta: Attributes to keep for partition table analysis
             mergeheaders_topn: Number of top headers to keep when merging
         """
         tables = TableSet(self).tables
         from .cluster import matchers as matcher_classes
 
-        matchers = [
-            Config({"fdir": workdir, **m}, assets).init_class(
-                **matcher_classes.__dict__
-            )
-            for m in matcher_configs
-        ]
+        matchers = Config.create(
+            matcher_configs, assets, matcher_classes.__dict__, fdir=workdir
+        )
+        filters = Config.create(
+            filter_configs, assets, matcher_classes.__dict__, fdir=workdir
+        )
         agg_threshold_col = agg_threshold_col or agg_threshold
 
         import tqdm
@@ -278,27 +291,15 @@ class TableSet:
         if matchers:
 
             ## Partition table similarity graph
-
-            # Collect index
-            tables = TableSet.number_table_columns(tables)
-
-            log.info(f"Creating matchers: {', '.join(m.name for m in matchers)}")
-            matchers = list(
-                tables.pipe(cluster.matcher_add_tables, matchers).fold(
-                    lambda x: x.name, lambda a, b: a.merge(b)
-                )
-            )
-            for m in matchers:
-                log.info(f"Indexing {m.name}")
-                m.index()
-
-            filter_names = filters
-            filters = [m for m in matchers if m.name in filter_names]
-            matchers = [m for m in matchers if m.name not in filter_names]
+            tables = TableSet.number_table_columns(tables).persist()
+            log.info(f"Building matchers: {', '.join(m.name for m in matchers)}")
+            matchers = TableSet.build_matchers(matchers, tables)
+            filters = TableSet.build_matchers(filters, tables)
 
             # Get blocked column match scores
             tableid_colids = dict(tables.pipe(cluster.get_table_ids))
             log.info(f"Blocking tables; computing and aggregating column sims...")
+
             tablesim = pd.concat(
                 tables.pipe(
                     cluster.get_tablesims,
@@ -307,82 +308,56 @@ class TableSet:
                     filters=filters,
                     agg_func=agg_func,
                     agg_threshold=agg_threshold,
-                    align_columns = align_columns,
-                    align_width_norm = align_width_norm,
-                    align_use_total_width = align_use_total_width,
+                    align_columns=align_columns,
+                    align_width_norm=align_width_norm,
+                    align_use_total_width=align_use_total_width,
                 )
             )
-            log.info(f"Got {len(tablesim)} table similarities")
+            # assure all tables are clustered using identity matrix
+            itups = ((ti, ti) for ti in tableid_colids)
+            ii = pd.MultiIndex.from_tuples(itups, names=["ti1", "ti2"])
+            tablesim = pd.concat([tablesim, pd.Series(1, index=ii)])
+            reduction = (len(tableid_colids)**2) / len(tablesim)
+            log.info(f"Got {len(tablesim)} table similarities; {reduction:.0f}x reduction")
             # tablesim.to_csv(Path(workdir) / Path("tablesim.csv"))
 
-            for ti in tableid_colids:
-                tablesim.loc[(ti, ti)] = 1  # assure all tables are clustered
+            import sys
+            sys.exit()
+
             louvain_partition = cluster.louvain(tablesim, edge_exp=edge_exp)
-
-            ## Cluster columns
-            from sklearn.cluster import AgglomerativeClustering
-
-            clus = AgglomerativeClustering(
-                affinity="precomputed",
-                linkage="complete",
-                n_clusters=None,
-                distance_threshold=1,
-            )
-
             nonsingle = [p for p in louvain_partition if len(p) > 1]
             log.info(f"Found {len(nonsingle)}/{len(louvain_partition)} >1 partitions")
+
+            ## Cluster columns
+            log.info(f"Clustering columns...")
             chunks = tables.__class__(enumerate(nonsingle)).pipe(
                 cluster.cluster_partition_columns,
-                clus = clus,
-                tableid_colids = tableid_colids,
-                matchers = matchers,
-                agg_func = agg_func,
-                agg_threshold_col = agg_threshold_col,
+                tableid_colids=tableid_colids,
+                matchers=matchers,
+                agg_func=agg_func,
+                agg_threshold_col=agg_threshold_col,
             )
-            ti_pi, pi_ncols, ci_pci = {}, {}, {}
+            from collections import ChainMap
+
+            ti_pi, pi_ncols, ci_pci, ti_colsim = (
+                {k: v for d in ds for k, v in d.items()} for ds in zip(*chunks)
+            )
+
             if workdir:
                 colsimdir = Path(workdir) / Path("colsims")
                 colsimdir.mkdir(exist_ok=True, parents=True)
-            for chunk_ti_pi, chunk_pi_ncols, chunk_ci_pci, chunk_ti_colsim in chunks:
-                ti_pi.update(chunk_ti_pi)
-                pi_ncols.update(chunk_pi_ncols)
-                ci_pci.update(chunk_ci_pci)
-                if workdir:
-                    for ti, colsim in chunk_ti_colsim.items():
-                        colsim.to_csv(colsimdir / Path(f"{ti}.csv"), header=True)
+                for ti, colsim in ti_colsim.items():
+                    colsim.to_csv(colsimdir / Path(f"{ti}.csv"), header=True)
 
-            def set_alignment(tables, ti_pi, pi_ncols, ci_pci):
-                for table in tables:
-                    if table["tableIndex"] in ti_pi:
-                        table["part"] = ti_pi[table["tableIndex"]]
-                        sq = all(
-                            len(row) == table["numCols"] for row in table["tableData"]
-                        )
-                        # assert sq # TODO: why does this fail sometimes?
-                        ci_range = range(
-                            table["columnIndexOffset"],
-                            table["columnIndexOffset"] + table["numCols"],
-                        )
-
-                        # TODO: add similarity scores
-                        pci_c = {
-                            ci_pci[ci]: c
-                            for c, ci in enumerate(ci_range)
-                            if ci in ci_pci
-                        }
-                        # partColAlign is a mapping from partition cols to local cols
-                        table["partColAlign"] = {
-                            pci: pci_c.get(pci, None)
-                            for pci in range(pi_ncols[table["part"]])
-                        }
-                    yield table
-
-            tables = tables.pipe(set_alignment, ti_pi, pi_ncols, ci_pci).fold(
-                lambda t: ti_pi.get(t["tableIndex"], t["_id"]),
+            log.info(f"Merging clustered tables...")
+            tables = tables.pipe(
+                cluster.set_partition_columns, ti_pi, pi_ncols, ci_pci
+            ).fold(
+                lambda t: t["_id"],
                 lambda a, b: cluster.merge_partition_tables(
                     a,
                     b,
-                    store_align_meta=store_align_meta,
+                    keep_partition_meta=keep_partition_meta,
                     mergeheaders_topn=mergeheaders_topn,
                 ),
             )
@@ -401,8 +376,7 @@ class TableSet:
             typer_config: Typer config
         """
         tables = TableSet(self).tables
-
-        typer = Config(typer_config, assets).init_class(**link.__dict__)
+        typer = Config.create(typer_config, assets, link.__dict__)
         return TableSet(tables.pipe(link.coltypes, typer=typer))
 
     def integrate(
@@ -429,12 +403,12 @@ class TableSet:
         """
         tables = TableSet(self).tables
 
-        db = Config(db_config, assets).init_class(**link.__dict__)
+        db = Config.create(db_config, assets, link.__dict__)
         log.info(f"Integrating with {db}")
 
         typer = None
         if typer_config:
-            typer = Config(typer_config, assets).init_class(**link.__dict__)
+            typer = Config.create(typer_config, assets, link.__dict__)
             log.info(f"Typing with {typer}")
 
         tables = tables.pipe(
@@ -467,14 +441,14 @@ class TableSet:
         tables = TableSet(self).tables
 
         if lookup_config:
-            lookup = Config(lookup_config, assets).init_class(**link.__dict__)
+            lookup = Config.create(lookup_config, assets, link.__dict__)
             log.debug(f"Lookup with {lookup}")
             tables = tables.pipe(
                 link.lookup_hyperlinks, lookup=lookup, lookup_cells=lookup_cells,
             )
 
         if linker_config:
-            linker = Config(linker_config, assets).init_class(**link.__dict__)
+            linker = Config.create(linker_config, assets, link.__dict__)
             log.info(f"Linking with {linker}")
             tables = tables.pipe(link.link, linker, usecols=usecols,)
 
@@ -517,7 +491,7 @@ class TableSet:
     ):
         tables = TableSet(self).tables
 
-        searcher = Config(searcher_config, assets).init_class(**link.__dict__)
+        searcher = Config.create(searcher_config, assets, link.__dict__)
         return TableSet(tables.pipe(evaluate.table_novelty, searcher))
 
     def triples(self: TableSet, include_type: bool = True):
@@ -603,7 +577,7 @@ class TableSet:
         workdir: Path = None,
         datadir: Path = None,
         resourcedir: Path = None,
-        force: typing.List[int] = (),
+        forcesteps: typing.List[int] = (),
         cache: bool = False,
         executor: Config = None,
         assets: typing.List[Config] = (),
@@ -617,8 +591,7 @@ class TableSet:
             datadir: Data directory
             resourcedir: Resource directory
             assets: Asset definitions
-            force: Force execution of steps if cache files are already present
-            step_force: Force execution of steps starting at this number
+            forcesteps: Force execution of steps if cache files are already present
             cache: Cache intermediate results
             executor: Executor engine
         """
@@ -645,8 +618,8 @@ class TableSet:
         executor, assets, cache = conf["executor"], conf["assets"], conf["cache"]
         executor, exkw = get_executor_kwargs(executor, assets)
 
-        stepforce = None if (force == ()) else min(force, default=0)
-        force = force == []
+        stepforce = None if (forcesteps == ()) else min(forcesteps, default=0)
+        force = forcesteps == []
 
         # Prepend input tables to pipeline
         input_tables = input_tables or pipeline.get("input_tables")

@@ -310,24 +310,27 @@ def restructure(tables: Iterator[Dict], prefix_header_rules=()) -> Iterator[Dict
 
     """
     for table in tables:
-        init_captions(table)
+        try:
+            init_captions(table)
 
-        # Analyze headers & data together
-        remove_empty_columns(table)
-        deduplicate_header_rows(table)
+            # Analyze headers & data together
+            remove_empty_columns(table)
+            deduplicate_header_rows(table)
 
-        # Analyze header
-        remove_empty_header_rows(table)
-        process_rowspanning_head_cells(table)
-        restack_horizontal_schema_repeats(table)
-        table["tableHeaders"] = [h for h in table["tableHeaders"] if h]
+            # Analyze header
+            remove_empty_header_rows(table)
+            process_rowspanning_head_cells(table)
+            restack_horizontal_schema_repeats(table)
+            table["tableHeaders"] = [h for h in table["tableHeaders"] if h]
 
-        # Analyze body
-        remove_empty_rows(table)
-        process_rowspanning_body_cells(table)
-        heuristic_transpose(table)
+            # Analyze body
+            remove_empty_rows(table)
+            process_rowspanning_body_cells(table)
+            heuristic_transpose(table)
 
-        apply_prefix_header_rules(table, prefix_header_rules)
+            apply_prefix_header_rules(table, prefix_header_rules)
 
-        if table["tableData"]:
-            yield table
+            if table["tableData"]:
+                yield table
+        except Exception as e:
+            log.debug(e)

@@ -23,7 +23,7 @@ class CellJaccMatcher(Matcher):
         **kwargs,
     ):
         self.name = name or self.__class__.__name__
-        self.mdir = (Path(fdir) / Path(self.name)).resolve() if fdir else None
+        self.mdir = (Path(fdir) / Path(self.name)) if fdir else None
         self.indexed = False
 
         self.source = source
@@ -81,11 +81,12 @@ class CellJaccMatcher(Matcher):
         if not self.indexed:
             self.indexed = True
             if self.mdir:
+                log.debug(f"Serializing {self} to {self.mdir}")
                 self.mdir.mkdir(parents=True, exist_ok=True)
                 for p in self.pickles:
                     with (self.mdir / Path(f"{p}.pickle")).open("wb") as fw:
                         pickle.dump(getattr(self, p), fw)
-                self.__exit__()
+                self.close()
 
     def __enter__(self):
         super().__enter__()
@@ -96,8 +97,7 @@ class CellJaccMatcher(Matcher):
                     setattr(self, p, pickle.load(fpath.open("rb")))
         return self
 
-    def __exit__(self, *args):
-        super().__exit__(*args)
+    def close(self):
         if self.indexed and self.mdir:
             for p in self.pickles:
                 delattr(self, p)

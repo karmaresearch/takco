@@ -68,18 +68,28 @@ class Config(dict, typing.Generic[T]):
                     log.debug(f"Did not parse {val} with parser {cpi} due to error {e}")
                 self["name"] = val
 
-    def init_class(self, **context):
+    @classmethod
+    def create(cls, val, context, classes, **kwargs):
+        if isinstance(val, list):
+            return [cls.create(v, context, classes, **kwargs) for v in val]
+        elif isinstance(val, dict):
+            return cls({**val, **kwargs}, context).init_class(classes)
+        else:
+            return val
+
+
+    def init_class(self, classes) -> T:
         if isinstance(self, dict) and "class" in self:
             self = Config(self)
-            if inspect.isclass(context.get(self["class"])):
-                cls = context[self.pop("class")]
+            if inspect.isclass(classes.get(self["class"])):
+                cls = classes[self.pop("class")]
                 cls_params = inspect.signature(cls).parameters
                 cls_has_kwargs = any(
                     p.kind == inspect.Parameter.VAR_KEYWORD for p in cls_params.values()
                 )
 
                 kwargs = {
-                    k: Config.init_class(v, **context)
+                    k: Config.init_class(v, classes)
                     for k, v in self.items()
                     if (k in cls_params) or cls_has_kwargs
                 }
@@ -116,6 +126,9 @@ class HashBag:
     def __init__(self, it, wrap=lambda x: x, **kwargs):
         self.it = it
         self.wrap = wrap
+    
+    def new(self, it):
+        return HashBag(it, wrap=self.wrap)
 
     @classmethod
     def concat(cls, hashbags):
@@ -123,6 +136,7 @@ class HashBag:
 
     def persist(self):
         self.it = list(self.wrap(self.it))
+        return self
 
     def __iter__(self):
         for x in self.it:
@@ -135,32 +149,35 @@ class HashBag:
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
         it = (copy.deepcopy(x) for x in it)
         log.debug(f"Piping {func.__name__} ...")
-        return self.__class__(func(it, *args, **kwargs))
+        return self.new(func(it, *args, **kwargs))
 
     def fold(self, key, binop, exe=None, cast=False, keep_key=False):
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
+        it = (copy.deepcopy(x) for x in it)
+
         combined = {}
         for i in it:
             k = key(i)
             if k in combined:
-                combined[k] = binop(i, combined[k])
+                combined[k] = binop(combined[k], i)
             else:
                 combined[k] = i
-        return self.__class__(combined.items() if keep_key else combined.values())
+        return self.new(combined.items() if keep_key else combined.values())
 
     def offset(self, get_attr, set_attr, default=0):
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
+        it = (copy.deepcopy(x) for x in it)
 
         def offset_it(it, default):
             total = 0
             for i in it:
                 t = total + i.get(get_attr, default)
-                yield i
                 i[set_attr] = total
+                yield i
                 total = t
             log.debug(f"Serial cumsum {get_attr} {set_attr} {default} -> {total}")
 
-        return self.__class__(offset_it(it, default))
+        return self.new(offset_it(it, default))
 
     def dump(self, f):
         import sys
@@ -258,15 +275,15 @@ try:
 
         def start_client(self, **kwargs):
             global client
-            from dask.distributed import Client
+            from dask.distributed import Client # type: ignore
 
             try:
                 self.client = Client(**kwargs)
             except Exception as e:
                 log.warn(e)
 
-        def __init__(self, it, npartitions=None, **kwargs):
-            self.client = None
+        def __init__(self, it, npartitions=None, client=None, **kwargs):
+            self.client = client
             if kwargs:
                 self.start_client(**kwargs)
 
@@ -276,6 +293,9 @@ try:
                 it = list(it)
                 npartitions = npartitions or len(it)
                 self.bag = db.from_sequence(it, npartitions=npartitions)
+
+        def new(self, it):
+            return DaskHashBag(it, client=self.client)
 
         @classmethod
         def load(cls, f, **kwargs):
@@ -292,37 +312,36 @@ try:
 
         def persist(self):
             self.bag = self.bag.persist()
+            return self
 
         def __iter__(self):
             return iter(self.bag.compute())
 
         def pipe(self, func, *args, **kwargs):
-
-            if self.client:
-                for k, a in enumerate(args):
-                    log.debug(f"Scattering arg {k}")
-                    try:
-                        args[k] = self.client.scatter(a)
-                    except:
-                        log.debug(f"Scattering arg {k} failed")
-                for k, a in kwargs.items():
-                    log.debug(f"Scattering {k}")
-                    try:
-                        kwargs[k] = self.client.scatter(a)
-                    except:
-                        log.debug(f"Scattering {k} failed")
+            newargs = list(args)
+            newkwargs = dict(kwargs)
+            # if self.client:
+            #     try:
+            #         if newargs:
+            #             newargs = self.client.scatter(newargs, broadcast=True)
+            #         if newkwargs:    
+            #             newkwargs = self.client.scatter(newkwargs, broadcast=True)
+            #     except:
+            #         log.debug(f"Scattering for {func.__name__} failed!")
 
             @functools.wraps(func)
             def listify(x, *args, **kwargs):
                 return list(func(x, *args, **kwargs))
 
-            return DaskHashBag(self.bag.map_partitions(listify, *args, **kwargs))
+            return self.new(
+                self.bag.map_partitions(listify, *newargs, **newkwargs)
+            )
 
         def fold(self, key, binop, exe=None, keep_key=False):
             bag = self.bag.foldby(key, binop=binop)
             if not keep_key:
                 bag = bag.map(lambda x: x[1])
-            return DaskHashBag(bag.repartition(self.bag.npartitions))
+            return self.new(bag.repartition(self.bag.npartitions))
 
         def offset(self, get_attr, set_attr, default=0):
             df = self.bag.to_dataframe(columns=[get_attr])
@@ -334,7 +353,7 @@ try:
             def setval(x, v):
                 return {set_attr: v, **x}
 
-            return DaskHashBag(self.bag.map(setval, vs.to_bag()))
+            return self.new(self.bag.map(setval, vs.to_bag()))
 
         def dump(self, f, **kwargs):
             from io import TextIOBase

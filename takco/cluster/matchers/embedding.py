@@ -34,7 +34,7 @@ class EmbeddingMatcher(Matcher):
     ):
         """Matcher based on embeddings and FAISS"""
         self.name = name or self.__class__.__name__
-        self.mdir = (Path(fdir) / Path(self.name)).resolve() if fdir else None
+        self.mdir = (Path(fdir) / Path(self.name)) if fdir else None
         self.indexed = False
 
         self.source = source
@@ -125,6 +125,7 @@ class EmbeddingMatcher(Matcher):
         self.indexed = True
 
         if self.mdir:
+            log.debug(f"Serializing {self} to {self.mdir}")
             faissindex_fname = self.mdir / Path("index.faiss")
             Path(faissindex_fname).parent.mkdir(parents=True, exist_ok=True)
             faiss.write_index(self.faissindex, str(faissindex_fname))
@@ -134,10 +135,9 @@ class EmbeddingMatcher(Matcher):
             np.save(self.mdir / Path("means.npy"), self.means)
             with open(self.mdir / Path("vi_tici.pickle"), "wb") as fw:
                 pickle.dump(self.vi_tici, fw)
-            self.__exit__()
+            self.close()
 
     def __enter__(self):
-        super().__enter__()
         log.info(f"Loading word vectors {self.wordvec_fname}")
         if str(self.wordvec_fname).endswith(".pickle"):
             wordvecs = pd.read_pickle(self.wordvec_fname)
@@ -158,8 +158,7 @@ class EmbeddingMatcher(Matcher):
 
         return self
 
-    def __exit__(self, *args):
-        super().__exit__(*args)
+    def close(self):
         if hasattr(self, "wordvecarray"):
             del self.wordvecarray
         if hasattr(self, "word_i"):

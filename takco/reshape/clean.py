@@ -61,28 +61,32 @@ def process_rowspanning_head_cells(table):
         s = (len(set(cells)) == 1) and all(cells)
         allspanhead.append(s)
 
-    newTableHeaders = []
-    newTableCaptions = []
-    inner = False
-    for r in list(range(len(table["tableHeaders"])))[::-1]:  # iterate backwards
-        row = table["tableHeaders"][r]
-        if allspanhead[r]:
-            # If the allspan row occurs at the bottom, it's an inner-header.
-            # Otherwise it's a caption
-            if not inner:
-                table["tableData"].insert(0, row)
-                inner = True
+    try:
+        newTableHeaders = []
+        newTableCaptions = []
+        inner = False
+        for r in list(range(len(table["tableHeaders"])))[::-1]:  # iterate backwards
+            row = table["tableHeaders"][r]
+            if allspanhead[r]:
+                # If the allspan row occurs at the bottom, it's an inner-header.
+                # Otherwise it's a caption
+                if not inner:
+                    table["tableData"].insert(0, row)
+                    inner = True
+                else:
+                    cell = dict(row[0])
+                    cell["cellClass"] = "fromheader"
+                    newTableCaptions.insert(0, cell)
             else:
-                cell = dict(row[0])
-                cell["cellClass"] = "fromheader"
-                newTableCaptions.insert(0, cell)
-        else:
-            newTableHeaders.insert(0, row)
+                newTableHeaders.insert(0, row)
+        
 
-    table["tableHeaders"] = newTableHeaders
-    table["numHeaderRows"] = len(table["tableHeaders"])
-    tableCaptions = table.setdefault("tableCaptions", [])
-    tableCaptions += newTableCaptions
+        table["tableHeaders"] = newTableHeaders
+        table["numHeaderRows"] = len(table["tableHeaders"])
+        tableCaptions = table.setdefault("tableCaptions", [])
+        tableCaptions += newTableCaptions
+    except:
+            pass
 
 
 def restack_horizontal_schema_repeats(table):

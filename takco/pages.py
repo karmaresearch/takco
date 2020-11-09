@@ -14,7 +14,7 @@ class WikiPages:
     Downloads HTML files for entities that have a certain predicate/object in a DB.
 
     Args:
-        dbconfig: DB configuration (default: Wikidata)
+        db: DB configuration (default: Wikidata)
         pred: Predicate URI
         obj: Object URI
         urlprefix: Wikipedia URL prefix
@@ -24,7 +24,7 @@ class WikiPages:
 
     def __init__(
         self,
-        dbconfig: Config = {"class": "GraphDB", "store": {"class": "SparqlStore"}},
+        db: Database,
         pred: str = None,
         obj: str = None,
         urlprefix: str = "https://en.wikipedia.org/wiki/",
@@ -36,9 +36,7 @@ class WikiPages:
         self.justurls = justurls
         self.encoding = encoding
 
-        from . import link
-
-        with Config(dbconfig, assets).init_class(**link.__dict__) as db:
+        with db:
 
             ent_abouturl = []
             for e, ps in db.pages_about([None, pred, obj]).items():
