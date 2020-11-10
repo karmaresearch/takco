@@ -33,6 +33,7 @@ step = 'reshape'
 restructure = true
 prefix_header_rules = [{find='Precededby ',header='Preceded by'}, {find='Succeededby ',header='Succeeded by'}]
 compound_splitter_config = {class = "SpacyCompoundSplitter"}
+discard_headerless_tables = true
 
     [[step.unpivot_configs]]
     class = 'NumSuffix'
@@ -55,6 +56,10 @@ compound_splitter_config = {class = "SpacyCompoundSplitter"}
     bad_props = [
         'http://www.wikidata.org/prop/direct/P1687',
     ]
+
+    [[step.unpivot_configs]]
+    class = 'AttributePrefixFinder'
+    attname = 'pgTitle'
 
 [[step]]
 step = 'cluster'
@@ -83,7 +88,7 @@ step = 'cluster'
 addcontext = []
 headerunions = false
 agg_func = '@mean(  @max(headjacc, @pow(headvec, 4)), @max(bodylsh, @pow(bodyvec, 4), bodytype ) )'
-agg_threshold = 0.5
+agg_threshold = 0.95
 align_columns = 'max1' # much faster than 'greedy'
 edge_exp = 6
 agg_threshold_col = 0.1

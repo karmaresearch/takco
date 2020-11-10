@@ -565,18 +565,20 @@ def merge_partition_tables(
     Returns:
         Merged table
     """
+    import copy
+
     if "partitionIndex" not in table:
         return table
 
     empty_cell = {"text": ""}
     pi = table["partitionIndex"]
 
-    def keep(partColAlign, mergetable):
+    def keep(partColAlign, table):
         for field in keep_partition_meta:
             if type(field)==str:
-                partColAlign[field] = mergetable.get(field)
+                partColAlign[field] = copy.deepcopy(table.get(field))
             else:
-                partColAlign.update(field(mergetable))
+                partColAlign.update(copy.deepcopy(field(table)))
 
     if mergetable.get("type") != "partition":
         # Create new mergetable
@@ -649,7 +651,7 @@ def merge_partition_tables(
             if c is not None
         },
     }
-    keep(partColAlign, mergetable)
+    keep(partColAlign, table)
 
     mergetable.update(
         {

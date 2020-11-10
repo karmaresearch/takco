@@ -86,6 +86,13 @@ class Pivot(NamedTuple):
 
 
 class PivotFinder:
+    
+    def build(self, tables):
+        return
+
+    def merge(self, heuristic):
+        return self
+
     def __enter__(self):
         return self
 
@@ -195,7 +202,7 @@ class SeqPrefix(PivotFinder):
             for ci in range(colfrom, colto + 1):
                 cell = headrow[ci].strip()
                 if cell.startswith(p):
-                    yield ci, cell[len(p) :].strip(), p
+                    yield cell[len(p) :].strip(), p
 
 
 class SpannedRepeat(PivotFinder):
@@ -288,4 +295,31 @@ class AgentLikeHyperlink(PivotFinder):
                     if any(kb.count([e, p, None]) for p in self.bad_props):
                         continue  # has bad prop
 
+                    yield ri, ci
+
+
+class AttributePrefixFinder(PivotFinder):
+    def __init__(self, attname=None):
+        self.attname = attname
+        self.values = set()
+
+    def build(self, tables):
+        for t in tables:
+            att = str(t.get(self.attname, '')).lower()
+            if att:
+                for hrow in t.get('tableHeaders'):
+                    for hcell in hrow:
+                        celltext = hcell.get('text', '').lower()
+                        if celltext and len(celltext) > 1 and att.startswith(celltext):
+                            self.values.add( celltext )
+        return self
+
+    def merge(self, heuristic):
+        self.values.update(heuristic.values)
+        return self
+
+    def find_pivot_cells(self, headerrows):
+        for ri, hrow in enumerate(headerrows):
+            for ci, hcell in enumerate(hrow):
+                if hcell.get('text', '').lower() in self.values:
                     yield ri, ci

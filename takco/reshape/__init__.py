@@ -151,18 +151,19 @@ def try_unpivot(table, pivot, heuristics):
         if heuristic:
             splits = heuristic.split_header(headerText[level], colfrom, colto)
             splitheaders = []
-            for ci, (head, cell) in enumerate(splits):
-                links = table["tableHeaders"][level][ci]["surfaceLinks"]
-                splitheaders.append(
-                    (
-                        {"text": head or "", "tdHtmlString": f"<td>{head}</td>",},
-                        {
-                            "text": cell or "",
-                            "tdHtmlString": f"<td>{cell}</td>",
-                            "surfaceLinks": links,  # TODO adjust link offsets
-                        },
+            if splits is not None:
+                for ci, (head, cell) in enumerate(splits):
+                    links = table["tableHeaders"][level][ci]["surfaceLinks"]
+                    splitheaders.append(
+                        (
+                            {"text": head or "", "tdHtmlString": f"<td>{head}</td>",},
+                            {
+                                "text": cell or "",
+                                "tdHtmlString": f"<td>{cell}</td>",
+                                "surfaceLinks": links,  # TODO adjust link offsets
+                            },
+                        )
                     )
-                )
             if splitheaders:
                 log.debug(f"Splitting pivot header {table['headerId']}")
                 above, below = zip(*splitheaders)
@@ -225,6 +226,13 @@ def try_unpivot(table, pivot, heuristics):
     except Exception as e:
         log.debug(f"Cannot pivot table {table.get('_id')} due to {e}")
 
+def build_heuristics(
+    tables: Iterator[Dict],
+    heuristics: Dict[str, PivotFinder],
+):
+    for hname, heuristic in heuristics.items():
+        yield hname, heuristic.build(tables)
+
 
 def unpivot_tables(
     tables: Iterator[Dict],
@@ -232,6 +240,7 @@ def unpivot_tables(
     heuristics: Dict[str, PivotFinder],
 ):
     """Unpivot tables."""
+    tables = list(tables)
 
     if headerId_pivot is None:
         headerobjs = [table.get("tableHeaders", []) for table in tables]

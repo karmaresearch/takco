@@ -267,7 +267,7 @@ class ElasticSearcher(Searcher):
             import tqdm, json, sys
             import urllib.parse as ul
 
-            for line in tqdm.tqdm(open(surfaces)):
+            for line in tqdm.tqdm(open(surfaces), desc="Loading surface forms"):
                 try:
                     id, surf = line.split("\t", 1)
                     id = debase(ul.unquote_plus(id))
@@ -304,12 +304,13 @@ class ElasticSearcher(Searcher):
                     for claim in claims.rstrip().rstrip(".").rstrip().split(" ; "):
                         p, o = claim.split(None, 1)
                         p, o = parse_n3(p)["id"], parse_n3(o)
-                        if p == uri_prefLabel and ("str" in o):
-                            surface_score[normalize_surface(o["str"])] = 1
-                        elif p == uri_altLabel and ("str" in o):
-                            surface_score[normalize_surface(o["str"])] = 0.5
-                        else:
-                            statements.append({"prop": p, **o})
+                        if any(o.values()):
+                            if p == uri_prefLabel and ("str" in o):
+                                surface_score[normalize_surface(o["str"])] = 1
+                            elif p == uri_altLabel and ("str" in o):
+                                surface_score[normalize_surface(o["str"])] = 0.5
+                            else:
+                                statements.append({"prop": p, **o})
                     yield id, surface_score, statements
                 except Exception as e:
                     pass  # raise e

@@ -119,6 +119,14 @@ def get_executor_kwargs(conf: Config, context):
     else:
         return HashBag, {}
 
+def robust_json_loads_lines(lines):
+    docs = []
+    for line in lines:
+        try:
+            docs.append( json.loads(line) )
+        except Exception as e:
+            log.warn(e)
+    return docs
 
 class HashBag:
     """A flexible wrapper for computation streams."""
@@ -132,7 +140,7 @@ class HashBag:
 
     @classmethod
     def concat(cls, hashbags):
-        return (x for hb in hashbags for x in hb.it)
+        return hashbags[0].new(x for hb in hashbags for x in hb.it)
 
     def persist(self):
         self.it = list(self.wrap(self.it))
@@ -302,13 +310,13 @@ try:
             from io import TextIOBase
 
             if isinstance(f, TextIOBase):
-                return cls((json.loads(line) for line in f), **kwargs)
+                return cls(robust_json_loads_lines(f), **kwargs)
             else:
-                return cls(db.read_text(f).map(json.loads), **kwargs)
+                return cls(db.read_text(f).map_partitions(robust_json_loads_lines), **kwargs)
 
         @classmethod
         def concat(cls, hashbags):
-            return db.concat([hb.bag for hb in hashbags])
+            return hashbags[0].new(db.concat([hb.bag for hb in hashbags]))
 
         def persist(self):
             self.bag = self.bag.persist()
@@ -320,14 +328,14 @@ try:
         def pipe(self, func, *args, **kwargs):
             newargs = list(args)
             newkwargs = dict(kwargs)
-            # if self.client:
-            #     try:
-            #         if newargs:
-            #             newargs = self.client.scatter(newargs, broadcast=True)
-            #         if newkwargs:    
-            #             newkwargs = self.client.scatter(newkwargs, broadcast=True)
-            #     except:
-            #         log.debug(f"Scattering for {func.__name__} failed!")
+            if self.client:
+                try:
+                    if newargs:
+                        newargs = self.client.scatter(newargs, broadcast=True)
+                    if newkwargs:    
+                        newkwargs = self.client.scatter(newkwargs, broadcast=True)
+                except:
+                    log.debug(f"Scattering for {func.__name__} failed!")
 
             @functools.wraps(func)
             def listify(x, *args, **kwargs):
@@ -371,7 +379,7 @@ except Exception as e:
     log.debug(e)
 
 
-def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
+def preview(tables, nrows=5, ntables=10, nchars=100, hide_correct_rows=False):
     """Show table previews in Jupyter"""
     import json
     from jinja2 import Environment, PackageLoader
@@ -415,8 +423,11 @@ def preview(tables, nrows=5, ntables=10, hide_correct_rows=False):
         else:
             n = nrows
 
+        def cellchars(s):
+            return (s[:nchars] + ' (...)') if len(s) > nchars else s
+
         table["tableData"] = table.get("tableData", [])
-        rows = [[c.get("text") for c in r] for r in table.get("tableData", [])]
+        rows = [[cellchars(c.get("text","")) for c in r] for r in table.get("tableData", [])]
         table["rows"] = rows[:n]
         headers = [[c.get("text") for c in r] for r in table.get("tableHeaders", [])]
         table["headers"] = headers

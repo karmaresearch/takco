@@ -137,6 +137,7 @@ class TableSet:
         restructure: bool = True,
         prefix_header_rules: typing.List[Config] = (),
         unpivot_configs: typing.List[Config] = (),
+        workdir: Path = None,
         centralize_pivots: bool = False,
         compound_splitter_config: Config = None,
         discard_headerless_tables: bool = False,
@@ -168,9 +169,13 @@ class TableSet:
         if unpivot_heuristics:
             log.info(f"Unpivoting with heuristics: {', '.join(unpivot_heuristics)}")
 
+            tables = tables.persist()
+
+            for name, h in tables.pipe(reshape.build_heuristics, heuristics=unpivot_heuristics):
+                unpivot_heuristics[name].merge(h)
+
             headerId_pivot = None
             if centralize_pivots:
-                tables.persist()
                 headers = tables.fold(reshape.table_get_headerId, reshape.get_header)
 
                 pivots = headers.pipe(
@@ -320,9 +325,6 @@ class TableSet:
             reduction = (len(tableid_colids)**2) / len(tablesim)
             log.info(f"Got {len(tablesim)} table similarities; {reduction:.0f}x reduction")
             # tablesim.to_csv(Path(workdir) / Path("tablesim.csv"))
-
-            import sys
-            sys.exit()
 
             louvain_partition = cluster.louvain(tablesim, edge_exp=edge_exp)
             nonsingle = [p for p in louvain_partition if len(p) > 1]
@@ -621,25 +623,6 @@ class TableSet:
         stepforce = None if (forcesteps == ()) else min(forcesteps, default=0)
         force = forcesteps == []
 
-        # Prepend input tables to pipeline
-        input_tables = input_tables or pipeline.get("input_tables")
-        if not input_tables:
-            raise Exception(f"No input tables specified in config or pipeline!")
-        if not isinstance(input_tables, list):
-            input_tables = [input_tables]
-        if any(isinstance(inp, Config) for inp in input_tables):
-            input_tables = input_tables[0]
-            input_tables["step"] = input_tables.pop("input")
-        else:
-            input_tables = Config({"step": "load", "path": input_tables})
-        log.info(f"Using input tables {input_tables}")
-        pipeline.setdefault("step", []).insert(0, input_tables)
-
-        if cache:
-            if force:
-                shutil.rmtree(conf["workdir"], ignore_errors=True)
-            Path(conf["workdir"]).mkdir(exist_ok=True, parents=True)
-
         def wrap_step(stepfunc, stepargs, stepdir):
             if cache:
                 shutil.rmtree(stepdir, ignore_errors=True)
@@ -687,9 +670,32 @@ class TableSet:
             else:
                 raise Exception(f"Pipeline step {si} has no step type")
 
+        
+        # Prepend input tables to pipeline
+        input_tables = input_tables or pipeline.get("input_tables")
+        if isinstance(input_tables, HashBag):
+            streams = [(Path(conf["workdir"]), input_tables)]
+        else:
+            if not input_tables:
+                raise Exception(f"No input tables specified in config or pipeline!")
+            if not isinstance(input_tables, list):
+                input_tables = [input_tables]
+            if any(isinstance(inp, Config) for inp in input_tables):
+                input_tables = input_tables[0]
+                input_tables["step"] = input_tables.pop("input")
+            else:
+                input_tables = Config({"step": "load", "path": input_tables})
+            log.info(f"Using input tables {input_tables}")
+            pipeline.setdefault("step", []).insert(0, input_tables)
+            streams = [(Path(conf["workdir"]), [])]
+
+        if cache:
+            if force:
+                shutil.rmtree(conf["workdir"], ignore_errors=True)
+            Path(conf["workdir"]).mkdir(exist_ok=True, parents=True)
+
         log.info(f"Running pipeline '{name}' in {workdir} using {executor}")
 
-        streams = [(Path(conf["workdir"]), [])]
         for si, args in enumerate(pipeline.get("step", [])):
             streams = [c for wd, ts in streams for c in chain_step(ts, wd, si, args)]
 
@@ -699,4 +705,4 @@ class TableSet:
                     pass
         else:
             _, tablesets = zip(*streams)
-            return tablesets[0].__class__.concat(tablesets)
+            return tablesets[0].tables.__class__.concat([t.tables for t in tablesets])
