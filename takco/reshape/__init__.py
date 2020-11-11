@@ -226,9 +226,9 @@ def try_unpivot(table, pivot, heuristics):
     except Exception as e:
         log.debug(f"Cannot pivot table {table.get('_id')} due to {e}")
 
+
 def build_heuristics(
-    tables: Iterator[Dict],
-    heuristics: Dict[str, PivotFinder],
+    tables: Iterator[Dict], heuristics: Dict[str, PivotFinder],
 ):
     for hname, heuristic in heuristics.items():
         yield hname, heuristic.build(tables)

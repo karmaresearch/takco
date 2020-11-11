@@ -4,6 +4,7 @@ import inspect
 import copy
 import typing
 import functools
+import itertools
 
 T = typing.TypeVar("T")
 
@@ -77,7 +78,6 @@ class Config(dict, typing.Generic[T]):
         else:
             return val
 
-
     def init_class(self, classes) -> T:
         if isinstance(self, dict) and "class" in self:
             self = Config(self)
@@ -119,14 +119,16 @@ def get_executor_kwargs(conf: Config, context):
     else:
         return HashBag, {}
 
+
 def robust_json_loads_lines(lines):
     docs = []
     for line in lines:
         try:
-            docs.append( json.loads(line) )
+            docs.append(json.loads(line))
         except Exception as e:
             log.warn(e)
     return docs
+
 
 class HashBag:
     """A flexible wrapper for computation streams."""
@@ -134,13 +136,17 @@ class HashBag:
     def __init__(self, it, wrap=lambda x: x, **kwargs):
         self.it = it
         self.wrap = wrap
-    
+
     def new(self, it):
         return HashBag(it, wrap=self.wrap)
 
     @classmethod
     def concat(cls, hashbags):
         return hashbags[0].new(x for hb in hashbags for x in hb.it)
+
+    def take(self, n):
+        self.it = itertools.islice(self.it, n)
+        return self
 
     def persist(self):
         self.it = list(self.wrap(self.it))
@@ -283,7 +289,7 @@ try:
 
         def start_client(self, **kwargs):
             global client
-            from dask.distributed import Client # type: ignore
+            from dask.distributed import Client  # type: ignore
 
             try:
                 self.client = Client(**kwargs)
@@ -303,7 +309,7 @@ try:
                 self.bag = db.from_sequence(it, npartitions=npartitions)
 
         def new(self, it):
-            return DaskHashBag(it, client=self.client)
+            return DaskHashBag(it, npartitions=self.bag.npartitions, client=self.client)
 
         @classmethod
         def load(cls, f, **kwargs):
@@ -312,14 +318,23 @@ try:
             if isinstance(f, TextIOBase):
                 return cls(robust_json_loads_lines(f), **kwargs)
             else:
-                return cls(db.read_text(f).map_partitions(robust_json_loads_lines), **kwargs)
+                return cls(
+                    db.read_text(f).map_partitions(robust_json_loads_lines), **kwargs
+                )
 
         @classmethod
         def concat(cls, hashbags):
             return hashbags[0].new(db.concat([hb.bag for hb in hashbags]))
 
+        def take(self, n):
+            self.bag = self.bag.take(n, npartitions=-1, compute=False)
+            return self
+
         def persist(self):
-            self.bag = self.bag.persist()
+            try:
+                self.bag = self.bag.persist()
+            except Exception as e:
+                log.error(e)
             return self
 
         def __iter__(self):
@@ -332,7 +347,7 @@ try:
                 try:
                     if newargs:
                         newargs = self.client.scatter(newargs, broadcast=True)
-                    if newkwargs:    
+                    if newkwargs:
                         newkwargs = self.client.scatter(newkwargs, broadcast=True)
                 except:
                     log.debug(f"Scattering for {func.__name__} failed!")
@@ -341,9 +356,7 @@ try:
             def listify(x, *args, **kwargs):
                 return list(func(x, *args, **kwargs))
 
-            return self.new(
-                self.bag.map_partitions(listify, *newargs, **newkwargs)
-            )
+            return self.new(self.bag.map_partitions(listify, *newargs, **newkwargs))
 
         def fold(self, key, binop, exe=None, keep_key=False):
             bag = self.bag.foldby(key, binop=binop)
@@ -424,10 +437,13 @@ def preview(tables, nrows=5, ntables=10, nchars=100, hide_correct_rows=False):
             n = nrows
 
         def cellchars(s):
-            return (s[:nchars] + ' (...)') if len(s) > nchars else s
+            return (s[:nchars] + " (...)") if len(s) > nchars else s
 
         table["tableData"] = table.get("tableData", [])
-        rows = [[cellchars(c.get("text","")) for c in r] for r in table.get("tableData", [])]
+        rows = [
+            [cellchars(c.get("text", "")) for c in r]
+            for r in table.get("tableData", [])
+        ]
         table["rows"] = rows[:n]
         headers = [[c.get("text") for c in r] for r in table.get("tableHeaders", [])]
         table["headers"] = headers

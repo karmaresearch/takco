@@ -14,7 +14,7 @@ class TypeCosMatcher(Matcher):
         fdir: Path = None,
         name=None,
         create=False,
-        exclude_types = ['https://www.w3.org/2001/XMLSchema#string'],
+        exclude_types=["https://www.w3.org/2001/XMLSchema#string"],
         **kwargs,
     ):
         self.name = name or self.__class__.__name__
@@ -38,7 +38,9 @@ class TypeCosMatcher(Matcher):
             for ci, c in zip(ci_range, range(table["numCols"])):
                 classes = table.get("classes", {}).get(str(c))
                 if classes:
-                    classes = {k:v for k,v in classes.items() if k not in self.exclude_types}
+                    classes = {
+                        k: v for k, v in classes.items() if k not in self.exclude_types
+                    }
                     norm = sum(v ** 2 for v in classes.values()) ** 0.5
                     self.coltypes.setdefault(ti, {})[ci] = (classes, norm)
 

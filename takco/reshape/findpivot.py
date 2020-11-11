@@ -86,7 +86,6 @@ class Pivot(NamedTuple):
 
 
 class PivotFinder:
-    
     def build(self, tables):
         return
 
@@ -305,13 +304,13 @@ class AttributePrefixFinder(PivotFinder):
 
     def build(self, tables):
         for t in tables:
-            att = str(t.get(self.attname, '')).lower()
+            att = str(t.get(self.attname, "")).lower()
             if att:
-                for hrow in t.get('tableHeaders'):
+                for hrow in t.get("tableHeaders"):
                     for hcell in hrow:
-                        celltext = hcell.get('text', '').lower()
+                        celltext = hcell.get("text", "").lower()
                         if celltext and len(celltext) > 1 and att.startswith(celltext):
-                            self.values.add( celltext )
+                            self.values.add(celltext)
         return self
 
     def merge(self, heuristic):
@@ -321,5 +320,5 @@ class AttributePrefixFinder(PivotFinder):
     def find_pivot_cells(self, headerrows):
         for ri, hrow in enumerate(headerrows):
             for ci, hcell in enumerate(hrow):
-                if hcell.get('text', '').lower() in self.values:
+                if hcell.get("text", "").lower() in self.values:
                     yield ri, ci

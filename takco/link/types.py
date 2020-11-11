@@ -1,7 +1,7 @@
 """
 This module is executable. Run ``python -m takco.link.types -h`` for help.
 """
-__all__ = ["SimpleTyper", "EntityTyper"]
+__all__ = ["SimpleTyper", "EntityTyper", "EntityBloom"]
 
 import logging as log
 import time
@@ -13,6 +13,7 @@ import math
 import decimal
 import enum
 from typing import Dict, List, Tuple
+from pathlib import Path
 
 from rdflib import URIRef, Literal
 
@@ -103,7 +104,7 @@ class SimpleTyper(Typer):
             # The first pattern to match gives the cell a type
             if YEAR_PATTERN.match(c):
                 counts[self.DATETIME] += 1
-            elif self._try_cast_float(c):
+            elif self._try_cast_float(c) != None:
                 counts[self.NUMBER] += 1
             elif l and not hasattr(l, "datatype"):
                 counts[self.ENTITY] += 1
@@ -198,7 +199,7 @@ class EntityTyper(SimpleTyper):
         supertype_prop=RDFSUBCLASS,
         cover_threshold=0.5,
         topn=None,
-        use_dateparser=False,
+        use_dateparser="dateutil",
     ):
         self.db = db
         self.type_prop = str(type_prop)
@@ -243,14 +244,58 @@ class EntityTyper(SimpleTyper):
         return types
 
 
+class EntityBloom(SimpleTyper):
+    """Find entity columns using bloom filter"""
+
+    def __init__(self, bloomfile: Path, threshold=0.5, use_dateparser="dateutil"):
+        self.bloomfile = bloomfile
+        self.threshold = threshold
+        self.use_dateparser = use_dateparser
+
+    def __enter__(self):
+        if not hasattr(self, "bloom"):
+            from pybloomfilter import BloomFilter
+
+            self.bloom = BloomFilter.open(self.bloomfile)
+        return self
+
+    def __exit__(self, *args):
+        if hasattr(self, "bloom"):
+            del self.bloom
+
+    @staticmethod
+    def create(infile, outfile, capacity: int, error_rate: float = 0.05):
+        import tqdm
+        import urllib
+        from pybloomfilter import BloomFilter
+
+        bf = BloomFilter(capacity, error_rate, outfile)
+        with open(infile) as f:
+            for _, word in enumerate(tqdm.tqdm(f, total=capacity)):
+                if "%" in word:
+                    word = urllib.parse.unquote(word).lower()
+                word = word.rstrip()
+                bf.add(word)
+
+        bf.close()
+
+    def coltype(self, cell_ents):
+        types = super().coltype(cell_ents)
+        if SimpleTyper.TEXT in types and cell_ents:
+            cells = (c.lower().strip() for c, _ in cell_ents)
+            cells = (c for c in cells if self._try_cast_float(c) == None and len(c) > 1)
+            n = sum(int(c in self.bloom) for c in cells)
+            score = n / len(cell_ents)
+            if score > self.threshold:
+                return {SimpleTyper.ENTITY: score}
+        return types
+
+
 if __name__ == "__main__":
     import defopt, json, os, typing
 
-    def make_entitybloom():
-        pass
-
     r = defopt.run(
-        [make_entitybloom],
+        {"entitybloom": EntityBloom.create},
         strict_kwonly=False,
         show_types=True,
         parsers={typing.Dict: json.loads},

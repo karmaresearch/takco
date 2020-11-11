@@ -14,3 +14,6 @@ from the Web!
    chartedIn
    clusters
    slurm
+   tabel
+   webtables
+   pivots

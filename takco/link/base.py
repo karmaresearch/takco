@@ -4,7 +4,7 @@ from typing import (
     Dict,
     Tuple,
     Optional,
-    Container,
+    Collection,
     NamedTuple,
     Any,
     Iterator,
@@ -53,19 +53,26 @@ class LiteralMatchResult(NamedTuple):
 
 
 class SearchResult(dict):
-    def __init__(self, uri: URI, about: Dict[URI, List[URI]] = None, score: int = 1):
+    def __init__(
+        self,
+        uri: URI,
+        about: Dict[URI, List[URI]] = None,
+        context_matches: Dict[int, Dict[URI, Collection[LiteralMatchResult]]] = None,
+        score: int = 1,
+    ):
         """An entity search result with optional score"""
         self.uri = uri
         self.update(about or {})
         self.score = score
+        self.context_matches = context_matches or {}
 
     def __repr__(self):
-        return f"SearchResult('{self.uri}', {dict(self)}, score={self.score})"
+        return f"SearchResult('{self.uri}', {dict(self)}, {self.context_matches}, score={self.score})"
 
 
 class Typer(Asset):
     def coltype(
-        self, cell_ents: Iterator[Tuple[str, Container[URI]]],
+        self, cell_ents: Iterator[Tuple[str, Collection[URI]]],
     ) -> Dict[str, int]:
         """Find column type for cells and their entities"""
         return {}
@@ -87,10 +94,10 @@ class Searcher(Asset):
 
     def search_entities(
         self,
-        query_contexts: Container[Tuple[str, Container[str]]],
+        query_contexts: Collection[Tuple[str, Collection[str]]],
         limit: int = 1,
         add_about: bool = False,
-    ) -> Container[Container[SearchResult]]:
+    ) -> Collection[Collection[SearchResult]]:
         """Search for entities using label queries.
 
         Args:
@@ -171,32 +178,36 @@ class Linker(Asset):
         existing_entities=None,
         col_classes=None,
         **kwargs,
-    ) -> Dict[Tuple[int, int], Container[SearchResult]]:
+    ) -> Dict[Tuple[int, int], Collection[SearchResult]]:
 
         existing_entities = existing_entities or {}
         col_classes = col_classes or {}
 
         rowcol_searchresults = {}
-        query_rowcols = {}
+        query_rowcols = []
         for ri, row in enumerate(rows):
             if (not skiprows) or (ri not in skiprows):
                 for ci, cell in enumerate(row):
-                    context = tuple(row[:ci] + row[ci + 1 :])
-                    query = (cell, context) if contextual else (cell, ())
+                    cis = tuple(range(0, ci)) + tuple(range(ci + 1, len(row)))
+                    context = {row[i]: i for i in cis}
+                    classes = col_classes.get(ci, [])
+                    params = {"context": context, "classes": classes}
+
+                    query = (cell, params) if contextual else (cell, ())
 
                     if (not usecols) or (ci in usecols):
                         existing = existing_entities.get(ci, {}).get(ri, {})
                         if not existing:
-                            query_rowcols.setdefault(query, set()).add((ri, ci))
+                            query_rowcols.append((query, (ri, ci)))
                         else:
                             rowcol_searchresults[(ri, ci)] = [
                                 SearchResult(e, score=score)
                                 for e, score in existing.items()
                             ]
-        allresults = self.searcher.search_entities(query_rowcols, **kwargs)
-        for (query, rowcols), results in zip(query_rowcols.items(), allresults):
-            for rowcol in rowcols:
-                rowcol_searchresults[rowcol] = results
+        queries, _ = zip(*query_rowcols)
+        allresults = self.searcher.search_entities(queries, **kwargs)
+        for (query, rowcol), results in zip(query_rowcols, allresults):
+            rowcol_searchresults[rowcol] = results
         return rowcol_searchresults
 
     def link(self, rows, usecols=None, skiprows=None, existing=None):

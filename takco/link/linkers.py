@@ -46,40 +46,36 @@ class First(Linker):
     def __exit__(self, *args):
         self.searcher.__exit__(*args)
 
-    def link(
+    def get_rowcol_searchresults_classes(
         self,
         rows: List[List[str]],
         usecols: Container[int] = None,
         skiprows: Container[int] = None,
-        existing: Dict = None,
-    ) -> Dict[str, Dict[str, Dict[str, float]]]:
+        entities: Dict = None,
+        classes: Dict = None,
+        **kwargs,
+    ):
+        classes = classes or {}
 
-        existing_entities = (existing or {}).get("entities", {})
-        existing_entities = {
-            int(ci): {int(ri): es for ri, es in res.items()}
-            for ci, res in existing_entities.items()
-        }
-        existing_classes = (existing or {}).get("classes", {})
-        existing_classes = {int(ci): cs for ci, cs in existing_classes.items()}
-
-        def get_rowcol_searchresults(col_classes):
-            return self.get_rowcol_searchresults(
+        def super_rowcol_searchresults(classes):
+            return Linker.get_rowcol_searchresults(
+                self,
                 rows,
                 limit=max(self.search_limit, self.limit),
                 contextual=self.contextual,
                 usecols=usecols,
                 skiprows=skiprows,
-                existing_entities=existing_entities,
+                existing_entities=entities or {},
                 add_about=self.add_about,
-                col_classes=col_classes,
+                col_classes=classes or {},
             )
 
-        rowcol_searchresults = get_rowcol_searchresults(existing_classes)
+        rowcol_searchresults = super_rowcol_searchresults(classes)
 
         # TODO: lookup facts about existing entities
 
         if self.majority_class:
-            # Keep track of the most frequent attribute of a certain predicate
+            # Keep track of the most frequent attribute of a class predicate
             ci_att_count = {}
             for (_, ci), results in rowcol_searchresults.items():
                 for result in results[:1]:
@@ -88,16 +84,15 @@ class First(Linker):
                         ci_att_count[ci][att] += 1
 
             ci_majoratt = {}
-            ci_classes = existing_classes
             for ci, att_count in ci_att_count.items():
                 ci_majoratt[ci] = max(att_count, key=att_count.get)
-                ci_classes[ci] = {ci_majoratt[ci]: att_count[ci_majoratt[ci]]}
+                classes[ci] = {ci_majoratt[ci]: att_count[ci_majoratt[ci]]}
 
             if self.majority_class_search:
-                log.debug(f"Re-searching {self} with classes {ci_classes}")
-                rowcol_searchresults = get_rowcol_searchresults(ci_classes)
+                log.debug(f"Re-searching {self} with classes {classes}")
+                rowcol_searchresults = super_rowcol_searchresults(classes)
             else:
-                log.debug(f"Filtering {self} with classes {ci_classes}")
+                log.debug(f"Filtering {self} with classes {classes}")
                 atts = lambda r: r.get(self.majority_class, [])
                 for (ri, ci), results in rowcol_searchresults.items():
                     rowcol_searchresults[(ri, ci)] = [
@@ -114,24 +109,64 @@ class First(Linker):
                     results = [r for r in results if not isbad(r)]
                 rowcol_searchresults[k] = results
 
-        entities = existing_entities
+        return rowcol_searchresults, classes
+
+    def link(
+        self,
+        rows: List[List[str]],
+        usecols: Container[int] = None,
+        skiprows: Container[int] = None,
+        existing: Dict = None,
+    ) -> Dict[str, Dict[str, Dict[str, float]]]:
+
+        entities = (existing or {}).get("entities", {})
+        entities = {
+            int(ci): {int(ri): es for ri, es in res.items()}
+            for ci, res in entities.items()
+        }
+        classes = (existing or {}).get("classes", {})
+        classes = {int(ci): cs for ci, cs in classes.items()}
+
+        rowcol_searchresults, classes = self.get_rowcol_searchresults_classes(
+            rows,
+            usecols=usecols,
+            skiprows=skiprows,
+            entities=entities,
+            classes=classes,
+        )
+
+        col_propertycol_count = {}
         for (ri, ci), results in rowcol_searchresults.items():
             results = results[: self.limit]
+
+            for r in results:
+                for toci, p_ms in r.context_matches.items():
+                    p_mscore = {p: max(m.score for m in ms) for p, ms in p_ms.items()}
+                    bestp, score = max(p_mscore.items(), key=lambda ps: ps[1])
+                    pcount = col_propertycol_count.setdefault(ci, {})
+                    pcount[(bestp, toci)] = pcount.get((bestp, toci), 0) + score
+
             if self.normalize:
                 total_score = sum(r.score for r in results)
                 results = [
-                    SearchResult(r.uri, r, r.score / total_score) for r in results
+                    SearchResult(r.uri, r, score=r.score / total_score) for r in results
                 ]
 
             for r in results:
                 ents = entities.setdefault(str(ci), {}).setdefault(str(ri), {})
                 ents[r.uri] = r.score
 
+        properties = {}
+        for ci, ps in col_propertycol_count.items():
+            bestp, toci = max(ps, key=lambda p: ps[p])
+            score = ps[(bestp, toci)] / len(entities[str(ci)])
+            properties[str(ci)] = {str(toci): {bestp: score}}
+
         if self.majority_class:
-            classes = {str(ci): c for ci, c in ci_classes.items()}
-            return {"entities": entities, "classes": classes}
+            classes = {str(ci): c for ci, c in classes.items()}
+            return {"entities": entities, "classes": classes, "properties": properties}
         else:
-            return {"entities": entities}
+            return {"entities": entities, "properties": properties}
 
 
 class Salient(Linker):
@@ -177,7 +212,7 @@ class Salient(Linker):
         self.contextual = contextual
 
         self.expand = expand
-        if (graph is None) and isinstance(searcher, GraphDB):
+        if graph is None:
             self.graph = searcher
         else:
             self.graph = graph
@@ -280,7 +315,9 @@ class Salient(Linker):
                                     matches = self.graph.label_match(o, celltext)
                                     for m in matches:
                                         log.debug(f"Matched {o} to {celltext}")
-                                        rs.append(SearchResult(str(o), {}, m.score))
+                                        rs.append(
+                                            SearchResult(str(o), {}, score=m.score)
+                                        )
                             rs = sorted(rs, key=lambda m: -m.score)
                             ci_ri_searchresults.setdefault(toci, {})[ri] = rs
 
@@ -302,7 +339,9 @@ class Salient(Linker):
                                         matches = self.graph.label_match(s, celltext)
                                         for m in matches:
                                             log.debug(f"Matched back {s} to {celltext}")
-                                            rs.append(SearchResult(str(s), {}, m.score))
+                                            rs.append(
+                                                SearchResult(str(s), {}, score=m.score)
+                                            )
                                 rs = sorted(rs, key=lambda m: -m.score)
                                 ci_ri_searchresults.setdefault(fromci, {})[ri] = rs
 

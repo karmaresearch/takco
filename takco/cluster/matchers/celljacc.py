@@ -10,6 +10,7 @@ from .. import cluster
 
 Cell = FrozenSet[str]
 
+
 class CellJaccMatcher(Matcher):
     """Jaccard similarity of table cells from header and/or body"""
 
@@ -38,19 +39,19 @@ class CellJaccMatcher(Matcher):
         if self.source in table:
             r = table[self.source]
             rows = zip(*[r if isinstance(r, list) else [r]])
-            ci_range = [table['tableIndex']]
+            ci_range = [table["tableIndex"]]
         else:
             if self.source != "head":
                 rows += table.get("tableData", [])
             if self.source != "body":
                 rows += table.get("tableHeaders", [])
-            
-            rows = [[c.get('text', '') for c in r] for r in rows]
+
+            rows = [[c.get("text", "") for c in r] for r in rows]
             ci_range = range(
                 table["columnIndexOffset"],
                 table["columnIndexOffset"] + table["numCols"],
             )
-        
+
         for row in rows:
             for ci, cell in zip(ci_range, row):
                 txt = frozenset(self.tokenize(cell))

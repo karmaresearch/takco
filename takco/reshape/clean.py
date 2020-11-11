@@ -79,14 +79,13 @@ def process_rowspanning_head_cells(table):
                     newTableCaptions.insert(0, cell)
             else:
                 newTableHeaders.insert(0, row)
-        
 
         table["tableHeaders"] = newTableHeaders
         table["numHeaderRows"] = len(table["tableHeaders"])
         tableCaptions = table.setdefault("tableCaptions", [])
         tableCaptions += newTableCaptions
     except:
-            pass
+        pass
 
 
 def restack_horizontal_schema_repeats(table):

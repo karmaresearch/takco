@@ -1,8 +1,9 @@
 from .dataset import *
 from .t2d import *
 from .semtab import *
+from .wdc import *
 
-__all__ = ["Dataset", "Annotation", "T2D", "Semtab", "load"]
+__all__ = ["Dataset", "Annotation", "T2D", "Semtab", "WebDataCommons", "load"]
 
 
 from pathlib import Path
@@ -13,6 +14,7 @@ import typing
 def load(resourcedir: Path = None, datadir: Path = None, **params):
     """Load a dataset from specification"""
     assert "class" in params, f"Dataset specification is missing `class`: {params}"
+    params = dict(params)
     classname = params.pop("class")
 
     resourcedir = resourcedir or Path(".").resolve()

@@ -80,7 +80,7 @@ class TableSet:
         params: Config,
         datadir: Path = None,
         resourcedir: Path = None,
-        sample: int = None,
+        take: int = None,
         withgold: bool = False,
         executor: Config = None,
         assets: typing.List[Config] = (),
@@ -94,17 +94,25 @@ class TableSet:
             params: Dataset parameters
             datadir: Data directory
             resourcedir: Resource directory
-            sample: Sample N tables
+            take: Use only first N tables
         """
         executor, exkw = get_executor_kwargs(executor, assets)
 
-        import itertools
-
         params = Config(params, assets)
         log.info(f"Loading dataset {params}")
-        ds = evaluate.dataset.load(resourcedir=resourcedir, datadir=datadir, **params)
-        it_sample = itertools.islice(ds.get_unannotated_tables(), sample)
-        return TableSet(executor(it_sample, **exkw))
+        ds = evaluate.dataset.load(
+            resourcedir=resourcedir,
+            datadir=datadir,
+            executor=executor,
+            exkw=exkw,
+            **params,
+        )
+        tables = ds.get_unannotated_tables()
+        if not isinstance(tables, HashBag):
+            tables = executor(tables, **exkw)
+        if take:
+            tables = tables.take(take)
+        return TableSet(tables)
 
     @classmethod
     def extract(
@@ -120,11 +128,13 @@ class TableSet:
         Args:
             source: Source of HTML files
         """
-        if isinstance(source, Config):
+        if isinstance(source, dict):
             source = Config.create(source, assets, pages.__dict__)
             htmlpages = source.get(executor, assets)
         elif isinstance(source, HashBag):
             htmlpages = source
+        elif isinstance(source, pages.PagesSource):
+            htmlpages = source.get(executor, assets)
         else:
             htmlpages = HashBag(source)
 
@@ -171,7 +181,9 @@ class TableSet:
 
             tables = tables.persist()
 
-            for name, h in tables.pipe(reshape.build_heuristics, heuristics=unpivot_heuristics):
+            for name, h in tables.pipe(
+                reshape.build_heuristics, heuristics=unpivot_heuristics
+            ):
                 unpivot_heuristics[name].merge(h)
 
             headerId_pivot = None
@@ -297,6 +309,11 @@ class TableSet:
 
             ## Partition table similarity graph
             tables = TableSet.number_table_columns(tables).persist()
+            if workdir:
+                get_table_id = lambda ts: [(t["_id"], t["tableIndex"]) for t in ts]
+                table_id = pd.Series(dict(tables.pipe(get_table_id)))
+                table_id.to_csv(Path(workdir) / Path("tableid.csv"))
+
             log.info(f"Building matchers: {', '.join(m.name for m in matchers)}")
             matchers = TableSet.build_matchers(matchers, tables)
             filters = TableSet.build_matchers(filters, tables)
@@ -305,6 +322,7 @@ class TableSet:
             tableid_colids = dict(tables.pipe(cluster.get_table_ids))
             log.info(f"Blocking tables; computing and aggregating column sims...")
 
+            # chunksize = round(10**4 / (len(tableid_colids) ** .5)) + 1
             tablesim = pd.concat(
                 tables.pipe(
                     cluster.get_tablesims,
@@ -322,17 +340,21 @@ class TableSet:
             itups = ((ti, ti) for ti in tableid_colids)
             ii = pd.MultiIndex.from_tuples(itups, names=["ti1", "ti2"])
             tablesim = pd.concat([tablesim, pd.Series(1, index=ii)])
-            reduction = (len(tableid_colids)**2) / len(tablesim)
-            log.info(f"Got {len(tablesim)} table similarities; {reduction:.0f}x reduction")
-            # tablesim.to_csv(Path(workdir) / Path("tablesim.csv"))
+            reduction = (len(tableid_colids) ** 2) / len(tablesim)
+            log.info(
+                f"Got {len(tablesim)} table similarities; {reduction:.0f}x reduction"
+            )
+            if workdir:
+                tablesim.to_csv(Path(workdir) / Path("tablesim.csv"))
 
             louvain_partition = cluster.louvain(tablesim, edge_exp=edge_exp)
             nonsingle = [p for p in louvain_partition if len(p) > 1]
             log.info(f"Found {len(nonsingle)}/{len(louvain_partition)} >1 partitions")
+            log.info(f"Largest partition has {max(map(len, louvain_partition))} tables")
 
             ## Cluster columns
             log.info(f"Clustering columns...")
-            chunks = tables.__class__(enumerate(nonsingle)).pipe(
+            chunks = tables.new(enumerate(nonsingle)).pipe(
                 cluster.cluster_partition_columns,
                 tableid_colids=tableid_colids,
                 matchers=matchers,
@@ -482,7 +504,11 @@ class TableSet:
         table_annot = dset.get_annotated_tables()
         log.info(f"Loaded {len(table_annot)} annotated tables")
 
-        pairs = tables.__class__([(t, table_annot.get(t["_id"], {})) for t in tables])
+        def with_gold(tables, annot):
+            for t in tables:
+                yield t, annot.get(t["_id"], {})
+
+        pairs = tables.pipe(with_gold, table_annot)
         tables = pairs.pipe(evaluate.table_score, keycol_only=keycol_only)
         return TableSet(tables)
 
@@ -569,7 +595,7 @@ class TableSet:
                     kind_novelty_hashes
                 )
 
-        return tables.__class__([data])
+        return tables.new([data])
 
     @classmethod
     def run(
@@ -670,7 +696,6 @@ class TableSet:
             else:
                 raise Exception(f"Pipeline step {si} has no step type")
 
-        
         # Prepend input tables to pipeline
         input_tables = input_tables or pipeline.get("input_tables")
         if isinstance(input_tables, HashBag):

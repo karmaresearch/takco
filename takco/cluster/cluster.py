@@ -149,14 +149,16 @@ def get_tablesims(
     with contextlib.ExitStack() as matcherstack:
         matchers = [matcherstack.enter_context(m) for m in matchers]
         filters = [matcherstack.enter_context(m) for m in filters]
-        
+
         tables = list(tables)
         total = len(tables)
-         # more tables --> smaller chunks
-        chunksize = round(10**4 / (len(tableid_colids) ** .5)) + 1
+        # more tables --> smaller chunks
+        chunksize = round(10 ** 4 / (len(tableid_colids) ** 0.5)) + 1
         for i in range(0, total, chunksize):
-            log.info(f"Making table similarities for {i}-{i+chunksize} / {total} tables")
-            chunk = tables[i:i + chunksize]
+            log.info(
+                f"Making table similarities for {i}-{i+chunksize} / {total} tables"
+            )
+            chunk = tables[i : i + chunksize]
             simdf = make_blocked_matches_df(chunk, tableid_colids, matchers, filters)
             if simdf is not None:
                 log.debug(f"Aggregating match similarities")
@@ -374,7 +376,9 @@ def yield_blocked_matches(
     block_size = pd.Series([len(b) for b in table_block.values()])
     total, mean, std = block_size.agg(["sum", "mean", "std"])
     reduction = worstcase / total
-    log.debug(f"Blocking found {total:.0f} pairs; {mean:.0f} ± {std:.0f} per table; {reduction:.0f}x reduction")
+    log.debug(
+        f"Blocking found {total:.0f} pairs; {mean:.0f} ± {std:.0f} per table; {reduction:.0f}x reduction"
+    )
 
     tableid_colids_pairs = {
         (ti1, ti2): ((ti1, partition_tableid_colids[ti1]), (ti2, tableid_colids[ti2]))
@@ -389,18 +393,22 @@ def yield_blocked_matches(
             pair_it = iter(tableid_colids_pairs.values())
             with timer.track(f"filter_{filt.name}"):
                 while True:
-                    chunk = tuple(itertools.islice(pair_it, 10 ** 6))  # chunk a million
+                    chunk = tuple(
+                        itertools.islice(pair_it, 10 ** 3)
+                    )  # chunk a thousand
                     if not chunk:
                         break
                     for (ti1, ti2, _, _), score in filt.match(chunk):
                         if score > 0:
                             pair = tableid_colids_pairs[(ti1, ti2)]
                             filtered_tableid_colids_pairs[(ti1, ti2)] = pair
-        
+
         filt_block_size = Counter(ti1 for ti1, _ in filtered_tableid_colids_pairs)
         total, mean, std = pd.Series(filt_block_size).agg(["sum", "mean", "std"])
         reduction = worstcase / total
-        log.debug(f"Filtered blocks to {total:.0f} pairs; {mean:.0f} ± {std:.0f} per table; {reduction:.0f}x reduction")
+        log.debug(
+            f"Filtered blocks to {total:.0f} pairs; {mean:.0f} ± {std:.0f} per table; {reduction:.0f}x reduction"
+        )
     else:
         filtered_tableid_colids_pairs = tableid_colids_pairs
 
@@ -408,7 +416,7 @@ def yield_blocked_matches(
         it = iter(filtered_tableid_colids_pairs.values())
         with timer.track(f"match_{matcher.name}"):
             while True:
-                chunk = tuple(itertools.islice(it, 10 ** 6))  # chunk a million
+                chunk = tuple(itertools.islice(it, 10 ** 3))  # chunk a thousand
                 if not chunk:
                     break
                 for indices, score in matcher.match(chunk):
@@ -472,11 +480,15 @@ def cluster_partition_columns(
             # Make a dataframe of all similarities
             def yield_tablepairs_matches():
                 for mi, matcher in enumerate(entered):
-                    pairs = progress(
-                        tableid_colids_pairs, f"Matching with {matcher.name}"
+                    it = iter(
+                        progress(tableid_colids_pairs, f"Matching with {matcher.name}")
                     )
-                    for indices, score in matcher.match(pairs):
-                        yield mi, indices, score
+                    while True:
+                        chunk = tuple(itertools.islice(it, 10 ** 3))  # chunk a thousand
+                        if not chunk:
+                            break
+                        for indices, score in matcher.match(chunk):
+                            yield mi, indices, score
 
             simscore = {mi: {} for mi, _ in enumerate(entered)}  # type: ignore
             for mi, indexes, score in yield_tablepairs_matches():
@@ -552,7 +564,9 @@ def merge_partition_tables(
     mergetable: dict,
     table: dict,
     mergeheaders_topn: int = None,
-    keep_partition_meta: Collection[Union[str, Callable[[Dict], Dict]]] = ["tableHeaders"],
+    keep_partition_meta: Collection[Union[str, Callable[[Dict], Dict]]] = [
+        "tableHeaders"
+    ],
 ) -> dict:
     """Merge tables within partition
 
@@ -575,7 +589,7 @@ def merge_partition_tables(
 
     def keep(partColAlign, table):
         for field in keep_partition_meta:
-            if type(field)==str:
+            if type(field) == str:
                 partColAlign[field] = copy.deepcopy(table.get(field))
             else:
                 partColAlign.update(copy.deepcopy(field(table)))

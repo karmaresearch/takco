@@ -79,15 +79,16 @@ class T2D(Dataset):
                 if iskey.lower() == "true":
                     table_keycol[name] = int(colnum)
 
+            keycol = table_keycol.get(name, -1)
             tocol_props = {}
             for row in rows:
                 if len(row) == 4:
                     uri, header, iskey, colnum = row
                 else:
                     uri, header, colnum = row
+                if str(keycol) != str(colnum):
+                    tocol_props[str(colnum)] = {fix_uri(uri): 1.0}
 
-                tocol_props[str(colnum)] = {fix_uri(uri): 1.0}
-            keycol = table_keycol.get(name, -1)
             table_properties[name] = {str(keycol): tocol_props} if tocol_props else {}
 
         # Classes

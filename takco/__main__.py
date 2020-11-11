@@ -73,6 +73,7 @@ class SetVerbosity(argparse.Action):
             log.getLogger().addHandler(log.FileHandler(logfile))
         log.info(f"Set log level to {log.getLogger().getEffectiveLevel()}")
 
+
 def main():
 
     funcs = (
@@ -96,7 +97,7 @@ def main():
             typing.Any: lambda _: None,
             Config: Config,
             HashBag: HashBag,
-            TableSet: load_tables
+            TableSet: load_tables,
         },
         argparse_kwargs={"description": __doc__},
     )

@@ -1,13 +1,20 @@
-from .util import Config, get_executor_kwargs, TqdmHashBag
+from .util import Config, get_executor_kwargs, TqdmHashBag, robust_json_loads_lines
 import typing
 import logging as log
 from pathlib import Path
 import glob
+from abc import ABC, abstractmethod
 
 from .link import *
 
 
-class WikiPages:
+class PagesSource(ABC):
+    @abstractmethod
+    def get(self, executor: Config = None, assets: typing.List[Config] = ()):
+        pass
+
+
+class WikiPages(PagesSource):
     """
     Download Wikipedia articles
 
@@ -85,7 +92,7 @@ class WikiPages:
         )
 
 
-class WarcPages:
+class WarcPages(PagesSource):
     """Load HTML pages from WARC files
 
     Args:
@@ -136,7 +143,7 @@ class WarcPages:
         return executor(fnames, **exkw).pipe(self.parse_warc)
 
 
-class LinePages:
+class LinePages(PagesSource):
     def __init__(
         self,
         globstrings: typing.List[str] = (),

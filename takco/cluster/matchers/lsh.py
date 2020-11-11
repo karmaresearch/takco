@@ -156,7 +156,7 @@ class LSHMatcher(Matcher):
 
         self.digests = np.array(self.digests_list)
         del self.digests_list
-        
+
         self.lshindex = self.make_lshindex()
         with self.lshindex.insertion_session() as session:
             ci_tidis = cluster.progress(self.ci_tidi.items(), f"Indexing {self.name}")

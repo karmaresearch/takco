@@ -19,7 +19,7 @@ import toml
 def default_tokenize(text):
     if text.startswith("_"):
         return [text]
-    return re.split(r"\W+", text.lower()) # pylint: disable=no-member
+    return re.split(r"\W+", text.lower())  # pylint: disable=no-member
 
 
 ScoredMatch = Tuple[Tuple[int, int, int, int], float]

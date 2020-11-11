@@ -44,22 +44,37 @@ tr.hidden {
         <tr>
             <th style="font-size:90%"><abbr title="Column Class">&#x2208;</abbr></th>
             {% for ci in range(table.rows[0] | length) %}
+                {% set cgold = gold.get('classes',{}).get((ci|string), {}) %}
+                <!-- cgold: {{cgold}} -->
+                {% set somecorrect = [] %}
                 <th>
                     {% set classes = table.classes[ci|string] %}
                     {% for cls in classes %}
-                        {% set cgold = gold.get('classes',{}).get((ci|string), {}) %}
                         {% set incorrect = cgold and (cls not in cgold) %}
-                        {% set noclass = (cls not in kbinfo) or not kbinfo[cls].inlinks or incorrect %}
+                        {% set noclass = (kbinfo and ((cls not in kbinfo) or not kbinfo[cls].inlinks)) or incorrect %}
                         <nobr class="{{'noent' if noclass else ''}}">
                             {% set score = classes.get(cls) %}
                             {% set cname = cls.split('/')[-1].split('#')[-1] %}
                             <a href="{{cls}}" data-id="{{cls}}" class="kblink" title="{{cls}} ({{'%.2f'%score}})">
                                 {{cname}}
-                                {% if incorrect %}❌{% endif %}
-                                {% if gold and not cgold %}❓{% endif %}
+                                {% if incorrect %}
+                                    ❌
+                                {% else %}
+                                    {% if gold and not cgold %}
+                                        ❓
+                                    {% else %}
+                                        {% if somecorrect.append(cname) %}{% endif %}
+                                    {% endif %}
+                                {% endif %}
                             </a>
                         </nobr>
                     {% endfor %}
+                    {% if not somecorrect %}
+                        {% for cls in cgold %}
+                            {% set cname = cls.split('/')[-1].split('#')[-1] %}
+                            <a href="{{cls}}" data-id="{{cls}}" class="kblink noent" title="{{cls}}">{{cname}}💡</a>
+                        {% endfor %}
+                    {% endif %}
                 </th>
             {% endfor %}
         </tr>
@@ -78,8 +93,10 @@ tr.hidden {
                 </th>
                 {% for toci in range(table.rows[0] | length) %}
                     {% set pgold = gold.get('properties',{}).get((fromci|string), {}).get((toci|string), {}) %}
+                    <!-- pgold: {{pgold}} -->
+                    {% set somecorrect = [] %}
                     {% set props = fromprops[toci|string] %}
-                    {% set noprops = not (props | lookup(kbinfo) | any) %}
+                    {% set noprops = (kbinfo and (not (props | lookup(kbinfo) | any))) %}
                     <th class="{{'noent' if noprops else ''}}">
                         {% for prop in props %}
                             {% set incorrect = pgold and (prop not in pgold) %}
@@ -88,11 +105,24 @@ tr.hidden {
                             <nobr class="{{'noent' if incorrect else ''}}">
                             <a href="{{prop}}" data-id="{{prop}}" class="kblink" title="{{prop}} ({{'%.2f'%score}})">
                                 {{pname}}
-                                {% if incorrect %}❌{% endif %}
-                                {% if gold and not pgold %}❓{% endif %}
+                                {% if incorrect %}
+                                    ❌
+                                {% else %}
+                                    {% if gold and not pgold %}
+                                        ❓
+                                    {% else %}
+                                        {% if somecorrect.append(cname) %}{% endif %}
+                                    {% endif %}
+                                {% endif %}
                             </a>
                             </nobr>
                         {% endfor %}
+                        {% if not somecorrect %}
+                            {% for prop in pgold %}
+                                {% set pname = prop.split('/')[-1].split('#')[-1] %}
+                                <a href="{{prop}}" data-id="{{prop}}" class="kblink noent" title="{{prop}}">{{pname}}💡</a>
+                            {% endfor %}
+                        {% endif %}
                     </th>
                 {% endfor %}
             </tr>

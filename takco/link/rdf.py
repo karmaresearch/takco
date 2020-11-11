@@ -98,9 +98,9 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
         self,
         store=None,
         language="en",
-        stringmatch="jaccard",
         refsort=True,
-        cellType: Typer = SimpleTyper,
+        typer: Typer = SimpleTyper(),
+        stringmatch="jaccard",
         encoding=None,
         labelProperties=[],
         typeProperties=[],
@@ -119,9 +119,9 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
         ]
 
         self.encoding = encoding
-        self.stringmatch = stringmatch
         self.refsort = refsort
-        self.cellType = cellType
+        self.typer = typer
+        self.stringmatch = stringmatch
 
         self.qualifierIDProperty = None
         if qualifierIDProperty:
@@ -141,8 +141,8 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
     def __exit__(self, *args):
         self.close()
 
-    def search_entities(self, query_contexts, limit=1, add_about=False):
-        for query, _ in query_contexts:
+    def search_entities(self, query_params, limit=1, add_about=False):
+        for query, _ in query_params:
             is_ascii = query == query.encode("ascii", errors="ignore").decode()
             if self.encoding and not is_ascii:
                 if self.encoding == "wikidata":
@@ -188,12 +188,10 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
             s = uri
             for lp in self.labelProperties:
                 for _, _, o in self.triples([s, lp, None]):
-                    for match in self.cellType.literal_match(
-                        o, surface, self.stringmatch
-                    ):
+                    for match in self.typer.literal_match(o, surface, self.stringmatch):
                         yield match
         else:
-            for match in self.cellType.literal_match(uri, surface, self.stringmatch):
+            for match in self.typer.literal_match(uri, surface, self.stringmatch):
                 yield match
 
     def _yield_qualified_statements_about(self, e):
@@ -245,7 +243,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
 
                                 if hasattr(o, "datatype"):
                                     for ci, txt in enumerate(celltexts):
-                                        for lm in self.cellType.literal_match(o, txt):
+                                        for lm in self.typer.literal_match(o, txt):
                                             qm = QualifierMatchResult(ci, (q, p, o), lm)
                                             qmatches.append(qm)
                                 else:

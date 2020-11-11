@@ -36,7 +36,7 @@ SETTINGS = {
         "properties": {
             "id": {"type": "keyword"},
             "type": {"type": "keyword"},
-            "context": {"type": "text", "norms": False},
+            "context.value": {"type": "text", "norms": False},
             "refs": {"type": "integer"},
             "surface": {
                 "type": "nested",
@@ -109,8 +109,8 @@ QUERY_SCRIPT = """
                     },
                     "should": [
                         {{#context}}
-                            {"match_phrase": {"context": {"query": "{{value}}", "boost": 0.2}}},
-                            {"match": {"context": {"query": "{{value}}", "boost": 0.2}}},
+                            {"match_phrase": {"context.value": {"query": "{{value}}", "boost": 0.2}}},
+                            {"match": {"context.value": {"query": "{{value}}", "boost": 0.2}}},
                         {{/context}}
                         {{#classes}}
                             {"term": {"type": {"value":"{{value}}", "boost":4}}},
@@ -120,7 +120,7 @@ QUERY_SCRIPT = """
                 }
             },
             "functions": [
-                {"field_value_factor": {"field": "refs", "modifier": "log1p"}}
+                {"field_value_factor": {"field": "refs", "modifier": "log1p", "missing": 0}}
             ],
             "boost_mode": "sum"
         }
@@ -142,6 +142,8 @@ class ElasticSearcher(Searcher):
         parts=True,
         prop_uri=None,
         prop_baseuri=None,
+        typer: Typer = SimpleTyper(),
+        stringmatch="jaccard",
         **_,
     ):
 
@@ -152,14 +154,12 @@ class ElasticSearcher(Searcher):
         self.parts = parts
         self.prop_uri = prop_uri or {}
         self.prop_baseuri = prop_baseuri or {}
+        self.typer = typer
+        self.stringmatch = stringmatch
 
     def __enter__(self):
         self.es = Elasticsearch(**self.es_kwargs)
         return self
-
-    def __exit__(self, *args):
-        if hasattr(self, "es"):
-            del self.es
 
     def _about(self, source):
         about = {}
@@ -181,17 +181,18 @@ class ElasticSearcher(Searcher):
         return {"id": "query", "params": {"query": query, **kwargs}}
 
     def search_entities(
-        self, query_contexts, classes=(), limit=1, add_about=False, ispart=False,
+        self, query_params, limit=1, add_about=False, ispart=False,
     ):
         # Simplify classes
-        query_contexts = tuple(query_contexts)
-        if not query_contexts:
+        query_params = tuple(query_params)
+        if not query_params:
             return
 
         bodies = []
-        for query, context in query_contexts:
-            context = [{"value": c} for c in context if not self.NUM.match(c)]
-            classes = [{"value": c.split("/")[-1]} for c in classes]
+        for query, params in query_params:
+            context, classes = params.get("context", []), params.get("classes", [])
+            context = [{"value": c} for c in (context or []) if not self.NUM.match(c)]
+            classes = [{"value": c.split("/")[-1]} for c in (classes or [])]
 
             body = self.make_query_body(
                 query, context=context, classes=classes, limit=limit
@@ -202,7 +203,8 @@ class ElasticSearcher(Searcher):
         esresponses = self.es.msearch_template(index=self.index, body=bodies).get(
             "responses", []
         )
-        for (query, context), esresponse in zip(query_contexts, esresponses):
+        for (query, params), esresponse in zip(query_params, esresponses):
+            context, classes = params.get("context", []), params.get("classes", [])
             results = []
             for hit in esresponse.get("hits", {}).get("hits", []):
                 uri = hit.get("_source", {}).get("id")
@@ -211,7 +213,24 @@ class ElasticSearcher(Searcher):
                 score = hit.get("_score", 0)
                 about = self._about(hit.get("_source", {}))
 
-                sr = SearchResult(uri, about, score=score)
+                context_matches = {}
+                if ("context" in about) and isinstance(context, dict):
+                    for ec in about["context"]:
+                        prop = ec.get("prop")
+                        if self.propbaseuri:
+                            prop = self.propbaseuri + prop
+                        vals = ec.get("value", [])
+                        for v in vals if isinstance(vals, list) else [vals]:
+                            for c, csource in context.items():
+                                for m in self.typer.literal_match(
+                                    v, c, self.stringmatch
+                                ):
+                                    pms = context_matches.setdefault(csource, {})
+                                    pms.setdefault(prop, []).append(m)
+
+                sr = SearchResult(
+                    uri, about, context_matches=context_matches, score=score
+                )
                 results.append(sr)
 
             if not results:
@@ -232,6 +251,7 @@ class ElasticSearcher(Searcher):
         input: Path = None,
         format: str = "ttl",
         surfaces: Path = None,
+        refcounts: Path = None,
         es_index: str = None,
         es_kwargs: typing.Dict = None,
         recreate: bool = True,
@@ -244,21 +264,23 @@ class ElasticSearcher(Searcher):
         extract_surface: bool = False,
         uri_ignore: str = None,
         surface_norm: str = "[^\s\w]",
+        context_label_threshold: float = 1,
     ):
         import re
 
-        baseuris = [re.compile(b) for b in baseuris]
-        uri_ignore = re.compile(uri_ignore) if uri_ignore else None
+        baseuris_re = [re.compile(b) for b in baseuris]
+        uri_ignore_re = re.compile(uri_ignore) if uri_ignore else None
+        ignore_uri = lambda uri: uri_ignore_re and uri_ignore_re.match(uri)
 
-        surface_norm = re.compile(surface_norm)
+        surface_norm_re = re.compile(surface_norm)
 
         def normalize_surface(s):
             if isinstance(s, dict):
                 s = "".join(s.values())
-            return surface_norm.sub(" ", s.replace("_", " ").lower()).strip()
+            return surface_norm_re.sub(" ", s.replace("_", " ").lower()).strip()
 
         def debase(uri):
-            for baseuri in baseuris:
+            for baseuri in baseuris_re:
                 uri = baseuri.sub("", uri)
             return uri
 
@@ -272,6 +294,19 @@ class ElasticSearcher(Searcher):
                     id, surf = line.split("\t", 1)
                     id = debase(ul.unquote_plus(id))
                     id_surfaceformscores[id] = json.loads(surf)
+                except Exception as e:
+                    print(e, file=sys.stderr)
+
+        id_refcount = {}
+        if refcounts and refcounts.exists():
+            import tqdm, json, sys
+            import urllib.parse as ul
+
+            for line in tqdm.tqdm(open(refcounts), desc="Loading refcounts"):
+                try:
+                    id, n = line.split("\t", 1)
+                    id = debase(ul.unquote_plus(id))
+                    id_refcount[id] = int(n)
                 except Exception as e:
                     print(e, file=sys.stderr)
 
@@ -301,9 +336,11 @@ class ElasticSearcher(Searcher):
                     id = parse_n3(s_n3)["id"]
                     statements = []
                     surface_score = {}
-                    for claim in claims.rstrip().rstrip(".").rstrip().split(" ; "):
+                    for claim in set(claims.rstrip().rstrip(".").rstrip().split(" ; ")):
                         p, o = claim.split(None, 1)
                         p, o = parse_n3(p)["id"], parse_n3(o)
+                        if " " in p:
+                            continue
                         if any(o.values()):
                             if p == uri_prefLabel and ("str" in o):
                                 surface_score[normalize_surface(o["str"])] = 1
@@ -335,31 +372,35 @@ class ElasticSearcher(Searcher):
         def stream():
             lines = parse_ttl(input) if format == "ttl" else parse_json(input)
             for id, surface_score, statements in lines:
-                if uri_ignore and uri_ignore.match(id):
+                if ignore_uri(id):
                     continue
 
                 if extract_surface:
                     surface_score[normalize_surface(id)] = 1
 
                 types = set()
-                context_statements = []
+                prop_context = {}
+                filtered_statements = []
                 for st in statements:
-                    if uri_ignore and uri_ignore.match(st.get("id", "")):
+                    if ignore_uri(st.get("id", "")):
                         continue
 
                     if st.get("prop") == uri_type and ("id" in st):
                         types.add(st["id"])
                     else:
-                        if "id" in st:
-                            st["str"] = set()
+                        filtered_statements.append(st)
+                        if "id" in st and "prop" in st:
+                            vals = set()
                             if extract_surface:
-                                st["str"].add(normalize_surface(st["id"]))
-                            for l in id_surfaceformscores.get(st.get("id"), []):
-                                st["str"].add(l)
-                            st["str"] = list(st["str"])
-                            if not st["str"]:
-                                del st["str"]
-                        context_statements.append(st)
+                                vals.add(normalize_surface(st["id"]))
+                            for l, ls in id_surfaceformscores.get(st["id"], {}).items():
+                                if ls >= context_label_threshold:
+                                    vals.add(l)
+                            if vals:
+                                prop_context.setdefault(st["prop"], set()).update(vals)
+                context = [
+                    {"prop": p, "value": list(vs)} for p, vs in prop_context.items()
+                ]
 
                 surface_score.update(id_surfaceformscores.get(id, {}))
 
@@ -369,8 +410,9 @@ class ElasticSearcher(Searcher):
                     "surface": [
                         {"value": l, "score": c} for l, c in surface_score.items()
                     ],
-                    "statements": list(context_statements),
-                    # "refs": db.count_o(s),
+                    "statements": filtered_statements,
+                    "context": context,
+                    **({"refs": id_refcount[id]} if id in id_refcount else {}),
                 }
 
         if es_index:
@@ -381,10 +423,7 @@ class ElasticSearcher(Searcher):
             es = Elasticsearch(timeout=1000, **es_kwargs)
 
             if recreate:
-                es.indices.delete(index=es_index, ignore=[400, 404])
-                print("Creating index...", file=sys.stderr)
-                es.indices.create(index=es_index, body=SETTINGS)
-                cls.store_template(index=es_index, es_kwargs=es_kwargs)
+                cls.init_index(es_index=es_index, es_kwargs=es_kwargs)
 
             results = helpers.parallel_bulk(
                 es,
@@ -416,10 +455,12 @@ class ElasticSearcher(Searcher):
         es_kwargs = es_kwargs or {}
         with cls(index, es_kwargs=es_kwargs) as es:
             queries = [(q, ()) for q in query]
-            return json.dumps(list(es.search_entities(queries, limit=limit)))
+            for es in es.search_entities(queries, limit=limit):
+                for e in es:
+                    print(json.dumps(e))
 
     @classmethod
-    def store_template(cls, index: str, es_kwargs: typing.Dict = None):
+    def store_template(cls, es_kwargs: typing.Dict = None):
         es_kwargs = es_kwargs or {}
         body = {"script": {"lang": "mustache", "source": QUERY_SCRIPT}}
         host = es_kwargs.get("host", "localhost")
@@ -427,6 +468,17 @@ class ElasticSearcher(Searcher):
         import requests
 
         return requests.post(f"http://{host}:{port}/_scripts/query", json=body).text
+
+    @classmethod
+    def init_index(cls, es_index: str, es_kwargs: typing.Dict = ()):
+        import sys
+
+        es_kwargs = dict(es_kwargs)
+        es = Elasticsearch(timeout=1000, **es_kwargs)
+        es.indices.delete(index=es_index, ignore=[400, 404])
+        print("Creating index...", file=sys.stderr)
+        es.indices.create(index=es_index, body=SETTINGS)
+        print(cls.store_template(es_kwargs=es_kwargs))
 
 
 class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
@@ -441,8 +493,8 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
         }
     }
 
-    def __init__(self, cellType: Typer = SimpleTyper, cache=False, *args, **kwargs):
-        self.cellType = cellType
+    def __init__(self, typer: Typer = SimpleTyper(), cache=False, *args, **kwargs):
+        self.typer = typer
         self.cache = {} if cache else ()
         ElasticSearcher.__init__(self, *args, **kwargs)
         GraphDB.__init__(self)
@@ -607,9 +659,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
 
                                         o = Literal(o)
                                         for ci, txt in enumerate(celltexts):
-                                            for lm in self.cellType.literal_match(
-                                                o, txt
-                                            ):
+                                            for lm in self.typer.literal_match(o, txt):
                                                 qm = QualifierMatchResult(
                                                     ci, (None, p, o), lm
                                                 )
@@ -684,6 +734,7 @@ if __name__ == "__main__":
             ElasticSearcher.create,
             ElasticSearcher.test,
             ElasticSearcher.store_template,
+            ElasticSearcher.init_index,
             ElasticDB.db_docs,
         ],
         strict_kwonly=False,
