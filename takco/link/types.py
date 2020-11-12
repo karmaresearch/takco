@@ -201,6 +201,7 @@ class EntityTyper(SimpleTyper):
         topn=None,
         use_dateparser="dateutil",
     ):
+        assert isinstance(db, Database)
         self.db = db
         self.type_prop = str(type_prop)
         self.supertype_prop = str(supertype_prop) if supertype_prop else None

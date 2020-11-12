@@ -1,7 +1,7 @@
 import logging as log
 
 from .headers import table_get_headerId, get_headerId, get_header
-from .compound import SpacyCompoundSplitter
+from .compound import CompoundSplitter, SpacyCompoundSplitter
 from .findpivot import *
 from .clean import (
     init_captions,

@@ -6,119 +6,6 @@ import typing
 import functools
 import itertools
 
-T = typing.TypeVar("T")
-
-
-class Config(dict, typing.Generic[T]):
-    """A wrapper for json or toml configuration hashes.
-    Reads a file or a string.
-    Resolves ``{name=x}`` hashes from kwargs.
-    """
-
-    def __init__(self, val, context=None):
-        from pathlib import Path
-        import logging as log
-        import toml, json
-
-        if not val:
-            return
-
-        context = {c.get("name", c.get("class")): Config(c) for c in (context or [])}
-
-        if isinstance(val, dict):
-            val = dict(val)
-            if context and ("resolve" in val):
-                if val["resolve"] in context:
-                    self.update(context[val.pop("resolve")])
-                else:
-                    raise Exception(
-                        f'Error resolving config: cannot find {val["resolve"]} in {context}'
-                    )
-            self.update(
-                {
-                    k: Config(v, context=context.values()) if isinstance(v, dict) else v
-                    for k, v in val.items()
-                }
-            )
-        elif isinstance(val, str) and val in context:
-            self["name"] = val
-            self.update(context[val])
-        else:
-            config_parsers = {
-                "json-file": lambda val: {
-                    "name": Path(val).name.split(".")[0],
-                    **json.load(Path(val).open()),
-                },
-                "toml-file": lambda val: {
-                    "name": Path(val).name.split(".")[0],
-                    **toml.load(Path(val).open()),
-                },
-                "json-string": json.loads,
-                "toml-string": toml.loads,
-            }
-            attempts = {}
-            for cpi, config_parse in config_parsers.items():
-                try:
-                    self.__init__(config_parse(val), context=context.values())
-                    break
-                except Exception as e:
-                    attempts[cpi] = e
-            if not len(self):
-                log.warn(f"Skipped config: {val} (context: {context})")
-                for cpi, e in attempts.items():
-                    log.debug(f"Did not parse {val} with parser {cpi} due to error {e}")
-                self["name"] = val
-
-    @classmethod
-    def create(cls, val, context, classes, **kwargs):
-        if isinstance(val, list):
-            return [cls.create(v, context, classes, **kwargs) for v in val]
-        elif isinstance(val, dict):
-            return cls({**val, **kwargs}, context).init_class(classes)
-        else:
-            return val
-
-    def init_class(self, classes) -> T:
-        if isinstance(self, dict) and "class" in self:
-            self = Config(self)
-            if inspect.isclass(classes.get(self["class"])):
-                cls = classes[self.pop("class")]
-                cls_params = inspect.signature(cls).parameters
-                cls_has_kwargs = any(
-                    p.kind == inspect.Parameter.VAR_KEYWORD for p in cls_params.values()
-                )
-
-                kwargs = {
-                    k: Config.init_class(v, classes)
-                    for k, v in self.items()
-                    if (k in cls_params) or cls_has_kwargs
-                }
-                obj = cls(**kwargs)
-                if "name" in self:
-                    obj.name = self["name"]
-                return obj
-            else:
-                raise Exception(f'CONFIG ERROR: Cannot find class "{self["class"]}" !')
-        else:
-            return self
-
-
-def get_executor_kwargs(conf: Config, context):
-    """Get executor configuration"""
-    if conf:
-        conf = Config(conf, context)
-
-        if isinstance(conf, dict):
-            if "class" in conf:
-                cls = globals().get(conf.pop("class"))
-                return cls, conf
-            elif "name" in conf:
-                return globals().get(conf.pop("name"), HashBag), {}
-        else:
-            return globals().get(str(conf), HashBag), {}
-    else:
-        return HashBag, {}
-
 
 def robust_json_loads_lines(lines):
     docs = []
@@ -133,7 +20,7 @@ def robust_json_loads_lines(lines):
 class HashBag:
     """A flexible wrapper for computation streams."""
 
-    def __init__(self, it, wrap=lambda x: x, **kwargs):
+    def __init__(self, it=(), wrap=lambda x: x, **kwargs):
         self.it = it
         self.wrap = wrap
 
@@ -261,7 +148,7 @@ try:
     class TqdmHashBag(HashBag):
         """A HashBag that displays `tqdm <https://tqdm.github.io/>`_ progress bars."""
 
-        def __init__(self, it, **kwargs):
+        def __init__(self, it=(), **kwargs):
             def wrap(it):
 
                 # Get calling function
@@ -296,7 +183,7 @@ try:
             except Exception as e:
                 log.warn(e)
 
-        def __init__(self, it, npartitions=None, client=None, **kwargs):
+        def __init__(self, it=(), npartitions=None, client=None, **kwargs):
             self.client = client
             if kwargs:
                 self.start_client(**kwargs)

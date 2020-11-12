@@ -34,41 +34,41 @@ address = 'tcp://192.168.62.207:8686'
 
 [[assets]]
 name = 'wikidata-trident'
-class = 'RDFSearcher'
+class = 'link.RDFSearcher'
 encoding = 'wikidata'
 typeProperties = ['http://www.wikidata.org/prop/direct/P31']
     [assets.store]
-    class = 'Trident'
+    class = 'link.Trident'
     configuration = 'data/wikidata.tridentdb'
 
 [[assets]]
 name  = 'wikidata-live'
-class = 'RDFSearcher'
+class = 'link.RDFSearcher'
 typeProperties = ['http://www.wikidata.org/prop/direct/P31']
     [assets.store]
-    class = 'SparqlStore'
+    class = 'link.SparqlStore'
     configuration = 'https://query.wikidata.org/sparql'
 
 [[assets]]
 name  = 'wikidata-hdt'
-class = 'RDFSearcher'
+class = 'link.RDFSearcher'
 encoding = 'wikidata'
 typeProperties = ['http://www.wikidata.org/prop/direct/P31']
     [assets.store]
-    class = 'HDTStore'
+    class = 'link.HDTStore'
     path = '/var/scratch/bbkruit/wikidata20200309.hdt'
     
 
 [[assets]]
 name = 'wiki-sqlite'
-class = 'SQLiteLookup'
+class = 'link.SQLiteLookup'
 sqlite_kwargs = {timeout = 60.0}
 sqlitedb = 'data/wdid_wpname.sqlitedb'
 baseuri = 'http://www.wikidata.org/entity/Q'
 
 [[assets]]
 name = 'wikidata-elastic'
-class = 'ElasticDB'
+class = 'link.ElasticDB'
 cache = true
 es_kwargs.hosts = ['bricks07:9200']
 index='test-wd-statements,test-wd-wikilookup'
@@ -77,7 +77,7 @@ propbaseuri='http://www.wikidata.org/prop/direct/P'
 
 [[assets]]
 name = 'wikidata-cache'
-class = 'SQLiteDB'
+class = 'link.SQLiteDB'
 sqlite_kwargs = {timeout = 60.0}
 sqlitedb = 'data/wikidata-cache.sqlitedb'
 baseuri='http://www.wikidata.org/entity/Q'

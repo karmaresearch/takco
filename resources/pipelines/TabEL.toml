@@ -24,28 +24,27 @@ resolve = 'wikidata-trident'
 ## Pipeline ##
 
 [input_tables]
-input = 'load'
-path = 'hdfs://bricks07:9000/user/kruit/tabel/*0-*'
-executor = {class = 'DaskHashBag', address = 'tcp://192.168.62.207:8786'}
+path = 'hdfs://bricks07:9000/user/kruit/tabel/1-aa'
+# executor = {class = 'DaskHashBag', address = 'tcp://192.168.62.207:8786'}
 
 [[step]]
 step = 'reshape'
 restructure = true
-prefix_header_rules = [{find='Precededby ',header='Preceded by'}, {find='Succeededby ',header='Succeeded by'}]
-compound_splitter_config = {class = "SpacyCompoundSplitter"}
+prefix_header_rules = [{find='Precededby ', header='Preceded by'}, {find='Succeededby ', header='Succeeded by'}]
+# compound_splitter = {class = "reshape.SpacyCompoundSplitter"}
 discard_headerless_tables = true
 
-    [[step.unpivot_configs]]
-    class = 'NumSuffix'
+    [[step.unpivot_heuristics]]
+    class = 'reshape.NumSuffix'
     
-    [[step.unpivot_configs]]
-    class = 'SeqPrefix'
+    [[step.unpivot_heuristics]]
+    class = 'reshape.SeqPrefix'
     
-    [[step.unpivot_configs]]
-    class = 'SpannedRepeat'
+    [[step.unpivot_heuristics]]
+    class = 'reshape.SpannedRepeat'
     
-    [[step.unpivot_configs]]
-    class = 'AgentLikeHyperlink'
+    [[step.unpivot_heuristics]]
+    class = 'reshape.AgentLikeHyperlink'
     lookup = {resolve = 'lookup'}
     kb = {resolve = 'linker'}
     bad_types = [
@@ -57,8 +56,8 @@ discard_headerless_tables = true
         'http://www.wikidata.org/prop/direct/P1687',
     ]
 
-    [[step.unpivot_configs]]
-    class = 'AttributePrefixFinder'
+    [[step.unpivot_heuristics]]
+    class = 'reshape.AttributePrefixFinder'
     attname = 'pgTitle'
 
 [[step]]
@@ -69,15 +68,14 @@ headerunions = true
 
 [[step]]
 step = 'link'
-linker_config = {}
 lookup_cells = true
-lookup_config = {resolve = 'wiki-sqlite'}
+lookup = {resolve = 'wiki-sqlite'}
 
     
 [[step]]
 step = 'coltypes'
-    [step.typer_config]
-    class = 'EntityTyper'
+    [step.typer]
+    class = 'link.EntityTyper'
     db = {resolve = 'linker'}
     type_prop = 'http://www.wikidata.org/prop/direct/P31'
     supertype_prop = 'http://www.wikidata.org/prop/direct/P279'
@@ -94,53 +92,53 @@ edge_exp = 6
 agg_threshold_col = 0.1
 keep_partition_meta = ['_id', 'tableHeaders', 'tableData', 'entities', 'classes']
 mergeheaders_topn = 1
+max_cluster_size = 250
 
-    [[step.filter_configs]]
+    [[step.filters]]
     name  = 'section'
-    class = 'CellJaccMatcher'
+    class = 'cluster.matchers.CellJaccMatcher'
     source='sectionTitle'
     
-    [[step.matcher_configs]]
+    [[step.matchers]]
     name  = 'headjacc'
-    class = 'CellJaccMatcher'
+    class = 'cluster.matchers.CellJaccMatcher'
     source = 'head'
     
-    [[step.matcher_configs]]
+    [[step.matchers]]
     name  = 'headvec'
-    class = 'EmbeddingMatcher'
+    class = 'cluster.matchers.EmbeddingMatcher'
     source = 'head'
     wordvec_fname = './data/glove.6B.50d.pickle'
     threshold = 0.5
 
-    [[step.matcher_configs]]
+    [[step.matchers]]
     name  = 'bodylsh'
-    class = 'LSHMatcher'
+    class = 'cluster.matchers.LSHMatcher'
     source = 'body'
     threshold = 0.5
     
-    [[step.matcher_configs]]
+    [[step.matchers]]
     name  = 'bodyvec'
-    class = 'EmbeddingMatcher'
+    class = 'cluster.matchers.EmbeddingMatcher'
     source = 'body'
     wordvec_fname = './data/glove.6B.50d.pickle'
     threshold = 0.5
     
-    [[step.matcher_configs]]
+    [[step.matchers]]
     name  = 'bodytype'
-    class = 'TypeCosMatcher'
+    class = 'cluster.matchers.TypeCosMatcher'
 
 [[step]]
 step = 'link'
-linker_config = {}
 lookup_cells = true
-lookup_config = {resolve = 'wiki-sqlite'}
+lookup = {resolve = 'wiki-sqlite'}
 
 [[step]]
 step = 'integrate'
 pfd_threshold = 0.95
-db_config = {resolve = 'linker'}
-    [step.typer_config]
-    class = 'EntityTyper'
+db = {resolve = 'linker'}
+    [step.typer]
+    class = 'link.EntityTyper'
     db = {resolve = 'linker'}
     type_prop = 'http://www.wikidata.org/prop/direct/P31'
     supertype_prop = ''

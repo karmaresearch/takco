@@ -1,20 +1,20 @@
-from .util import Config, get_executor_kwargs, TqdmHashBag, robust_json_loads_lines
+from .util import HashBag, TqdmHashBag, robust_json_loads_lines
 import typing
 import logging as log
 from pathlib import Path
 import glob
 from abc import ABC, abstractmethod
 
-from .link import *
+from . import link
 
 
-class PagesSource(ABC):
+class PageSource(ABC):
     @abstractmethod
-    def get(self, executor: Config = None, assets: typing.List[Config] = ()):
+    def get(self, executor: HashBag = HashBag([])):
         pass
 
 
-class WikiPages(PagesSource):
+class WikiPages(PageSource):
     """
     Download Wikipedia articles
 
@@ -31,7 +31,7 @@ class WikiPages(PagesSource):
 
     def __init__(
         self,
-        db: Database,
+        db: link.Database,
         pred: str = None,
         obj: str = None,
         urlprefix: str = "https://en.wikipedia.org/wiki/",
@@ -79,20 +79,15 @@ class WikiPages(PagesSource):
                     "html": result.text,
                 }
 
-    def get(
-        self, executor: Config = None, assets: typing.List[Config] = (),
-    ):
-        executor, exkw = get_executor_kwargs(executor, assets)
+    def get(self, executor: HashBag = HashBag([])):
         ent_abouturl = self.ent_abouturl
         if self.justurls:
             return ({"entity": e, "page": url} for e, url in ent_abouturl)
         log.info(f"Downloading {len(ent_abouturl)} pages with executor {executor}")
-        return executor(ent_abouturl, **exkw).pipe(
-            self.download, encoding=self.encoding
-        )
+        return executor.new(ent_abouturl).pipe(self.download, encoding=self.encoding)
 
 
-class WarcPages(PagesSource):
+class WarcPages(PageSource):
     """Load HTML pages from WARC files
 
     Args:
@@ -102,7 +97,9 @@ class WarcPages(PagesSource):
     """
 
     def __init__(
-        self, globstrings: typing.List[str] = (), datadir: Path = None,
+        self,
+        globstrings: typing.Union[str, typing.List[str]],
+        datadir: Path = None,
     ):
         if not isinstance(globstrings, list):
             globstrings = [globstrings]
@@ -114,7 +111,7 @@ class WarcPages(PagesSource):
     @staticmethod
     def parse_warc(fnames):
         """Yield html pages from WARC files"""
-        from warcio.archiveiterator import ArchiveIterator
+        from warcio.archiveiterator import ArchiveIterator # type: ignore
 
         for fname in fnames:
             with open(fname, "rb") as stream:
@@ -132,23 +129,20 @@ class WarcPages(PagesSource):
                             "html": text,
                         }
 
-    def get(
-        self, executor: Config = None, assets: typing.List[Config] = (),
-    ):
-        executor, exkw = get_executor_kwargs(executor, assets)
+    def get(self, executor: HashBag = HashBag([])):
         fnames = self.fnames
         log.info(
             f"Extracting pages from {len(fnames)} warc files using executor {executor}"
         )
-        return executor(fnames, **exkw).pipe(self.parse_warc)
+        return executor.new(fnames).pipe(self.parse_warc)
 
 
-class LinePages(PagesSource):
+class LinePages(PageSource):
     def __init__(
         self,
-        globstrings: typing.List[str] = (),
+        globstrings: typing.Union[str, typing.List[str]],
         datadir: Path = None,
-        lookup_config: Config = None,
+        lookup: link.Lookup = None,
         title_regex: str = None,
     ):
         if not isinstance(globstrings, list):
@@ -158,7 +152,7 @@ class LinePages(PagesSource):
         assert len(fnames), f"No glob results for {globstrings}"
         self.fnames = fnames
 
-        self.lookup = lookup_config
+        self.lookup = lookup
 
         import re
 
@@ -200,13 +194,11 @@ class LinePages(PagesSource):
             lookup.__exit__(None, None, None)
 
     def get(
-        self, executor: Config = None, assets: typing.List[Config] = (),
+        self, executor: HashBag = HashBag([]),
     ):
-        executor, exkw = get_executor_kwargs(executor, assets)
         fnames = self.fnames
         log.info(
             f"Extracting pages from {len(fnames)} line files using executor {executor}"
         )
-        return executor(fnames, **exkw).pipe(
-            self.parse_line, self.lookup, self.title_regex
-        )
+        return executor.new(fnames).pipe(self.parse_line, self.lookup, self.title_regex)
+

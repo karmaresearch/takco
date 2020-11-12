@@ -1,39 +1,41 @@
-"""
-tacko is a modular system for extracting knowledge from tables.
-"""
-__version__ = "0.1.0"
-
-import typing
-from pathlib import Path
+import json
+import os
+import sys
+import inspect
+import argparse
 import logging as log
-import os, sys, defopt, json, toml, types, argparse
+import types
+from pathlib import Path
+from typing import (
+    Dict,
+    Any
+)
 
-from . import *
-from .util import *
+import toml
+import defopt # type: ignore
 
-config = {}
+import takco
+from takco import TableSet, HashBag
+from . import config
 
-
-def load_tables(s):
-    global config
-    return TableSet.load(s, **config)
-
+assets : Dict[str, Any] = {}
 
 class SetConfig(argparse.Action):
     def __init__(self, option_strings, dest, nargs="?", **kwargs):
         super(SetConfig, self).__init__(option_strings, dest, nargs="?", **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None):
-        global config
-        config = {}
+        global assets
         if self.dest and values:
-            conf = Config(values)
-            if conf:
-                config.update(conf)
-                log.info(f"Loaded config {conf}")
+            conf = config.parse(values)
+            if isinstance(conf, dict) and conf:
+                assets.update(conf)
+                log.debug(f"Loaded config {conf}")
+            else:
+                raise Exception(f'Could not parse config {values}!')
         else:
-            config.update(os.environ)
-            log.info(f"Loaded config from environment")
+            assets.update(os.environ)
+            log.debug(f"Loaded config from environment")
 
 
 class SetExecutor(argparse.Action):
@@ -43,10 +45,9 @@ class SetExecutor(argparse.Action):
         super(SetExecutor, self).__init__(option_strings, dest, nargs="?", **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None):
-        global config
-        config = config or {}
+        global assets
         if self.dest:
-            config["executor"] = values or self.DEFAULT
+            assets["executor"] = values or self.DEFAULT
             setattr(namespace, "executor", values or self.DEFAULT)
 
 
@@ -73,7 +74,6 @@ class SetVerbosity(argparse.Action):
             log.getLogger().addHandler(log.FileHandler(logfile))
         log.info(f"Set log level to {log.getLogger().getEffectiveLevel()}")
 
-
 def main():
 
     funcs = (
@@ -89,15 +89,27 @@ def main():
         TableSet.triples,
     )
 
+    def getclasses(mod):
+        for _, obj in inspect.getmembers(mod):
+            if isinstance(obj, type):
+                if obj.__module__.startswith(mod.__name__):
+                    yield obj
+            elif isinstance(obj, types.ModuleType):
+                if hasattr(obj, '__name__') and obj.__name__.startswith(mod.__name__):
+                    yield from getclasses(obj)
+
     parser = defopt._create_parser(
         funcs,
         strict_kwonly=False,
         parsers={
-            typing.Dict: json.loads,
-            typing.Any: lambda _: None,
-            Config: Config,
+            Dict: config.parse,
+            Any: lambda _: None,
+            **{
+                cls: lambda x: config.build(config.resolve(config.parse(x), assets), base='takco')
+                for cls in getclasses(takco)
+            },
             HashBag: HashBag,
-            TableSet: load_tables,
+            TableSet: lambda x: load_tables(**config.build(config.resolve(config.parse(x), assets)), base='takco'),
         },
         argparse_kwargs={"description": __doc__},
     )
@@ -130,12 +142,7 @@ def main():
                 )
 
     args = parser.parse_args(sys.argv[1:])
-    for k, v in config.items():
-        if isinstance(v, list):
-            setattr(args, k, v + list(args.__dict__.get(k, [])))
-        else:
-            setattr(args, k, v)
-
+    
     # Output result as json (or newline-delimited json if generator)
     result = defopt._call_function(parser, args._func, args)
     if result:
@@ -148,7 +155,7 @@ def main():
                 log.info(f"Writing {result} to {out}")
                 for _ in result.dump(out):
                     pass
-            elif isinstance(result, (types.GeneratorType, map, filter)):
+            elif isinstance(result, (types.GeneratorType, map, filter)): # type: ignore
                 for r in result:
                     print(json.dumps(r))
             else:
@@ -162,7 +169,6 @@ def main():
                 pass
     else:
         log.debug(f"No results")
-
 
 if __name__ == "__main__":
     main()

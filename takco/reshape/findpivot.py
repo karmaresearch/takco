@@ -86,6 +86,7 @@ class Pivot(NamedTuple):
 
 
 class PivotFinder:
+
     def build(self, tables):
         return
 
