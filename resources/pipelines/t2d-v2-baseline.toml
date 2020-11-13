@@ -1,10 +1,21 @@
 name = 't2d-v2-baseline'
 datadir = 'data'
+resourcedir = 'resources'
 workdir = 'output/t2d-v2-baseline/'
 cache = false
 
-[input_tables]
-input = 'dataset'
+[[baseline]]
+step = 'dataset'
+dataset = {resolve = 't2d-v2'}
+
+[[baseline]]
+step = 'link'
+usecols = 'keycol'
+linker = {resolve = 'baseline_linker'}
+
+
+[[step]]
+step = 'dataset'
 params = 't2d-v2'
 #sample = 5
 

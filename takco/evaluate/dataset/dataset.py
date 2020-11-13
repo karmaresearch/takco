@@ -16,12 +16,14 @@ class Dataset:
 
         datadir = datadir or resourcedir
 
-        if "path" in params:
-            workdir = Path(params["path"])
+        if params.get("path"):
+            path = Path(params["path"])
+        elif datadir:
+            path = Path(datadir) / Path(params.get("name", classname))
         else:
-            workdir = Path(datadir) / Path(params.get("name", classname))
-        workdir.mkdir(exist_ok=True, parents=True)
-        params['workdir'] = workdir
+            raise Exception(f'No path to put {params.get("name", classname)}!')
+        path.mkdir(exist_ok=True, parents=True)
+        params['path'] = path
 
         if "download" in params:
             from urllib.request import urlretrieve
@@ -32,7 +34,7 @@ class Dataset:
                 urls = [urls]
             for url in urls:
                 fname = urlparse(url).path.split("/")[-1]
-                fpath = workdir / Path(fname)
+                fpath = path / Path(fname)
                 if not fpath.exists():
                     log.info(f"Downloading {url} to {fpath}")
                     urlretrieve(url, fpath)
@@ -41,7 +43,7 @@ class Dataset:
                         dpath = fpath.parent / Path(fpath.name.split(".")[0])
                         dpath.mkdir(parents=True, exist_ok=True)
                     else:
-                        dpath = workdir
+                        dpath = path
 
                     if fpath.name.endswith(".tar.gz"):
                         import tarfile
@@ -71,8 +73,8 @@ class Dataset:
 
 
 class Annotation(Dataset):
-    def __init__(self, root: Path, fname: str = None, name=None, **kwargs):
-        self.fpath = Path(root) / Path(fname) if fname else Path(root)
+    def __init__(self, fname: str = None, name=None, **kwargs):
+        self.fpath = Path(fname)
         self.name = name or ""
 
     def get_unannotated_tables(self):

@@ -47,8 +47,14 @@ class SetExecutor(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         global assets
         if self.dest:
-            assets["executor"] = values or self.DEFAULT
-            setattr(namespace, "executor", values or self.DEFAULT)
+            
+            if values:
+                executor = config.build(config.parse(values), assets)
+            else:
+                executor = self.DEFAULT
+
+            assets["executor"] = executor
+            setattr(namespace, "executor", executor)
 
 
 class SetVerbosity(argparse.Action):
@@ -105,11 +111,11 @@ def main():
             Dict: config.parse,
             Any: lambda _: None,
             **{
-                cls: lambda x: config.build(config.resolve(config.parse(x), assets), base='takco')
+                cls: lambda x: config.build(config.parse(x), assets)
                 for cls in getclasses(takco)
             },
             HashBag: HashBag,
-            TableSet: lambda x: load_tables(**config.build(config.resolve(config.parse(x), assets)), base='takco'),
+            TableSet: lambda x: TableSet.load(**config.build(config.parse(x), assets)),
         },
         argparse_kwargs={"description": __doc__},
     )

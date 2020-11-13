@@ -1,0 +1,27 @@
+
+[[assets]]
+name = 'dask-local'
+class = 'DaskHashBag'
+scheduler_port = 8586
+dashboard_address = ':8587'
+n_workers = 4
+threads_per_worker = 1
+
+[[assets]]
+name = 'dask-local-big'
+class = 'DaskHashBag'
+scheduler_port = 8586
+dashboard_address = ':8587'
+n_workers = 8
+threads_per_worker = 4
+
+[[assets]]
+name = 'dask-cluster'
+class = 'DaskHashBag'
+address = 'tcp://192.168.62.207:8786'
+npartitions = 100
+
+[[assets]]
+name = 'dask-cluster-2'
+class = 'DaskHashBag'
+address = 'tcp://192.168.62.207:8686'

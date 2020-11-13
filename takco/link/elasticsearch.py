@@ -10,6 +10,7 @@ import logging as log
 from pathlib import Path
 import re
 import datetime
+from dataclasses import dataclass, field
 
 from .base import (
     Searcher,
@@ -129,33 +130,18 @@ QUERY_SCRIPT = """
 }
 """
 
-
+@dataclass
 class ElasticSearcher(Searcher):
+    index: str
+    baseuri: typing.Dict = field(default_factory=dict)
+    propbaseuri: typing.Dict = field(default_factory=dict)
+    es_kwargs: typing.Dict = field(default_factory=dict)
+    parts: bool = True
+    prop_uri: typing.Dict[str, typing.Dict] = field(default_factory=dict)
+    prop_baseuri: typing.Dict = field(default_factory=dict)
+    typer: Typer = SimpleTyper()
+    stringmatch: str = "jaccard"
     NUM = re.compile("^[\d\W]+$")
-
-    def __init__(
-        self,
-        index,
-        baseuri=None,
-        propbaseuri=None,
-        es_kwargs=None,
-        parts=True,
-        prop_uri=None,
-        prop_baseuri=None,
-        typer: Typer = SimpleTyper(),
-        stringmatch="jaccard",
-        **_,
-    ):
-
-        self.es_kwargs = es_kwargs or {}
-        self.index = index
-        self.baseuri = baseuri
-        self.propbaseuri = propbaseuri or baseuri
-        self.parts = parts
-        self.prop_uri = prop_uri or {}
-        self.prop_baseuri = prop_baseuri or {}
-        self.typer = typer
-        self.stringmatch = stringmatch
 
     def __enter__(self):
         self.es = Elasticsearch(**self.es_kwargs)

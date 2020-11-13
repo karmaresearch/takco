@@ -10,12 +10,20 @@ from pathlib import Path
 import toml
 
 def build(conf, assets=(), base=None, **kwargs):
+    if base is None:
+        base = __name__.split('.')[0]
+    
     if assets:
-        conf = {**resolve(conf, assets), **kwargs}
+        conf = resolve(conf, assets)
+    else:
+        assets = {}
+
     if isinstance(conf, list):
-        conf = [build(v, base=base) for v in conf]
+        # don't pass assets here, should already be resolved
+        conf = [build(v, base=base, **kwargs) for v in conf]
     if isinstance(conf, dict):
-        conf = {k: build(v, base=base) for k,v in conf.items()}
+        # don't pass assets here, should already be resolved
+        conf = {k: build(v, base=base, **kwargs) for k,v in conf.items()}
         if 'class' in conf:
             try:
                 mod, name = None, conf.pop('class')
@@ -23,7 +31,7 @@ def build(conf, assets=(), base=None, **kwargs):
                     mod, name = name.rsplit('.', 1)
                 if base and mod:
                     mod = f'{base}.{mod}'
-                mods = sys.modules[mod or base or __name__]
+                mods = sys.modules[mod or base]
                 assert hasattr(mods, name), f"Class '{name}' not found in {mod}!"
                 cls = getattr(mods, name)
                 cls_params = inspect.signature(cls).parameters
@@ -33,7 +41,7 @@ def build(conf, assets=(), base=None, **kwargs):
 
                 kwargs = {
                     k: v
-                    for k, v in conf.items()
+                    for k, v in {**conf, **kwargs}.items()
                     if (k in cls_params) or cls_has_kwargs
                 }
                 obj = cls(**kwargs)
@@ -59,7 +67,7 @@ def resolve(conf, assets):
     if isinstance(conf, dict):
         if 'resolve' in conf:
             conf = resolve(conf, assets)
-        conf = {k: resolve(v, assets) for k,v in conf.items()}
+        conf = {k: resolve(v, assets) for k,v in conf.items() if k != 'name'}
         if name:
             conf = {**conf, 'name': name}
     if isinstance(conf, list):

@@ -183,7 +183,7 @@ try:
             except Exception as e:
                 log.warn(e)
 
-        def __init__(self, it=(), npartitions=None, client=None, **kwargs):
+        def __init__(self, it=(), npartitions=1, client=None, **kwargs):
             self.client = client
             if kwargs:
                 self.start_client(**kwargs)
@@ -411,3 +411,14 @@ def tableobj_to_html(table, nrows=None, uniq=None, number=False):
         head = [[f"<th>{i}</th>" for i in range(len(head[0]))]] + head
     head_html = "".join(f'<tr>{"".join(row)}</tr>' for row in head)
     return "<table>" + head_html + body_html + "</table>"
+
+
+def reform_dict(dictionary, t=tuple(), reform={}):
+    for key, val in dictionary.items():
+        t = t + (key,)
+        if isinstance(val, dict) and all(isinstance(v, dict) for v in val.values()):
+            reform_dict(val, t, reform)
+        else:
+            reform.update({t: val})
+        t = t[:-1]
+    return reform

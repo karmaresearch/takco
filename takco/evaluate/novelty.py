@@ -2,14 +2,16 @@ import logging as log
 import time
 from rdflib import URIRef, Literal
 from collections import defaultdict
+import urllib
 
 
 def get_cell_noveltyhashes(triples, kb):
     kind_novelty_hashes = defaultdict(lambda: defaultdict(set))
     for t in triples:
         novelty_hashes = kind_novelty_hashes[t.get("kind")]
-
+    
         s, p, v = t.get("s"), t.get("p"), t.get("o")
+        s, p = urllib.parse.quote(s), urllib.parse.quote(p)
         triplehash = t.get("hash")
 
         # Track correctness of triple hashes
@@ -29,7 +31,7 @@ def get_cell_noveltyhashes(triples, kb):
                     literal_match = lambda: any(
                         m
                         for o in os
-                        for m in kb.cellType.literal_match(o, val, kb.stringmatch)
+                        for m in kb.typer.literal_match(o, val, kb.stringmatch)
                     )
                     label_match = lambda: any(
                         m for o in os for m in kb.label_match(o, val)
@@ -60,20 +62,22 @@ def count_noveltyhashes(kind_novelty_hashes):
             hs = set(hs)
             if n not in ["gold", "pred"]:
                 g, p = set(nhs.get("gold", [])), set(nhs.get("pred", []))
-                counts[f"tp_{n}"] = len(hs & g & p)
-                counts[f"fn_{n}"] = len(hs & g - p)
-                counts[f"fp_{n}"] = len(hs & p - g)
+                counts[n] = {
+                    "tp": len(hs & g & p),
+                    "fn": len(hs & g - p),
+                    "fp": len(hs & p - g),
+                }
 
-        for n in ["attnovel", "valnovel"]:
+        for n in counts:
             try:
-                tp = counts[f"tp_{n}"]
-                fp = counts[f"fp_{n}"]
-                fn = counts[f"fn_{n}"]
+                tp = counts[n]["tp"]
+                fp = counts[n]["fp"]
+                fn = counts[n]["fn"]
                 p = tp / (tp + fp)
                 r = tp / (tp + fn)
                 f1 = 2 * ((p * r) / (p + r))
-                counts.update(
-                    {f"{n}_precision": p, f"{n}_recall": r, f"{n}_f1": f1,}
+                counts[n].update(
+                    {"precision": p, "recall": r, "f1": f1,}
                 )
             except:
                 pass

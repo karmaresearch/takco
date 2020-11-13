@@ -18,11 +18,8 @@ class TypeCosMatcher(Matcher):
         **kwargs,
     ):
         self.name = name or self.__class__.__name__
-        self.mdir = (Path(fdir) / Path(self.name)) if fdir else None
+        self.set_mdir(fdir)
 
-        if self.mdir:
-
-            self.coltypes_fname = Path(self.mdir) / Path("coltypes.pickle")
         self.coltypes: typing.Dict[int, typing.Any] = {}
         self.exclude_types = exclude_types
 
@@ -54,7 +51,7 @@ class TypeCosMatcher(Matcher):
     def __enter__(self):
         super().__enter__()
         if self.indexed and self.mdir:
-            self.coltypes = pickle.load(self.coltypes_fname.open("rb"))
+            self.coltypes = pickle.load((Path(self.mdir) / Path("coltypes.pickle")).open("rb"))
         return self
 
     def close(self):
@@ -66,7 +63,7 @@ class TypeCosMatcher(Matcher):
         if self.mdir:
             log.debug(f"Serializing {self} to {self.mdir}")
             self.mdir.mkdir(parents=True, exist_ok=True)
-            with self.coltypes_fname.open("wb") as fw:
+            with (Path(self.mdir) / Path("coltypes.pickle")).open("wb") as fw:
                 pickle.dump(self.coltypes, fw)
             self.indexed = True
             self.close()

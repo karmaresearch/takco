@@ -34,7 +34,7 @@ class EmbeddingMatcher(Matcher):
     ):
         """Matcher based on embeddings and FAISS"""
         self.name = name or self.__class__.__name__
-        self.mdir = (Path(fdir) / Path(self.name)) if fdir else None
+        self.set_mdir(fdir)
         self.indexed = False
 
         self.source = source

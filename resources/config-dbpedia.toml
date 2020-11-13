@@ -22,12 +22,12 @@ store = {class = 'link.Trident', configuration = 'data/kb/dbpedia/2016-10/'}
 [[assets]]
 name = 'dbpedia_t2ksubset_es'
 class = 'link.ElasticSearcher'
-index = 'dbpediasub-6'
+index = 'dbpediasub-7'
 baseuri = 'http://dbpedia.org/resource/'
-es_kwargs.hosts = ['bricks07']
-es_kwargs.timeout = 60
-prop_uri.type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-prop_baseuri.type = 'http://dbpedia.org/ontology/'
+es_kwargs = {hosts = ['bricks07'], timeout = 60}
+prop_uri = {type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"}
+prop_baseuri = {type = 'http://dbpedia.org/ontology/'}
+propbaseuri = "http://dbpedia.org/ontology/"
 
 
 
@@ -52,6 +52,16 @@ fallback = {class = 'link.DBpediaLookup'}
     labelProperties = ['http://dbpedia.org/ontology/title']
     store = {class = 'link.Trident', configuration = 'data/kb/dbpedia_t2ksubset/db/'}
 
+[[assets]]
+name = "baseline_linker"
+class = "link.First"
+limit = 1
+contextual = true
+search_limit = 1
+majority_class = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+majority_class_search = true
+searcher = {resolve = 'dbpedia_t2ksubset_es'}
+
 
 [[assets]]
 name = 't2d-v1'
@@ -64,6 +74,8 @@ download = [
 ]
 version = 1
 fixuri = 't2d_fix.csv'
+datadir = 'data'
+resourcedir = 'resources'
 
 [[assets]]
 name = 't2d-v2'
@@ -73,3 +85,5 @@ download = [
 ]
 version = 2
 fixuri = 't2d_fix.csv'
+datadir = 'data'
+resourcedir = 'resources'

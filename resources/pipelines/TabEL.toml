@@ -23,8 +23,9 @@ resolve = 'wikidata-trident'
 
 ## Pipeline ##
 
-[input_tables]
-path = 'hdfs://bricks07:9000/user/kruit/tabel/1-aa'
+[inputs]
+path = '/bigstore/kruit/tabel/split-parts/*-*'
+# path = 'hdfs://bricks07:9000/user/kruit/tabel/1-aa'
 # executor = {class = 'DaskHashBag', address = 'tcp://192.168.62.207:8786'}
 
 [[step]]

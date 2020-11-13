@@ -73,11 +73,10 @@ class TableSet:
     @classmethod
     def dataset(
         cls,
-        dset: evaluate.dataset.Dataset,
+        dataset: evaluate.dataset.Dataset,
         datadir: Path = None,
         resourcedir: Path = None,
         take: int = None,
-        withgold: bool = False,
         executor: HashBag = HashBag(),
     ):
         """Load tables from a dataset
@@ -85,13 +84,13 @@ class TableSet:
         See also: :mod:`takco.evaluate.dataset`
 
         Args:
-            dset: Dataset
+            dataset: Dataset
             datadir: Data directory
             resourcedir: Resource directory
             take: Use only first N tables
         """
 
-        tables = dset.get_unannotated_tables()
+        tables = dataset.get_unannotated_tables()
         if not isinstance(tables, HashBag):
             tables = executor.new(tables)
         if take:
@@ -270,6 +269,8 @@ class TableSet:
             )
 
         if matchers:
+            if workdir:
+                log.info(f"Using workdir {workdir}")
 
             ## Partition table similarity graph
             tables = TableSet.number_table_columns(tables).persist()
@@ -279,6 +280,8 @@ class TableSet:
                 table_id.to_csv(Path(workdir) / Path("tableid.csv"))
 
             log.info(f"Building matchers: {', '.join(m.name for m in matchers)}")
+            for m in matchers + filters:
+                m.set_mdir(workdir)
             matchers = TableSet.build_matchers(matchers, tables)
             filters = TableSet.build_matchers(filters, tables)
 
@@ -397,7 +400,7 @@ class TableSet:
         """
         tables = TableSet(self).tables
         
-        if not db:
+        if db is None:
             db = link.RDFSearcher(
                 statementURIprefix = "http://www.wikidata.org/entity/statement/",
                 store = link.SparqlStore()
@@ -448,7 +451,7 @@ class TableSet:
 
     def score(
         self: TableSet,
-        annot: evaluate.dataset.Dataset,
+        annotations: evaluate.dataset.Dataset,
         datadir: Path = None,
         resourcedir: Path = None,
         keycol_only: bool = False,
@@ -459,19 +462,19 @@ class TableSet:
 
         Args:
             tables: Table with predictions to score
-            annot: Annotated dataset
+            annotations: Annotated dataset
             datadir: Data directory
             resourcedir: Resource directory
             keycol_only: Only calculate results for key column
         """
         tables = TableSet(self).tables
 
-        table_annot = annot.get_annotated_tables()
+        table_annot = annotations.get_annotated_tables()
         log.info(f"Loaded {len(table_annot)} annotated tables")
 
-        def with_gold(tables, annot):
+        def with_gold(tables, annotations):
             for t in tables:
-                yield t, annot.get(t["_id"], {})
+                yield t, annotations.get(t["_id"], {})
 
         pairs = tables.pipe(with_gold, table_annot)
         tables = pairs.pipe(evaluate.table_score, keycol_only=keycol_only)
@@ -492,7 +495,7 @@ class TableSet:
         tables = tables.pipe(evaluate.table_triples, include_type=include_type)
         return TableSet(tables)
 
-    def report(self: TableSet, keycol_only: bool = False, curve: bool = False):
+    def report(self: TableSet, keycol_only: bool = False, curve: bool = False) -> typing.Dict:
         """Generate report
 
         Args:
@@ -558,13 +561,13 @@ class TableSet:
                     kind_novelty_hashes
                 )
 
-        return tables.new([data])
+        return data
 
     @classmethod
     def run(
         cls,
-        input_tables: typing.Union[pages.PageSource, Path],
         pipeline: Pipeline,
+        input_tables: typing.Union[pages.PageSource, Path] = None,
         workdir: Path = None,
         datadir: Path = None,
         resourcedir: Path = None,
@@ -653,12 +656,14 @@ class TableSet:
             log.info(f"Getting input tabels from extraction: {input_tables}")
             streams = [(workdir, [])]
             pipeline.insert(0, {'step':'extract', 'source':input_tables })
-        else:
+        elif input_tables is not None:
             log.info(f"Getting input tabels from spec: {input_tables}")
             if not isinstance(input_tables.get('path'), list):
                 input_tables['path'] = [input_tables['path']]
             tables = TableSet.load(*input_tables.pop('path'), **input_tables, executor=executor)
             streams = [(workdir, tables)]
+        else:
+            streams = [(workdir, [])]
 
         if cache and workdir:
             if force:

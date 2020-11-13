@@ -14,8 +14,9 @@ import decimal
 import enum
 from typing import Dict, List, Tuple
 from pathlib import Path
+from dataclasses import dataclass, field
 
-from rdflib import URIRef, Literal
+from rdflib import URIRef, Literal # type: ignore
 
 from .base import Typer, LiteralMatchResult, Database
 
@@ -27,15 +28,14 @@ YEAR_PATTERN = re.compile("^(\d{4})(?:[-–—]\d{2,4})?$")
 RDFTYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFSUBCLASS = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 
-
+@dataclass
 class SimpleTyper(Typer):
+    use_dateparser: str = "dateutil"
     NUMBER = "http://www.w3.org/2001/XMLSchema#decimal"
     ENTITY = "http://www.w3.org/2002/07/owl#Thing"
     TEXT = "http://www.w3.org/2001/XMLSchema#string"
     DATETIME = "http://www.w3.org/2001/XMLSchema#dateTime"
 
-    def __init__(self, use_dateparser="dateutil"):
-        self.use_dateparser = use_dateparser
 
     def nodes(self, cellvalue, links=[]):
         if self == self.NUMBER:
@@ -183,7 +183,7 @@ class SimpleTyper(Typer):
         if score:
             yield LiteralMatchResult(score, literal, dtype)
 
-
+@dataclass
 class EntityTyper(SimpleTyper):
     """Select ``topn`` KB types with highest cover
     
@@ -191,23 +191,15 @@ class EntityTyper(SimpleTyper):
     The types ``topn`` that occur more than ``cover_threshold`` of the column are kept.
 
     """
-
-    def __init__(
-        self,
-        db: Database,
-        type_prop=RDFTYPE,
-        supertype_prop=RDFSUBCLASS,
-        cover_threshold=0.5,
-        topn=None,
-        use_dateparser="dateutil",
-    ):
-        assert isinstance(db, Database)
-        self.db = db
-        self.type_prop = str(type_prop)
-        self.supertype_prop = str(supertype_prop) if supertype_prop else None
-        self.cover_threshold = float(cover_threshold)
-        self.topn = int(topn) if topn else None
-        self.use_dateparser = use_dateparser
+    db: Database = None
+    type_prop: str = RDFTYPE
+    supertype_prop: str = RDFSUBCLASS
+    cover_threshold: float = 0.5
+    topn: int = None
+    
+    def __post_init__(self):
+        if self.db is None:
+            raise TypeError(f"Error creating {self}, param `db` is required!")
 
     def __enter__(self):
         self.db.__enter__()
@@ -244,14 +236,15 @@ class EntityTyper(SimpleTyper):
                 return dict(scores)
         return types
 
-
+@dataclass
 class EntityBloom(SimpleTyper):
     """Find entity columns using bloom filter"""
+    bloomfile: Path = None
+    threshold: float = 0.5
 
-    def __init__(self, bloomfile: Path, threshold=0.5, use_dateparser="dateutil"):
-        self.bloomfile = bloomfile
-        self.threshold = threshold
-        self.use_dateparser = use_dateparser
+    def __post_init__(self):
+        if self.bloomfile is None:
+            raise TypeError(f"Error creating {self}, param `bloomfile` is required!")
 
     def __enter__(self):
         if not hasattr(self, "bloom"):
@@ -266,9 +259,9 @@ class EntityBloom(SimpleTyper):
 
     @staticmethod
     def create(infile, outfile, capacity: int, error_rate: float = 0.05):
-        import tqdm
+        import tqdm # type: ignore
         import urllib
-        from pybloomfilter import BloomFilter
+        from pybloomfilter import BloomFilter # type: ignore
 
         bf = BloomFilter(capacity, error_rate, outfile)
         with open(infile) as f:
@@ -293,7 +286,7 @@ class EntityBloom(SimpleTyper):
 
 
 if __name__ == "__main__":
-    import defopt, json, os, typing
+    import defopt, json, os, typing # type: ignore
 
     r = defopt.run(
         {"entitybloom": EntityBloom.create},

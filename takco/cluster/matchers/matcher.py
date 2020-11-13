@@ -29,6 +29,9 @@ Table = dict
 class Matcher(ABC):
     name: Optional[str] = None
 
+    def set_mdir(self, fdir):
+        self.mdir = (Path(fdir) / Path(self.name)) if fdir else None
+
     def __enter__(self):
         return self
 
