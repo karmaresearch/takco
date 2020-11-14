@@ -10,8 +10,7 @@ import time
 import itertools
 
 from .matchers import Matcher, ScoredMatch
-
-Table = dict
+from ..table import Table
 
 try:
     from pandas import DataFrame, Series  # type: ignore
@@ -113,6 +112,7 @@ def matcher_add_tables(tables: Collection[Table], matchers: Collection[Matcher])
     with contextlib.ExitStack() as matcherstack:
         matchers = [matcherstack.enter_context(copy.deepcopy(m)) for m in matchers]
         for table in progress(tables, "Loading tables into matchers"):
+            table = Table(table)
             for m in matchers:
                 m.add(table)
     return matchers
@@ -540,6 +540,7 @@ def set_partition_columns(
         Updated tables
     """
     for table in tables:
+        table = Table(table)
         if table["tableIndex"] in ti_pi:
             pi = ti_pi[table["tableIndex"]]
             table["partitionIndex"] = pi
@@ -561,13 +562,13 @@ def set_partition_columns(
 
 
 def merge_partition_tables(
-    mergetable: dict,
-    table: dict,
+    mergetable: Table,
+    table: Table,
     mergeheaders_topn: int = None,
     keep_partition_meta: Collection[Union[str, Callable[[Dict], Dict]]] = [
         "tableHeaders"
     ],
-) -> dict:
+) -> Table:
     """Merge tables within partition
 
     Args:
@@ -587,10 +588,18 @@ def merge_partition_tables(
     empty_cell = {"text": ""}
     pi = table["partitionIndex"]
 
+    if not isinstance(mergetable, Table):
+        mergetable = Table(mergetable)
+    if not isinstance(table, Table):
+        table = Table(table)
+
     def keep(partColAlign, table):
         for field in keep_partition_meta:
             if type(field) == str:
-                partColAlign[field] = copy.deepcopy(table.get(field))
+                val = copy.deepcopy(table.get(field))
+                if isinstance(val, list):
+                    val = val[:10]
+                partColAlign[field] = val
             else:
                 partColAlign.update(copy.deepcopy(field(table)))
 
@@ -653,8 +662,9 @@ def merge_partition_tables(
         tuple([cell.get("text", "").lower() for cell in r]) for r in tableHeaders
     )
 
+    tableData = mergetable["tableData"]
     for row in align_columns(table["tableData"], table["partColAlign"], empty_cell):
-        mergetable["tableData"].append(row)
+        tableData.append(row)
 
     partColAlign = {
         "tableIndex": table["tableIndex"],
@@ -667,17 +677,16 @@ def merge_partition_tables(
     }
     keep(partColAlign, table)
 
-    mergetable.update(
-        {
-            "tableHeaders": tableHeaders,
-            "headerId": get_headerId(headerText),
-            "numDataRows": len(mergetable["tableData"]),
-            "numTables": mergetable["numTables"] + table.get("numTables", 1),
-            "pivots": mergetable["pivots"] + table.get("pivots", [table.get("pivot")]),
-            "partColAligns": mergetable["partColAligns"] + [partColAlign],
-        }
-    )
-    return mergetable
+    return Table({
+        **mergetable,
+        "tableHeaders": tableHeaders,
+        "tableData": tableData,
+        "headerId": get_headerId(headerText),
+        "numDataRows": len(mergetable["tableData"]),
+        "numTables": mergetable["numTables"] + table.get("numTables", 1),
+        "pivots": mergetable["pivots"] + table.get("pivots", [table.get("pivot")]),
+        "partColAligns": mergetable["partColAligns"] + [partColAlign],
+    })
 
 
 def cluster_columns(
@@ -747,7 +756,7 @@ def get_top_headers(tableHeaders, merge_headers=None, topn=None):
                 txts, _ = zip(*c.most_common())
                 txts_nohidden = [t for t in txts if t and t[0] != "_"]
                 txt = "\t".join(t for t in (txts_nohidden or txts)[:topn])
-            top.append({"text": txt, "tdHtmlString": f"<th>{txt}</th>", "freq": c})
+            top.append({"text": txt, "freq": c})
 
         return [top]
     else:

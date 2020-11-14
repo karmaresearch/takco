@@ -656,6 +656,8 @@ class TableSet:
             log.info(f"Getting input tabels from extraction: {input_tables}")
             streams = [(workdir, [])]
             pipeline.insert(0, {'step':'extract', 'source':input_tables })
+        elif isinstance(input_tables, HashBag):
+            streams = [(workdir, input_tables)]
         elif input_tables is not None:
             log.info(f"Getting input tabels from spec: {input_tables}")
             if not isinstance(input_tables.get('path'), list):

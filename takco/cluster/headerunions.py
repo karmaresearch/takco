@@ -1,5 +1,6 @@
 import hashlib
 
+from ..table import Table
 
 def get_headerId(header):
     # header is a tuple of tuples.
@@ -9,6 +10,11 @@ def get_headerId(header):
 
 
 def combine_by_first_header(table1, table2):
+    if not isinstance(table1, Table):
+        table1 = Table(table1)
+    if not isinstance(table2, Table):
+        table1 = Table(table2)
+
     tableHeaders = table1["tableHeaders"]
 
     headerText = tuple(
@@ -19,9 +25,7 @@ def combine_by_first_header(table1, table2):
 
     headerId = table1["headerId"]
 
-    tableData = table1["tableData"] + table2["tableData"]
-
-    row_offset2 = len(table1["tableData"])
+    row_offset2 = len(table1["rows"])
 
     annotations = {}
     if "entities" in table1:
@@ -41,7 +45,9 @@ def combine_by_first_header(table1, table2):
             for toci, props in toci_props:
                 newprops.setdefault(toci, {}).update(props)
 
-    return {
+    rows = table1["rows"] + table2["rows"]
+    links = table1["links"] + table2["links"]
+    return Table({
         "_id": f"{headerId}-0",
         "pgId": headerId,
         "tbNr": 0,
@@ -49,14 +55,15 @@ def combine_by_first_header(table1, table2):
         "pgTitle": f"Header {headerId}",
         "sectionTitle": "",
         "headerId": headerId,
-        "numCols": len(tableData[0]),
-        "numDataRows": len(tableData),
+        "numCols": len(rows[0]) if rows else 0,
+        "numDataRows": len(rows),
         "numHeaderRows": len(tableHeaders),
         "numericColumns": [],
         "numTables": table1.get("numTables", 1) + table2.get("numTables", 1),
         "tableHeaders": tableHeaders,
-        "tableData": tableData,
+        "rows": rows,
+        "links": links,
         "pivots": table1.get("pivots", [table1.get("pivot")])
         + table2.get("pivots", [table2.get("pivot")]),
         **annotations,
-    }
+    })

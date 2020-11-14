@@ -1,6 +1,6 @@
 import logging as log
 import time
-from rdflib import URIRef, Literal
+from rdflib import URIRef, Literal # type: ignore
 from collections import defaultdict
 import urllib
 
@@ -11,7 +11,13 @@ def get_cell_noveltyhashes(triples, kb):
         novelty_hashes = kind_novelty_hashes[t.get("kind")]
     
         s, p, v = t.get("s"), t.get("p"), t.get("o")
-        s, p = urllib.parse.quote(s), urllib.parse.quote(p)
+        
+        spr = urllib.parse.urlparse(s)
+        s = spr._replace(path = urllib.parse.quote(spr.path)).geturl()
+
+        ppr = urllib.parse.urlparse(p)
+        p = ppr._replace(path = urllib.parse.quote(ppr.path)).geturl()
+        
         triplehash = t.get("hash")
 
         # Track correctness of triple hashes

@@ -153,13 +153,12 @@ def try_unpivot(table, pivot, heuristics):
             splitheaders = []
             if splits is not None:
                 for ci, (head, cell) in enumerate(splits):
-                    links = table["tableHeaders"][level][ci]["surfaceLinks"]
+                    links = table["tableHeaders"][level][ci].get("surfaceLinks", [])
                     splitheaders.append(
                         (
-                            {"text": head or "", "tdHtmlString": f"<td>{head}</td>",},
+                            {"text": head or ""},
                             {
                                 "text": cell or "",
-                                "tdHtmlString": f"<td>{cell}</td>",
                                 "surfaceLinks": links,  # TODO adjust link offsets
                             },
                         )
@@ -178,11 +177,9 @@ def try_unpivot(table, pivot, heuristics):
 
         leftcolheader = {
             "text": L_COLHEADER,
-            "tdHtmlString": f"<th>{L_COLHEADER}</th>",
         }
         rightcolheader = {
             "text": R_COLHEADER,
-            "tdHtmlString": f"<th>{R_COLHEADER}</th>",
         }
         emptycell = {"text": ""}
 

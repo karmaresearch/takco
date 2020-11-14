@@ -5,7 +5,6 @@ EMPTY_CELL = {
     "cellID": -1,
     "textTokens": [],
     "text": "",
-    "tdHtmlString": "<th></th>",
     "surfaceLinks": [],
     "subtableID": -1,
     "isNumeric": False,
@@ -300,7 +299,7 @@ def apply_prefix_header_rules(table, prefix_header_rules):
                     l = len(p)
                     for c in col:
                         c["text"] = c["text"][l:]
-                        for link in c["surfaceLinks"]:
+                        for link in c.get("surfaceLinks", []):
                             link["offset"] -= l
                             link["endOffset"] -= l
                     head = hcols.setdefault(ci, [{}])

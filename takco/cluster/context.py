@@ -15,7 +15,6 @@ def tables_add_context_rows(tables, fields=()):
 
         for field in fields:
             empty_header = {
-                "tdHtmlString": f"<th>_{field}</th>",
                 "text": f"_{field}",
                 "surfaceLinks": [],
             }
@@ -33,7 +32,6 @@ def tables_add_context_rows(tables, fields=()):
             context_cells = [
                 {
                     "text": fieldtext,
-                    "tdHtmlString": f"<td><a href='/wiki/{fieldtext}'>{fieldtext}</a></td>",
                     "surfaceLinks": [
                         {
                             "offset": 0,

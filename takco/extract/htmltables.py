@@ -347,7 +347,6 @@ def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None):
                     h.append(
                         [
                             {
-                                "tdHtmlString": str(cell),
                                 "text": Extractor.get_cell_text(cell),
                                 "surfaceLinks": list(cell_extract_wikilinks(cell)),
                             }

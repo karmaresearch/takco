@@ -6,12 +6,15 @@ import typing
 import functools
 import itertools
 
+from .table import Table
 
 def robust_json_loads_lines(lines):
     docs = []
     for line in lines:
         try:
-            docs.append(json.loads(line))
+            t = Table(json.loads(line))
+            if 'tableData' in t:
+                docs.append(t)
         except Exception as e:
             log.warn(e)
     return docs
@@ -114,11 +117,7 @@ class HashBag:
             for f in files:
                 try:
                     if isinstance(f, TextIOBase):
-                        for li, l in enumerate(f):
-                            try:
-                                yield json.loads(l)
-                            except:
-                                log.debug(f"Failed to read json in line {li} of {f}")
+                        yield from robust_json_loads_lines(f)
                     elif f == "-":
                         log.debug(f"Loading json from standard input")
                         import sys

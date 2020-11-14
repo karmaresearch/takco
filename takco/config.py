@@ -67,7 +67,7 @@ def resolve(conf, assets):
     if isinstance(conf, dict):
         if 'resolve' in conf:
             conf = resolve(conf, assets)
-        conf = {k: resolve(v, assets) for k,v in conf.items() if k != 'name'}
+        conf = {k: (resolve(v, assets) if k != 'name' else v) for k,v in conf.items()}
         if name:
             conf = {**conf, 'name': name}
     if isinstance(conf, list):
