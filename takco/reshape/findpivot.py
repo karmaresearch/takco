@@ -2,7 +2,7 @@ from typing import List, Container, Tuple, NamedTuple, Iterator, Dict
 from collections import defaultdict, Counter
 import re
 import logging as log
-
+from dataclasses import dataclass, field
 
 def get_colspan_repeats(
     rows: List[List[str]],
@@ -297,11 +297,10 @@ class AgentLikeHyperlink(PivotFinder):
 
                     yield ri, ci
 
-
-class AttributePrefixFinder(PivotFinder):
-    def __init__(self, attname=None):
-        self.attname = attname
-        self.values = set()
+@dataclass
+class AttributePrefix(PivotFinder):
+    attname: str = None
+    values: Container[str] = field(default_factory=set)
 
     def build(self, tables):
         for t in tables:
@@ -323,3 +322,24 @@ class AttributePrefixFinder(PivotFinder):
             for ci, hcell in enumerate(hrow):
                 if hcell.get("text", "").lower() in self.values:
                     yield ri, ci
+
+@dataclass
+class Rule(PivotFinder):
+    id_vars: List[str] = field(default_factory=list)
+    value_vars: List[str] = field(default_factory=list)
+    value_name: str = None
+
+    def find_pivot_cells(self, headerrows):
+        if self.id_vars or self.value_vars:
+            for ri, hrow in enumerate(headerrows):
+                htext = [hcell.get("text", "") for hcell in hrow]
+                id_match = all(v in htext for v in self.id_vars)
+                value_match = all(v in htext for v in self.value_vars)
+                if id_match and value_match:
+                    for ci, hcell in enumerate(hrow):
+                        if self.value_vars:
+                            if hcell.get("text", "") in self.value_vars:
+                                yield ri, ci
+                        else:
+                            if hcell.get("text", "") not in self.id_vars:
+                                yield ri, ci

@@ -31,6 +31,8 @@ class Matcher(ABC):
 
     def set_mdir(self, fdir):
         self.mdir = (Path(fdir) / Path(self.name)) if fdir else None
+        if self.mdir and self.mdir.exists():
+            self.indexed = True
 
     def __enter__(self):
         return self

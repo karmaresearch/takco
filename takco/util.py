@@ -106,8 +106,7 @@ class HashBag:
 
         return self.__class__(dumped_it(f))
 
-    @classmethod
-    def load(cls, files, **kwargs):
+    def load(self, files):
         from io import TextIOBase
         from pathlib import Path
 
@@ -122,23 +121,23 @@ class HashBag:
                         log.debug(f"Loading json from standard input")
                         import sys
 
-                        yield from cls.load(sys.stdin)
+                        yield from self.load(sys.stdin)
                     elif Path(f).exists() and not Path(f).is_dir():
                         log.debug(f"Opening {f}")
                         with Path(f).open() as o:
-                            yield from cls.load(o)
+                            yield from self.load(o)
                     elif "*" in str(f):
                         import glob
 
-                        yield from cls.load(glob.glob(str(f)))
+                        yield from self.load(glob.glob(str(f)))
                     elif Path(f).exists() and Path(f).is_dir():
-                        yield from cls.load(Path(f).glob("*.jsonl"))
+                        yield from self.load(Path(f).glob("*.jsonl"))
                     else:
                         raise Exception(f"Could not load {f}!")
                 except GeneratorExit:
                     return
 
-        return cls(it(files))
+        return self.__class__(it(files))
 
 
 try:
@@ -204,15 +203,15 @@ try:
             args = (f'{k}={v.__repr__()}' for k,v in kwargs.items())
             return f"DaskHashBag(%s)" % ', '.join(args)
 
-        @classmethod
-        def load(cls, f, **kwargs):
+        def load(self, f):
+            cls = self.__class__
             from io import TextIOBase
 
             if isinstance(f, TextIOBase):
-                return cls(robust_json_loads_lines(f), **kwargs)
+                return cls(robust_json_loads_lines(f), **self.kwargs)
             else:
                 return cls(
-                    db.read_text(f).map_partitions(robust_json_loads_lines), **kwargs
+                    db.read_text(f).map_partitions(robust_json_loads_lines), **self.kwargs
                 )
 
         @classmethod

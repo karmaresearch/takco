@@ -98,6 +98,9 @@ def unpivot(
 
 def yield_pivots(headerobjs: Iterator[Dict], heuristics: Dict[str, PivotFinder]):
     """Detect headers that should be unpivoted using heuristics."""
+    import copy
+    
+    heuristics = {hname: copy.deepcopy(h) for hname, h in heuristics.items()}
 
     with contextlib.ExitStack() as hstack:
         heuristics = {hname: hstack.enter_context(h) for hname, h in heuristics.items()}
@@ -131,6 +134,11 @@ def yield_pivots(headerobjs: Iterator[Dict], heuristics: Dict[str, PivotFinder])
                             "heuristic": hname,
                         }
                     except Exception as e:
+                        yield {
+                            "headerId": old_headerId,
+                            "discard": True,
+                            "heuristic": hname,
+                        }
                         log.debug(f"Failed to unpivot header {headertext} due to {e}")
 
 
@@ -138,6 +146,9 @@ def try_unpivot(table, pivot, heuristics):
     headerText = [[c.get("text", "") for c in hrow] for hrow in table["tableHeaders"]]
     log.debug(f"Unpivoting {table.get('_id')}")
     try:
+        if 'level' not in pivot:
+            log.info("Discarded table {_id}".format(**table))
+            return
 
         level, colfrom, colto = pivot["level"], pivot["colfrom"], pivot["colto"]
         leftcolheader = L_COLHEADER

@@ -68,7 +68,7 @@ class TableSet:
         if path and all(str(val).endswith("csv") for val in path):
             return cls.csvs(*path, executor=executor)
 
-        return TableSet(executor.load(*path, **executor.kwargs))
+        return TableSet(executor.load(*path))
 
     @classmethod
     def dataset(
@@ -157,13 +157,15 @@ class TableSet:
 
             tables = tables.persist()
 
+            log.debug(f"Building heuristics...")
             for name, h in tables.pipe(
                 reshape.build_heuristics, heuristics=unpivot_heuristics
             ):
                 unpivot_heuristics[name].merge(h)
-
+            
             headerId_pivot = None
             if centralize_pivots:
+                log.debug(f"Finding unpivots centrally...")
                 headers = tables.fold(reshape.table_get_headerId, reshape.get_header)
 
                 pivots = headers.pipe(
@@ -173,6 +175,7 @@ class TableSet:
                 headerId_pivot = {p["headerId"]: p for p in pivots}
                 log.info(f"Found {len(headerId_pivot)} pivots")
 
+            log.debug(f"Unpivoting...")
             tables = tables.pipe(
                 reshape.unpivot_tables, headerId_pivot, heuristics=unpivot_heuristics,
             )
@@ -191,6 +194,18 @@ class TableSet:
             tables = tables.pipe(filter_headerless)
 
         return TableSet(tables)
+
+    def filter(self: TableSet, filters: typing.List[str]):
+        tables = TableSet(self).tables
+
+        filters = [eval('lambda table: '+f) for f in filters]
+        def filt(tables, filters):
+            for table in tables:
+                if not any(not c(table) for c in filters):
+                    yield table
+
+        return tables.pipe(filt, filters)
+
 
     @staticmethod
     def number_table_columns(tables):
@@ -277,9 +292,9 @@ class TableSet:
             if tablenumberfile and tablenumberfile.exists():
                 log.info(f"Loading table numbers from {tablenumberfile}")
                 tablenums = pd.read_csv(tablenumberfile, index_col=0).to_dict(orient='index')
-                def put_table_numbers(tables, cache):
+                def put_table_numbers(tables, tablenums):
                     for t in tables:
-                        t.update(cache[t['_id']])
+                        t.update(tablenums[t['_id']])
                         yield t
                 tables = tables.pipe(put_table_numbers, tablenums).persist()
                 
@@ -615,7 +630,7 @@ class TableSet:
             cache: Cache intermediate results
             executor: Executor engine
         """
-        import glob, os
+        import glob, os, shutil
         from inspect import signature
 
         stepforce = min(forcesteps or [], default=0) if forcesteps != None else None
@@ -666,7 +681,7 @@ class TableSet:
                 else:
                     log.warn(f"Skipping step {stepname}, using cache instead")
                     tablefile = str(stepdir) + "/*.jsonl"
-                    yield workdir, TableSet(executor.load(tablefile, **executor.kwargs))
+                    yield workdir, TableSet(executor.load(tablefile))
             elif "split" in stepargs:
                 # Persist pre-split tables
                 tableset.tables.persist()

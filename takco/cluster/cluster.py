@@ -384,6 +384,7 @@ def yield_blocked_matches(
         (ti1, ti2): ((ti1, partition_tableid_colids[ti1]), (ti2, tableid_colids[ti2]))
         for ti1, block in table_block.items()
         for ti2 in block
+        if ti2 in tableid_colids
     }
 
     # Filter blocks

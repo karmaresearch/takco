@@ -251,6 +251,7 @@ class ElasticSearcher(Searcher):
         uri_ignore: str = None,
         surface_norm: str = "[^\s\w]",
         context_label_threshold: float = 1,
+        output_statements: bool = True,
     ):
         import re
 
@@ -374,21 +375,25 @@ class ElasticSearcher(Searcher):
                     if st.get("prop") == uri_type and ("id" in st):
                         types.add(st["id"])
                     else:
-                        filtered_statements.append(st)
-                        if "id" in st and "prop" in st:
-                            vals = set()
-                            if extract_surface:
-                                vals.add(normalize_surface(st["id"]))
-                            for l, ls in id_surfaceformscores.get(st["id"], {}).items():
-                                if ls >= context_label_threshold:
-                                    vals.add(l)
-                            if vals:
-                                prop_context.setdefault(st["prop"], set()).update(vals)
+                        if output_statements:
+                            filtered_statements.append(st)
+                            if "id" in st and "prop" in st:
+                                vals = set()
+                                if extract_surface:
+                                    vals.add(normalize_surface(st["id"]))
+                                for l, ls in id_surfaceformscores.get(st["id"], {}).items():
+                                    if ls >= context_label_threshold:
+                                        vals.add(l)
+                                if vals:
+                                    prop_context.setdefault(st["prop"], set()).update(vals)
                 context = [
                     {"prop": p, "value": list(vs)} for p, vs in prop_context.items()
                 ]
 
                 surface_score.update(id_surfaceformscores.get(id, {}))
+
+                if not surface_score:
+                    continue
 
                 yield {
                     "id": id,
