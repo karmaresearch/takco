@@ -68,7 +68,7 @@ class TableSet:
         if path and all(str(val).endswith("csv") for val in path):
             return cls.csvs(*path, executor=executor)
 
-        return TableSet(executor.load(*path))
+        return TableSet(executor.load(*path, **executor.kwargs))
 
     @classmethod
     def dataset(
@@ -272,19 +272,47 @@ class TableSet:
             if workdir:
                 log.info(f"Using workdir {workdir}")
 
-            ## Partition table similarity graph
-            tables = TableSet.number_table_columns(tables).persist()
-            if workdir:
-                get_table_id = lambda ts: [(t["_id"], t["tableIndex"]) for t in ts]
-                table_id = pd.Series(dict(tables.pipe(get_table_id)))
-                table_id.to_csv(Path(workdir) / Path("tableid.csv"))
+            ## Create or load matchers
+            tablenumberfile = Path(workdir) / Path("tablenumbers.csv") if workdir else None
+            if tablenumberfile and tablenumberfile.exists():
+                log.info(f"Loading table numbers from {tablenumberfile}")
+                tablenums = pd.read_csv(tablenumberfile, index_col=0).to_dict(orient='index')
+                def put_table_numbers(tables, cache):
+                    for t in tables:
+                        t.update(cache[t['_id']])
+                        yield t
+                tables = tables.pipe(put_table_numbers, tablenums).persist()
+                
+            else:
+                tables = TableSet.number_table_columns(tables).persist()
+                
+                if tablenumberfile:
+                    def get_table_numbers(tables):
+                        for t in tables:
+                            yield t["_id"], {
+                                "tableIndex": t["tableIndex"], 
+                                "columnIndexOffset": t["columnIndexOffset"]
+                            }
+                    tablenums = dict(tables.pipe(get_table_numbers))
+                    log.info(f"Writing table numbers to {tablenumberfile}")
+                    pd.DataFrame.from_dict(tablenums, orient='index').to_csv(tablenumberfile)
 
-            log.info(f"Building matchers: {', '.join(m.name for m in matchers)}")
             for m in matchers + filters:
                 m.set_mdir(workdir)
-            matchers = TableSet.build_matchers(matchers, tables)
-            filters = TableSet.build_matchers(filters, tables)
 
+            if workdir and all(Path(m.mdir).exists() for m in matchers):
+                log.info(f"Loading matchers: {', '.join(m.name for m in matchers)}")
+            else:
+                log.info(f"Building matchers: {', '.join(m.name for m in matchers)}")
+                matchers = TableSet.build_matchers(matchers, tables)
+            
+            if workdir and all(Path(m.mdir).exists() for m in filters):
+                log.info(f"Loading filters: {', '.join(m.name for m in filters)}")
+            else:
+                log.info(f"Building filters: {', '.join(m.name for m in filters)}")
+                filters = TableSet.build_matchers(filters, tables)
+
+            ## Partition table similarity graph
             # Get blocked column match scores
             tableid_colids = dict(tables.pipe(cluster.get_table_ids))
             log.info(f"Blocking tables; computing and aggregating column sims...")
@@ -587,7 +615,7 @@ class TableSet:
             cache: Cache intermediate results
             executor: Executor engine
         """
-        import shutil
+        import glob, os
         from inspect import signature
 
         stepforce = min(forcesteps or [], default=0) if forcesteps != None else None
@@ -603,10 +631,11 @@ class TableSet:
 
         def wrap_step(stepfunc, stepargs, stepdir):
             if cache:
-                shutil.rmtree(stepdir, ignore_errors=True)
                 stepdir.mkdir(exist_ok=True, parents=True)
                 log.info(f"Writing cache to {stepdir}")
                 tablefile = str(stepdir) + "/*.jsonl"
+                for f in glob.glob(tablefile):
+                    os.remove(f)
                 return stepfunc(**stepargs).dump(tablefile)
             else:
                 return stepfunc(**stepargs)
@@ -637,7 +666,7 @@ class TableSet:
                 else:
                     log.warn(f"Skipping step {stepname}, using cache instead")
                     tablefile = str(stepdir) + "/*.jsonl"
-                    yield workdir, TableSet(executor.load(tablefile))
+                    yield workdir, TableSet(executor.load(tablefile, **executor.kwargs))
             elif "split" in stepargs:
                 # Persist pre-split tables
                 tableset.tables.persist()

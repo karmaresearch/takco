@@ -99,9 +99,15 @@ max_cluster_size = 250
     name  = 'section'
     class = 'cluster.matchers.CellJaccMatcher'
     source='sectionTitle'
+
+    [[step.filters]]
+    name  = 'headjacc' # use headjacc as both matcher and filter
+    class = 'cluster.matchers.CellJaccMatcher'
+    source = 'head'
+
     
     [[step.matchers]]
-    name  = 'headjacc'
+    name  = 'headjacc' # use headjacc as both matcher and filter
     class = 'cluster.matchers.CellJaccMatcher'
     source = 'head'
     

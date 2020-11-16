@@ -184,6 +184,8 @@ try:
 
         def __init__(self, it=(), npartitions=1, client=None, **kwargs):
             self.client = client
+            self.kwargs = kwargs
+
             if kwargs:
                 self.start_client(**kwargs)
 
@@ -196,6 +198,11 @@ try:
 
         def new(self, it):
             return DaskHashBag(it, npartitions=self.bag.npartitions, client=self.client)
+
+        def __repr__(self):
+            kwargs = {'npartitions':self.bag.npartitions, **self.kwargs}
+            args = (f'{k}={v.__repr__()}' for k,v in kwargs.items())
+            return f"DaskHashBag(%s)" % ', '.join(args)
 
         @classmethod
         def load(cls, f, **kwargs):
