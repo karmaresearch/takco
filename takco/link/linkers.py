@@ -25,7 +25,8 @@ class First(Linker):
         contextual: bool = False,
         search_limit: int = 10,
         majority_class: URI = None,
-        exclude_about: Dict[URI, URI] = None,
+        class_cover: float = 0.5,
+        exclude_about: Dict[URI, List[URI]] = None,
         normalize: bool = False,
         majority_class_search: bool = False,
     ):
@@ -34,9 +35,10 @@ class First(Linker):
         self.contextual = contextual
         self.search_limit = search_limit
         self.majority_class = majority_class
+        self.class_cover = class_cover
         self.majority_class_search = bool(majority_class_search)
         self.exclude_about = exclude_about
-        self.add_about = bool(majority_class or exclude_about)
+        self.add_about = list(exclude_about or []) + ([majority_class] if majority_class else [])
         self.normalize = normalize
 
     def __enter__(self):
@@ -75,28 +77,34 @@ class First(Linker):
         # TODO: lookup facts about existing entities
 
         if self.majority_class:
+
             # Keep track of the most frequent attribute of a class predicate
-            ci_att_count = {}
+            ci_cls_ents = {}
             for (_, ci), results in rowcol_searchresults.items():
                 for result in results[:1]:
-                    for att in result.get(self.majority_class, []):
-                        ci_att_count.setdefault(ci, {}).setdefault(att, 0)
-                        ci_att_count[ci][att] += 1
+                    for cls in result.get(self.majority_class, []):
+                        ci_cls_ents.setdefault(ci, {}).setdefault(cls, set())
+                        ci_cls_ents[ci][cls].add(result.uri)
 
-            ci_majoratt = {}
-            for ci, att_count in ci_att_count.items():
-                ci_majoratt[ci] = max(att_count, key=att_count.get)
-                classes[ci] = {ci_majoratt[ci]: att_count[ci_majoratt[ci]]}
+            ci_majorcls = {}
+            for ci, cls_ents in ci_cls_ents.items():
+                cls_count = {c:len(ents) for c, ents in cls_ents.items()}
+                n = len(set.union(*cls_ents.values()))
+                for cls in sorted(cls_count, key=cls_count.get)[::-1]:
+                    if cls_count[cls] / n >= self.class_cover:
+                        ci_majorcls[ci] = cls
+                        classes[ci] = {ci_majorcls[ci]: cls_count[cls] / n}
+                        break
 
             if self.majority_class_search:
                 log.debug(f"Re-searching {self} with classes {classes}")
                 rowcol_searchresults = super_rowcol_searchresults(classes)
             else:
                 log.debug(f"Filtering {self} with classes {classes}")
-                atts = lambda r: r.get(self.majority_class, [])
+                clss = lambda r: r.get(self.majority_class, [])
                 for (ri, ci), results in rowcol_searchresults.items():
                     rowcol_searchresults[(ri, ci)] = [
-                        r for r in results if ci_majoratt.get(ci) in atts(r)
+                        r for r in results if ci_majorcls.get(ci) in clss(r)
                     ]
 
         if self.exclude_about:
@@ -104,7 +112,10 @@ class First(Linker):
                 for p, os in self.exclude_about.items():
 
                     def isbad(r):
-                        return any(o in r.get(p, []) for o in os)
+                        try:
+                            return any(v.__class__(o) == v for o in os for v in r.get(p, []))
+                        except:
+                            return False
 
                     results = [r for r in results if not isbad(r)]
                 rowcol_searchresults[k] = results

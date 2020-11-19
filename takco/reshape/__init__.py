@@ -1,7 +1,7 @@
 import logging as log
 
 from .headers import table_get_headerId, get_headerId, get_header
-from .compound import CompoundSplitter, SpacyCompoundSplitter
+from .compound import *
 from .findpivot import *
 from .clean import (
     init_captions,
@@ -272,14 +272,16 @@ def unpivot_tables(
         if table:
             yield table
 
+from ..table import Table
 
 def split_compound_columns(tables, splitter):
-    """Using an NLP pipeline, detect and split compound columns"""
+    """Detect and split compound columns"""
 
     log.info(f"Splitting compound columns using {splitter}")
 
     with splitter:
         for table in tables:
+            table = Table(table).to_dict()
 
             newcols = []
             headcols = list(zip(*table.get("tableHeaders", [])))
@@ -309,7 +311,7 @@ def split_compound_columns(tables, splitter):
                 table["tableHeaders"] = list(zip(*headcols))
                 table["tableData"] = list(zip(*datacols))
 
-            yield table
+            yield Table(table)
 
 
 def restructure(tables: Iterator[Dict], prefix_header_rules=()) -> Iterator[Dict]:

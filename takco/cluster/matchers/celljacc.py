@@ -92,6 +92,7 @@ class CellJaccMatcher(Matcher):
     def __enter__(self):
         super().__enter__()
         if self.indexed and self.mdir:
+            log.debug(f"Loading {self} from disk...")
             for p in self.pickles:
                 fpath = self.mdir / Path(f"{p}.pickle")
                 if fpath.exists():

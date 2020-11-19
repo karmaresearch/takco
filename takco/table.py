@@ -56,9 +56,16 @@ class Table(dict):
         return obj
 
     def __init__(self, obj):
-        self.minimize(obj)
+        if not isinstance(obj, Table):
+            self.minimize(obj)
         self.update(obj)
 
+    def to_dict(self):
+        tableData = self['tableData']
+        obj = {**self, 'tableData':tableData}
+        del obj['rows']
+        del obj['links']
+        return obj
 
     def __getitem__(self, k):
         if k == 'tableData':

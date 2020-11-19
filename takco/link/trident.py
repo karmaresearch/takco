@@ -66,7 +66,7 @@ class Trident(rdflib.store.Store):
             ns: Namespace dict
         """
         self.configuration = configuration
-        self.db = None
+        self._db = None
         self.ent_baseuri = ent_baseuri
         self.prop_baseuri = prop_baseuri
         self.ns = ns or {}
@@ -78,12 +78,19 @@ class Trident(rdflib.store.Store):
 
         import trident
 
-        self.db = trident.Db(configuration)
+        self._db = trident.Db(configuration)
         log.debug(f"Using Trident DB with {len(self)} triples")
         return rdflib.store.VALID_STORE
 
+    @property
+    def db(self):
+        if self._db is not None:
+            return self._db
+        else:
+            raise Exception(f"Database for {self} is not loaded!")
+
     def close(self, *args, **kwargs):
-        self.db = None
+        self._db = None
 
     def node(self, i, baseuri=None, ns=None):
         return TridentNode(i, self.db).resolve(baseuri=baseuri, ns=ns)

@@ -51,10 +51,15 @@ class GraphDB(Database, rdflib.Graph):
     def get_prop_values(self, e, p):
         return [o for _, _, o in self.triples([URIRef(e), URIRef(p), None])]
 
-    def about(self, uri):
+    def about(self, uri, att_uris=None):
         about = {}
-        for _, p, o in self.triples([URIRef(uri), None, None]):
-            about.setdefault(p, []).append(o)
+        if att_uris and hasattr(att_uris, '__iter__'):
+            for att in att_uris:
+                for _, p, o in self.triples([URIRef(uri), URIRef(att), None]):
+                    about.setdefault(p, []).append(o)
+        else:
+            for _, p, o in self.triples([URIRef(uri), None, None]):
+                about.setdefault(p, []).append(o)
         return about
 
     def count(self, triplepattern):
@@ -142,6 +147,14 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
         self.close()
 
     def search_entities(self, query_params, limit=1, add_about=False):
+        if log.getLogger().level == log.INFO:
+            try:
+                import tqdm
+
+                query_params = tqdm.tqdm(query_params)
+            except:
+                pass
+
         for query, _ in query_params:
             is_ascii = query == query.encode("ascii", errors="ignore").decode()
             if self.encoding and not is_ascii:
@@ -154,7 +167,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
                 for l in self.labelProperties
                 for lang in [None, self.language]
                 for e, _, _ in self.triples((None, l, Literal(query, lang=lang)))
-            ][:limit]
+            ]
 
             if not result_uris:
                 ls = [Literal(query, lang=lang).n3() for lang in [None, self.language]]
@@ -171,15 +184,14 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
                 for e in result_uris:
                     e_score[e] = 1 - 1 / (1 + self.count([None, None, URIRef(e)]))
 
+                result_uris = sorted(result_uris, key=lambda e: -e_score[e])
+
             results = [
                 SearchResult(
-                    str(e), self.about(e) if add_about else {}, score=e_score.get(e, 1)
+                    str(e), self.about(e, add_about) if add_about else {}, score=e_score.get(e, 1)
                 )
-                for e in result_uris
+                for e in result_uris[:limit]
             ]
-
-            if self.refsort:
-                results = sorted(results, key=lambda sr: -sr.score)
 
             yield results
 

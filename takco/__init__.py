@@ -139,7 +139,7 @@ class TableSet:
             restructure: Whether to restructure tables heuristically
             unpivot_heuristics: Use a subset of available heuristics
             centralize_pivots: If True, find pivots on unique headers instead of tables
-            compound_splitter_config: Splitter for compound columns
+            compound_splitter: Splitter for compound columns
 
         """
         tables = TableSet(self).tables
@@ -219,7 +219,7 @@ class TableSet:
     @staticmethod
     def build_matchers(matchers, tables):
         matchers = list(
-            tables.pipe(cluster.matcher_add_tables, matchers).fold(
+            tables.pipe(cluster.matcher_add_tables, matchers).fold_tree(
                 lambda x: x.name, lambda a, b: a.merge(b)
             )
         )
@@ -233,6 +233,7 @@ class TableSet:
         workdir: Path = None,
         addcontext: typing.List[str] = [],
         headerunions: bool = True,
+        headerunions_attributes: typing.List[str] = [],
         matchers: typing.List[cluster.Matcher] = [],
         filters: typing.List[cluster.Matcher] = [],
         agg_func: str = "mean",
@@ -256,6 +257,7 @@ class TableSet:
 
             addcontext: Add these context types
             headerunions: Make header unions
+            headerunions_attributes: Extra attribute names for restricting header unions
             matchers: Matcher configs
             filters: Filter configs
             agg_func: Aggregation function for :meth:`takco.cluster.aggregate_match_sims`
@@ -279,8 +281,15 @@ class TableSet:
             tables = tables.pipe(cluster.tables_add_context_rows, fields=addcontext)
 
         if headerunions:
+            if headerunions_attributes:
+                def key(t):
+                    hid = cluster.table_get_headerId(t)
+                    return str([hid] + [t.get(a) for a in headerunions_attributes])
+            else:
+                key = cluster.table_get_headerId
             tables = tables.fold(
-                cluster.table_get_headerId, cluster.combine_by_first_header
+                key,
+                cluster.combine_by_first_header
             )
 
         if matchers:
@@ -330,7 +339,9 @@ class TableSet:
             ## Partition table similarity graph
             # Get blocked column match scores
             tableid_colids = dict(tables.pipe(cluster.get_table_ids))
-            log.info(f"Blocking tables; computing and aggregating column sims...")
+            ntables = len(tableid_colids)
+            chunksize = cluster.get_table_chunk_size(ntables)
+            log.info(f"Comparing {ntables} tables in chunks of size {chunksize}")
 
             # chunksize = round(10**4 / (len(tableid_colids) ** .5)) + 1
             tablesim = pd.concat(
@@ -400,7 +411,7 @@ class TableSet:
             tables = tables.pipe(
                 cluster.set_partition_columns, ti_pi, pi_ncols, ci_pci
             ).fold(
-                lambda t: t["_id"],
+                lambda t: t.get("_id", 'untitled-0'),
                 lambda a, b: cluster.merge_partition_tables(
                     a,
                     b,
@@ -427,7 +438,6 @@ class TableSet:
     def integrate(
         self: TableSet,
         db: link.Database = None,
-        typer: link.Typer = link.SimpleTyper(),
         pfd_threshold: float = 0.9,
     ):
         """Integrate tables with KB properties and classes.
@@ -450,12 +460,8 @@ class TableSet:
             )
 
         log.info(f"Integrating with {db}")
-
-        if typer:
-            log.info(f"Typing with {typer}")
-
         tables = tables.pipe(
-            link.integrate, db=db, typer=typer, pfd_threshold=pfd_threshold,
+            link.integrate, db=db, pfd_threshold=pfd_threshold,
         )
         return TableSet(tables)
 

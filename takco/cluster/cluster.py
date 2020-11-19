@@ -24,6 +24,16 @@ except:
     Series = typing.Any
     AgglomerativeClustering = typing.Any
 
+def pair_chunks(pairs):
+    it = iter(pairs)
+    while True:
+        chunk = tuple(itertools.islice(it, 10 ** 4)) # chunk pairs per 10k
+        if not chunk:
+            break
+        yield chunk
+
+def get_table_chunk_size(n_tables):
+    return round(10 ** 4 / (n_tables ** 0.5)) + 1
 
 class Timer(dict):
     @contextlib.contextmanager
@@ -153,7 +163,7 @@ def get_tablesims(
         tables = list(tables)
         total = len(tables)
         # more tables --> smaller chunks
-        chunksize = round(10 ** 4 / (len(tableid_colids) ** 0.5)) + 1
+        chunksize = get_table_chunk_size(len(tableid_colids))
         for i in range(0, total, chunksize):
             log.info(
                 f"Making table similarities for {i}-{i+chunksize} / {total} tables"
@@ -391,14 +401,8 @@ def yield_blocked_matches(
     if filters:
         filtered_tableid_colids_pairs = {}
         for filt in filters:
-            pair_it = iter(tableid_colids_pairs.values())
             with timer.track(f"filter_{filt.name}"):
-                while True:
-                    chunk = tuple(
-                        itertools.islice(pair_it, 10 ** 3)
-                    )  # chunk a thousand
-                    if not chunk:
-                        break
+                for chunk in pair_chunks(tableid_colids_pairs.values()):
                     for (ti1, ti2, _, _), score in filt.match(chunk):
                         if score > 0:
                             pair = tableid_colids_pairs[(ti1, ti2)]
@@ -414,14 +418,11 @@ def yield_blocked_matches(
         filtered_tableid_colids_pairs = tableid_colids_pairs
 
     for mi, matcher in enumerate(matchers):
-        it = iter(filtered_tableid_colids_pairs.values())
         with timer.track(f"match_{matcher.name}"):
-            while True:
-                chunk = tuple(itertools.islice(it, 10 ** 3))  # chunk a thousand
-                if not chunk:
-                    break
-                for indices, score in matcher.match(chunk):
-                    yield mi, indices, score
+            for chunk in pair_chunks(filtered_tableid_colids_pairs.values()):
+                for (ti1, ti2, ci1, ci2), score in matcher.match(chunk):
+                    if ti1 != ti2 or ci1 == ci2:
+                        yield mi, (ti1, ti2, ci1, ci2), score
 
     log.debug(f"times: {timer}")
 
@@ -481,15 +482,11 @@ def cluster_partition_columns(
             # Make a dataframe of all similarities
             def yield_tablepairs_matches():
                 for mi, matcher in enumerate(entered):
-                    it = iter(
-                        progress(tableid_colids_pairs, f"Matching with {matcher.name}")
-                    )
-                    while True:
-                        chunk = tuple(itertools.islice(it, 10 ** 3))  # chunk a thousand
-                        if not chunk:
-                            break
-                        for indices, score in matcher.match(chunk):
-                            yield mi, indices, score
+                    pairs = progress(tableid_colids_pairs, f"Matching with {matcher.name}")
+                    for chunk in pair_chunks(pairs):
+                        for (ti1, ti2, ci1, ci2), score in matcher.match(chunk):
+                            if ti1 != ti2 or ci1 == ci2:
+                                yield mi, (ti1, ti2, ci1, ci2), score
 
             simscore = {mi: {} for mi, _ in enumerate(entered)}  # type: ignore
             for mi, indexes, score in yield_tablepairs_matches():
@@ -506,7 +503,7 @@ def cluster_partition_columns(
             sims.index.names = ["ti1", "ti2", "ci1", "ci2"]
             sims.columns = [m.name for m in entered]
             colsim = aggregate_match_sims(sims, agg_func)
-            colsim = colsim[colsim > agg_threshold_col]
+            colsim = colsim[colsim > agg_threshold_col].reset_index()
             pi_colsim[pi] = colsim
 
             if not len(colsim):
@@ -515,7 +512,7 @@ def cluster_partition_columns(
                 pi_ncols[pi] = 0
                 log.warning(f"No similarities for partition {pi}: {part}")
             else:
-                col_clustercol = cluster_columns(colsim.reset_index(), clus, pi=pi)
+                col_clustercol = cluster_columns(colsim, clus, pi=pi)
                 ci_pci.update(col_clustercol)
                 ncols = len(set(col_clustercol.values()))
                 pi_ncols[pi] = ncols
@@ -559,7 +556,8 @@ def set_partition_columns(
             table["partColAlign"] = {
                 pci: pci_c.get(pci, None) for pci in range(pi_ncols[pi])
             }
-        yield table
+        if table.get('_id'):
+            yield table
 
 
 def merge_partition_tables(

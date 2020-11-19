@@ -24,8 +24,8 @@ resolve = 'wikidata-trident'
 ## Pipeline ##
 
 [inputs]
-path = '/bigstore/kruit/tabel/split-parts/*'
-# path = 'hdfs://bricks07:9000/user/kruit/tabel/1-aa'
+# path = '/bigstore/kruit/tabel/split-parts/*'
+path = 'hdfs://bricks07:9000/user/kruit/tabel/*'
 # executor = {class = 'DaskHashBag', address = 'tcp://192.168.62.207:8786'}
 
 [[step]]
@@ -108,7 +108,7 @@ addcontext = []
 headerunions = false
 agg_func = '@mean(  @max(headjacc, @pow(headvec, 4)), @max(bodylsh, @pow(bodyvec, 4), bodytype ) )'
 agg_threshold = 0.98
-# align_columns = 'max1' # much faster than 'greedy' but it sucks
+align_columns = 'max1' # much faster than 'greedy' but it sucks
 edge_exp = 6
 agg_threshold_col = 0.1
 keep_partition_meta = ['_id', 'tableHeaders', 'tableData', 'entities', 'classes']
@@ -161,15 +161,18 @@ lookup_cells = true
 lookup = {resolve = 'wiki-sqlite'}
 
 [[step]]
-step = 'integrate'
-pfd_threshold = 0.95
-db = {resolve = 'linker'}
+step = 'coltypes'
     [step.typer]
     class = 'link.EntityTyper'
     db = {resolve = 'linker'}
     type_prop = 'http://www.wikidata.org/prop/direct/P31'
     supertype_prop = ''
     cover_threshold = 0.333
+
+[[step]]
+step = 'integrate'
+pfd_threshold = 0.95
+db = {resolve = 'linker'}
 
 [[step]]
 step = 'triples'

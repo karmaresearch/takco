@@ -43,7 +43,6 @@ class TypeCosMatcher(Matcher):
 
     def merge(self, matcher: "TypeCosMatcher"):
         if matcher is not None:
-            log.debug(f"merging {self} with {matcher}")
             for ti, ci_classes in matcher.coltypes.items():
                 self.coltypes.setdefault(ti, {}).update(ci_classes)
         return self
@@ -51,6 +50,7 @@ class TypeCosMatcher(Matcher):
     def __enter__(self):
         super().__enter__()
         if self.indexed and self.mdir:
+            log.debug(f"Loading {self} from disk...")
             self.coltypes = pickle.load((Path(self.mdir) / Path("coltypes.pickle")).open("rb"))
         return self
 

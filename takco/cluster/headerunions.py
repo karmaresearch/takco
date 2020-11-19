@@ -10,10 +10,8 @@ def get_headerId(header):
 
 
 def combine_by_first_header(table1, table2):
-    if not isinstance(table1, Table):
-        table1 = Table(table1)
-    if not isinstance(table2, Table):
-        table1 = Table(table2)
+    table1 = Table(dict(table1))
+    table2 = Table(dict(table2))
 
     tableHeaders = table1["tableHeaders"]
 
@@ -47,7 +45,9 @@ def combine_by_first_header(table1, table2):
 
     rows = table1["rows"] + table2["rows"]
     links = table1["links"] + table2["links"]
+
     return Table({
+        **table1,
         "_id": f"{headerId}-0",
         "pgId": headerId,
         "tbNr": 0,

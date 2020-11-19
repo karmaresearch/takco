@@ -103,7 +103,13 @@ def main():
             elif isinstance(obj, types.ModuleType):
                 if hasattr(obj, '__name__') and obj.__name__.startswith(mod.__name__):
                     yield from getclasses(obj)
-
+    
+    def parse_tableset_arg(x):
+        try:
+            return TableSet.load(**config.build(config.parse(x), assets))
+        except:
+            return TableSet.load(x, executor=assets.get("executor"))
+    
     parser = defopt._create_parser(
         funcs,
         strict_kwonly=False,
@@ -115,7 +121,7 @@ def main():
                 for cls in getclasses(takco)
             },
             HashBag: HashBag,
-            TableSet: lambda x: TableSet.load(**config.build(config.parse(x), assets)),
+            TableSet: parse_tableset_arg
         },
         argparse_kwargs={"description": __doc__},
     )

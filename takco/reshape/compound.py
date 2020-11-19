@@ -3,9 +3,19 @@ import re
 import datetime
 from collections import Counter
 import logging as log
+from dataclasses import dataclass, field
 
 OffsetLinks = Dict[Tuple[int, int], str]
 Cell = Dict
+
+__all__ = [
+    "CompoundSplit",
+    "CompoundSplitter",
+    "SuffixCompoundSplitter",
+    "PrefixCompoundSplitter",
+    "SpacyCompoundSplitter",
+    "TemplateCompoundSplitter",
+]
 
 
 class CompoundSplit(NamedTuple):
@@ -56,6 +66,78 @@ class SuffixCompoundSplitter(CompoundSplitter):
                 if any(newcol):
                     newcol = [{"text": c} for c in newcol]
                     yield CompoundSplit(suffix, "string", newcol)
+
+
+class PrefixCompoundSplitter(CompoundSplitter):
+    def find_splits(self, column: List[Cell]) -> Iterator[CompoundSplit]:
+        import os
+
+        column = [c.get("text", "") for c in column]
+        prefix = os.path.commonprefix([c for c in column])[::-1]
+        if prefix:
+            cover = sum(1 for c in column if c.startswith(prefix)) / len(column)
+            if cover > 0.5:
+                newcol = [c.replace(prefix, "") for c in column]
+                if any(newcol):
+                    newcol = [{"text": c} for c in newcol]
+                    yield CompoundSplit(prefix, "string", newcol)
+
+@dataclass
+class TemplateCompoundSplitter(CompoundSplitter):
+    min_block_size: int = 2
+    min_cell_size: int = None
+    max_cell_size: int = None
+    
+    def __post_init__(self):
+        import templater
+
+    def col_is_ok(self, newcol):
+        min_size_ok = True
+        if self.min_cell_size is not None:
+            min_size_ok = all(len(c) >= self.min_cell_size for c in newcol)
+
+        max_size_ok = True
+        if self.max_cell_size is not None:
+            max_size_ok = all(len(c) <= self.max_cell_size for c in newcol)
+
+        return any(newcol) and min_size_ok and max_size_ok
+
+    def find_splits(self, column: List[Cell]) -> Iterator[CompoundSplit]:
+        from templater import Templater
+
+        column = [c.get("text", "") for c in column]
+        template = Templater(min_block_size = self.min_block_size)
+        for cell in column:
+            try:
+                template.learn(cell)
+            except:
+                log.debug(f"Failed to add {cell} to template")
+                return
+            
+        if any(template._template):
+            log.debug(f'Template found: {template._template}')
+            try:
+                newrows = []
+                for cell in column:
+                    newrows.append(map(str.strip, template.parse(cell)))
+                newcols = zip(*newrows)
+                if newcols:
+                    for i, newcol in enumerate(newcols):
+                        if self.col_is_ok(newcol):
+                            
+                            prefix = template._template[i].strip()
+                            if prefix:
+                                if prefix.isnumeric(): # TODO: check numeric suffix
+                                    newcol = [prefix+c for c in newcol]
+                                    prefix = str(i)
+                            else:
+                                prefix = str(i)
+                            
+                            newcol = [{"text": c} for c in newcol]
+                            yield CompoundSplit(prefix, "string", newcol)
+            except Exception as e:
+                log.debug(f"Failed to parse {cell} using template {template._template}")
+
 
 
 class SpacyCompoundSplitter(CompoundSplitter):

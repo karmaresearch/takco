@@ -1,6 +1,8 @@
 import hashlib
 import logging as log
+import copy
 
+from ..table import Table
 
 def get_headerId(header):
     # header is a tuple of tuples.
@@ -12,8 +14,9 @@ def get_headerId(header):
 def tables_add_context_rows(tables, fields=()):
     """Add context to table depending on table dict fields"""
     for table in tables:
+        table = Table(table).to_dict()
 
-        for field in fields:
+        for field in list(fields)[::-1]:
             empty_header = {
                 "text": f"_{field}",
                 "surfaceLinks": [],
@@ -42,8 +45,9 @@ def tables_add_context_rows(tables, fields=()):
                     ],
                 }
             ]
+
             table["tableData"] = [
-                context_cells + list(drow) for drow in table["tableData"]
+                copy.deepcopy(context_cells) + list(drow) for drow in table["tableData"]
             ]
             table["numCols"] = len(table["tableData"][0])
 
@@ -62,4 +66,4 @@ def tables_add_context_rows(tables, fields=()):
                 for fci, te in table["properties"].items()
             }
 
-        yield table
+        yield Table(dict(table))

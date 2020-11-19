@@ -66,6 +66,18 @@ class SearchResult(dict):
         self.score = score
         self.context_matches = context_matches or {}
 
+    def get(self, k, default=None):
+        if k in self:
+            return self[k]
+        else:
+            for c in set(x.__class__ for x in self.keys()):
+                try:
+                    if c(k) in self:
+                        return self[c(k)]
+                except:
+                    pass
+        return default
+
     def __repr__(self):
         return f"SearchResult('{self.uri}', {dict(self)}, {self.context_matches}, score={self.score})"
 
@@ -143,7 +155,7 @@ class Database(Asset):
     def get_prop_values(self, e: URI, prop: URI):
         return self.about(e).get(prop, [])
 
-    def about(self, e: URI) -> Dict[URI, List[Node]]:
+    def about(self, e: URI, att_uris=None) -> Dict[URI, List[Node]]:
         """Look up facts about an entity
 
         Args:
@@ -183,31 +195,58 @@ class Linker(Asset):
         existing_entities = existing_entities or {}
         col_classes = col_classes or {}
 
-        rowcol_searchresults = {}
-        query_rowcols = []
-        for ri, row in enumerate(rows):
-            if (not skiprows) or (ri not in skiprows):
-                for ci, cell in enumerate(row):
-                    cis = tuple(range(0, ci)) + tuple(range(ci + 1, len(row)))
-                    context = {row[i]: i for i in cis}
-                    classes = col_classes.get(ci, [])
-                    params = {"context": context, "classes": classes}
+        if contextual:
+            rowcol_searchresults = {}
+            query_rowcols = []
+            for ri, row in enumerate(rows):
+                if (not skiprows) or (ri not in skiprows):
+                    for ci, cell in enumerate(row):
+                        cis = tuple(range(0, ci)) + tuple(range(ci + 1, len(row)))
+                        context = {row[i]: i for i in cis}
+                        classes = col_classes.get(ci, [])
+                        params = {"context": context, "classes": classes}
 
-                    query = (cell, params) if contextual else (cell, ())
+                        query = (cell, params) if contextual else (cell, ())
 
-                    if (not usecols) or (ci in usecols):
-                        existing = existing_entities.get(ci, {}).get(ri, {})
-                        if not existing:
-                            query_rowcols.append((query, (ri, ci)))
-                        else:
-                            rowcol_searchresults[(ri, ci)] = [
-                                SearchResult(e, score=score)
-                                for e, score in existing.items()
-                            ]
-        queries, _ = zip(*query_rowcols)
-        allresults = self.searcher.search_entities(queries, **kwargs)
-        for (query, rowcol), results in zip(query_rowcols, allresults):
-            rowcol_searchresults[rowcol] = results
+                        if (not usecols) or (ci in usecols):
+                            existing = existing_entities.get(ci, {}).get(ri, {})
+                            if not existing:
+                                if not (len(cell) < 2 or cell.isnumeric()):
+                                    query_rowcols.append((query, (ri, ci)))
+                            else:
+                                rowcol_searchresults[(ri, ci)] = [
+                                    SearchResult(e, score=score)
+                                    for e, score in existing.items()
+                                ]
+            queries, _ = zip(*query_rowcols)
+            allresults = self.searcher.search_entities(queries, **kwargs)
+            for (query, rowcol), results in zip(query_rowcols, allresults):
+                rowcol_searchresults[rowcol] = results
+        else:
+            rowcol_searchresults = {}
+            query_rowcols = {}
+            for ri, row in enumerate(rows):
+                if (not skiprows) or (ri not in skiprows):
+                    for ci, cell in enumerate(row):
+                        query = (cell, tuple(col_classes.get(ci, [])))
+
+                        if (not usecols) or (ci in usecols):
+                            existing = existing_entities.get(ci, {}).get(ri, {})
+                            if not existing:
+                                if not (len(cell) < 2 or cell.isnumeric()):
+                                    query_rowcols.setdefault(query, set()).add((ri, ci))
+                            else:
+                                rowcol_searchresults[(ri, ci)] = [
+                                    SearchResult(e, score=score)
+                                    for e, score in existing.items()
+                                ]
+            queries = [(q, {'classes': cs}) for q, cs in query_rowcols]
+            allresults = self.searcher.search_entities(queries, **kwargs)
+            for ((query, clss), rowcols), results in zip(query_rowcols.items(), allresults):
+                for rowcol in rowcols:
+                    rowcol_searchresults[rowcol] = results
+
+        
         return rowcol_searchresults
 
     def link(self, rows, usecols=None, skiprows=None, existing=None):

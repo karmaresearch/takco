@@ -5,6 +5,7 @@ warnings.filterwarnings("ignore")
 from pathlib import Path
 import logging as log
 import json
+import urllib
 
 from .dataset import Dataset
 
@@ -29,6 +30,9 @@ class WebDataCommons(Dataset):
         for doc in docs:
             if doc.get("headerPosition") == "FIRST_ROW":
                 header, *body = zip(*doc.pop("relation"))
+                if 'url' in doc:
+                    domain = urllib.parse.urlparse(doc['url']).netloc
+
                 yield {
                     "_id": "wdc-" + str(abs(hash(str(doc)))),
                     "tbNr": doc.get("tableNum", 0),
@@ -40,5 +44,6 @@ class WebDataCommons(Dataset):
                     "numHeaderRows": 1,
                     "numCols": len(header),
                     "numDataRows": len(body),
+                    "domain": domain,
                     **doc,
                 }

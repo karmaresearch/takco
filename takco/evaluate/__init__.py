@@ -5,6 +5,7 @@ from . import dataset
 from . import triples
 from . import novelty
 
+
 task_flatten = {
     "entities": score.flatten_entity_annotations,
     "properties": score.flatten_property_annotations,

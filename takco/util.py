@@ -55,7 +55,7 @@ class HashBag:
         log.debug(f"Piping {func.__name__} ...")
         return self.new(func(it, *args, **kwargs))
 
-    def fold(self, key, binop, exe=None, cast=False, keep_key=False):
+    def fold(self, key, binop):
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
         it = (copy.deepcopy(x) for x in it)
 
@@ -66,7 +66,10 @@ class HashBag:
                 combined[k] = binop(combined[k], i)
             else:
                 combined[k] = i
-        return self.new(combined.items() if keep_key else combined.values())
+        return self.new(combined.values())
+
+    def fold_tree(self, key, binop):
+        return self.fold(key, binop)
 
     def offset(self, get_attr, set_attr, default=0):
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
@@ -96,6 +99,7 @@ class HashBag:
             else:
                 if "*.jsonl" in str(f):
                     f = Path(str(f).replace("*.jsonl", "output.jsonl"))
+                log.debug(f"Writing to single file {f}")
                 fw = open(f, "w")
             for r in it:
                 if r:
@@ -103,16 +107,17 @@ class HashBag:
                     fw.flush()
                     yield r
             fw.close()
+        
+        Path(f).parent.mkdir(exist_ok=True, parents=True)
 
         return self.__class__(dumped_it(f))
 
-    def load(self, files):
+    def load(self, *files):
         from io import TextIOBase
         from pathlib import Path
 
+
         def it(files):
-            if type(files) != list:
-                files = [files]
             for f in files:
                 try:
                     if isinstance(f, TextIOBase):
@@ -203,7 +208,7 @@ try:
             args = (f'{k}={v.__repr__()}' for k,v in kwargs.items())
             return f"DaskHashBag(%s)" % ', '.join(args)
 
-        def load(self, f):
+        def load(self, *f):
             cls = self.__class__
             from io import TextIOBase
 
@@ -250,11 +255,23 @@ try:
 
             return self.new(self.bag.map_partitions(listify, *newargs, **newkwargs))
 
-        def fold(self, key, binop, exe=None, keep_key=False):
-            bag = self.bag.foldby(key, binop=binop)
-            if not keep_key:
-                bag = bag.map(lambda x: x[1])
-            return self.new(bag.repartition(self.bag.npartitions))
+        def fold_tree(self, key, binop):
+            return self.new(self.bag.foldby(key, binop=binop).map(lambda x: x[1]))
+
+        def fold(self, key, binop):
+            import pandas as pd
+            def combine(df):
+                return functools.reduce(binop, df.to_dict(orient='records'))
+            
+            # Allow ints to be nullable
+            head = self.bag.take(1)
+            meta = {d:'object' for d in dict(pd.DataFrame(list(head)).dtypes)}
+            df = self.bag.to_dataframe(meta=meta)
+
+            index = df.map_partitions(lambda df: df.apply(key, axis=1))
+            groups = df.assign(index=index).set_index('index').groupby('index')
+            return self.new( groups.apply(combine).to_bag() )
+            
 
         def offset(self, get_attr, set_attr, default=0):
             df = self.bag.to_dataframe(columns=[get_attr])
@@ -336,7 +353,6 @@ def preview(tables, nrows=5, ntables=10, nchars=100, hide_correct_rows=False):
             [cellchars(c.get("text", "")) for c in r]
             for r in table.get("tableData", [])
         ]
-        table["rows"] = rows[:n]
         headers = [[c.get("text") for c in r] for r in table.get("tableHeaders", [])]
         table["headers"] = headers
 
@@ -345,7 +361,7 @@ def preview(tables, nrows=5, ntables=10, nchars=100, hide_correct_rows=False):
         table.setdefault("properties", {})
 
         t = template.render(
-            table=json.loads(json.dumps(table)),
+            table=json.loads(json.dumps({**table, 'rows': rows[:n]})),
             annotated_rows=ri_ann,
             hidden_rows=hidden_rows,
         )
