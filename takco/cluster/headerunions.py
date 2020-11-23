@@ -2,6 +2,7 @@ import hashlib
 
 from ..table import Table
 
+
 def get_headerId(header):
     # header is a tuple of tuples.
     header = tuple(tuple(c for c in r) for r in header)
@@ -46,24 +47,26 @@ def combine_by_first_header(table1, table2):
     rows = table1["rows"] + table2["rows"]
     links = table1["links"] + table2["links"]
 
-    return Table({
-        **table1,
-        "_id": f"{headerId}-0",
-        "pgId": headerId,
-        "tbNr": 0,
-        "type": "headerunion",
-        "pgTitle": f"Header {headerId}",
-        "sectionTitle": "",
-        "headerId": headerId,
-        "numCols": len(rows[0]) if rows else 0,
-        "numDataRows": len(rows),
-        "numHeaderRows": len(tableHeaders),
-        "numericColumns": [],
-        "numTables": table1.get("numTables", 1) + table2.get("numTables", 1),
-        "tableHeaders": tableHeaders,
-        "rows": rows,
-        "links": links,
-        "pivots": table1.get("pivots", [table1.get("pivot")])
-        + table2.get("pivots", [table2.get("pivot")]),
-        **annotations,
-    })
+    return Table(
+        {
+            **table1,
+            "_id": f"{headerId}-0",
+            "pgId": headerId,
+            "tbNr": 0,
+            "type": "headerunion",
+            "pgTitle": f"Header {headerId}",
+            "sectionTitle": "",
+            "headerId": headerId,
+            "numCols": len(rows[0]) if rows else 0,
+            "numDataRows": len(rows),
+            "numHeaderRows": len(tableHeaders),
+            "numericColumns": [],
+            "numTables": table1.get("numTables", 1) + table2.get("numTables", 1),
+            "tableHeaders": tableHeaders,
+            "rows": rows,
+            "links": links,
+            "pivots": table1.get("pivots", [table1.get("pivot")])
+            + table2.get("pivots", [table2.get("pivot")]),
+            **annotations,
+        }
+    )

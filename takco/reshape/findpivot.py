@@ -1,8 +1,9 @@
-from typing import List, Container, Tuple, NamedTuple, Iterator, Dict
+from typing import List, Container, Tuple, NamedTuple, Iterator, Dict, Optional, Set
 from collections import defaultdict, Counter
 import re
 import logging as log
 from dataclasses import dataclass, field
+
 
 def get_colspan_repeats(
     rows: List[List[str]],
@@ -86,7 +87,6 @@ class Pivot(NamedTuple):
 
 
 class PivotFinder:
-
     def build(self, tables):
         return
 
@@ -297,10 +297,11 @@ class AgentLikeHyperlink(PivotFinder):
 
                     yield ri, ci
 
+
 @dataclass
 class AttributePrefix(PivotFinder):
-    attname: str = None
-    values: Container[str] = field(default_factory=set)
+    attname: Optional[str] = None
+    values: Set[str] = field(default_factory=set)
 
     def build(self, tables):
         for t in tables:
@@ -323,11 +324,12 @@ class AttributePrefix(PivotFinder):
                 if hcell.get("text", "").lower() in self.values:
                     yield ri, ci
 
+
 @dataclass
 class Rule(PivotFinder):
     id_vars: List[str] = field(default_factory=list)
     value_vars: List[str] = field(default_factory=list)
-    value_name: str = None
+    value_name: Optional[str] = None
 
     def find_pivot_cells(self, headerrows):
         if self.id_vars or self.value_vars:

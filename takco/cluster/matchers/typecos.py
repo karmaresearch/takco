@@ -18,12 +18,11 @@ class TypeCosMatcher(Matcher):
         **kwargs,
     ):
         self.name = name or self.__class__.__name__
-        self.set_mdir(fdir)
+        self.indexed = False
+        self.set_storage(fdir)
 
         self.coltypes: typing.Dict[int, typing.Any] = {}
         self.exclude_types = exclude_types
-
-        self.indexed = False
 
     def add(self, table):
         if table:
@@ -48,23 +47,18 @@ class TypeCosMatcher(Matcher):
         return self
 
     def __enter__(self):
-        super().__enter__()
-        if self.indexed and self.mdir:
-            log.debug(f"Loading {self} from disk...")
-            self.coltypes = pickle.load((Path(self.mdir) / Path("coltypes.pickle")).open("rb"))
+        if self.indexed and self.storage:
+            self.coltypes = self.storage.load_pickle("coltypes")
         return self
 
     def close(self):
-        if self.indexed and self.mdir:
+        if self.indexed and self.storage:
             del self.coltypes
 
     def index(self):
         log.debug(f"TypeCos index is len {len(self.coltypes)}")
-        if self.mdir:
-            log.debug(f"Serializing {self} to {self.mdir}")
-            self.mdir.mkdir(parents=True, exist_ok=True)
-            with (Path(self.mdir) / Path("coltypes.pickle")).open("wb") as fw:
-                pickle.dump(self.coltypes, fw)
+        if self.storage:
+            self.storage.save_pickle("coltypes", self.coltypes)
             self.indexed = True
             self.close()
 

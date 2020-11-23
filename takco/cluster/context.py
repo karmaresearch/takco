@@ -4,6 +4,7 @@ import copy
 
 from ..table import Table
 
+
 def get_headerId(header):
     # header is a tuple of tuples.
     header = tuple(tuple(c for c in r) for r in header)

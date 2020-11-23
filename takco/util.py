@@ -8,12 +8,13 @@ import itertools
 
 from .table import Table
 
+
 def robust_json_loads_lines(lines):
     docs = []
     for line in lines:
         try:
             t = Table(json.loads(line))
-            if 'tableData' in t:
+            if "tableData" in t:
                 docs.append(t)
         except Exception as e:
             log.warn(e)
@@ -107,7 +108,7 @@ class HashBag:
                     fw.flush()
                     yield r
             fw.close()
-        
+
         Path(f).parent.mkdir(exist_ok=True, parents=True)
 
         return self.__class__(dumped_it(f))
@@ -115,7 +116,6 @@ class HashBag:
     def load(self, *files):
         from io import TextIOBase
         from pathlib import Path
-
 
         def it(files):
             for f in files:
@@ -169,6 +169,7 @@ try:
 except:
     log.debug(f"Could not load tqdm")
 
+
 try:
     import dask.bag as db
     import dask.diagnostics
@@ -204,9 +205,9 @@ try:
             return DaskHashBag(it, npartitions=self.bag.npartitions, client=self.client)
 
         def __repr__(self):
-            kwargs = {'npartitions':self.bag.npartitions, **self.kwargs}
-            args = (f'{k}={v.__repr__()}' for k,v in kwargs.items())
-            return f"DaskHashBag(%s)" % ', '.join(args)
+            kwargs = {"npartitions": self.bag.npartitions, **self.kwargs}
+            args = (f"{k}={v.__repr__()}" for k, v in kwargs.items())
+            return f"DaskHashBag(%s)" % ", ".join(args)
 
         def load(self, *f):
             cls = self.__class__
@@ -216,7 +217,8 @@ try:
                 return cls(robust_json_loads_lines(f), **self.kwargs)
             else:
                 return cls(
-                    db.read_text(f).map_partitions(robust_json_loads_lines), **self.kwargs
+                    db.read_text(f).map_partitions(robust_json_loads_lines),
+                    **self.kwargs,
                 )
 
         @classmethod
@@ -260,18 +262,18 @@ try:
 
         def fold(self, key, binop):
             import pandas as pd
+
             def combine(df):
-                return functools.reduce(binop, df.to_dict(orient='records'))
-            
+                return functools.reduce(binop, df.to_dict(orient="records"))
+
             # Allow ints to be nullable
             head = self.bag.take(1)
-            meta = {d:'object' for d in dict(pd.DataFrame(list(head)).dtypes)}
+            meta = {d: "object" for d in dict(pd.DataFrame(list(head)).dtypes)}
             df = self.bag.to_dataframe(meta=meta)
 
             index = df.map_partitions(lambda df: df.apply(key, axis=1))
-            groups = df.assign(index=index).set_index('index').groupby('index')
-            return self.new( groups.apply(combine).to_bag() )
-            
+            groups = df.assign(index=index).set_index("index").groupby("index")
+            return self.new(groups.apply(combine).to_bag())
 
         def offset(self, get_attr, set_attr, default=0):
             df = self.bag.to_dataframe(columns=[get_attr])
@@ -361,7 +363,7 @@ def preview(tables, nrows=5, ntables=10, nchars=100, hide_correct_rows=False):
         table.setdefault("properties", {})
 
         t = template.render(
-            table=json.loads(json.dumps({**table, 'rows': rows[:n]})),
+            table=json.loads(json.dumps({**table, "rows": rows[:n]})),
             annotated_rows=ri_ann,
             hidden_rows=hidden_rows,
         )

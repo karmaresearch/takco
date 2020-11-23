@@ -24,16 +24,19 @@ except:
     Series = typing.Any
     AgglomerativeClustering = typing.Any
 
+
 def pair_chunks(pairs):
     it = iter(pairs)
     while True:
-        chunk = tuple(itertools.islice(it, 10 ** 4)) # chunk pairs per 10k
+        chunk = tuple(itertools.islice(it, 10 ** 4))  # chunk pairs per 10k
         if not chunk:
             break
         yield chunk
 
+
 def get_table_chunk_size(n_tables):
     return round(10 ** 4 / (n_tables ** 0.5)) + 1
+
 
 class Timer(dict):
     @contextlib.contextmanager
@@ -482,7 +485,9 @@ def cluster_partition_columns(
             # Make a dataframe of all similarities
             def yield_tablepairs_matches():
                 for mi, matcher in enumerate(entered):
-                    pairs = progress(tableid_colids_pairs, f"Matching with {matcher.name}")
+                    pairs = progress(
+                        tableid_colids_pairs, f"Matching with {matcher.name}"
+                    )
                     for chunk in pair_chunks(pairs):
                         for (ti1, ti2, ci1, ci2), score in matcher.match(chunk):
                             if ti1 != ti2 or ci1 == ci2:
@@ -556,7 +561,7 @@ def set_partition_columns(
             table["partColAlign"] = {
                 pci: pci_c.get(pci, None) for pci in range(pi_ncols[pi])
             }
-        if table.get('_id'):
+        if table.get("_id"):
             yield table
 
 
@@ -676,16 +681,18 @@ def merge_partition_tables(
     }
     keep(partColAlign, table)
 
-    return Table({
-        **mergetable,
-        "tableHeaders": tableHeaders,
-        "tableData": tableData,
-        "headerId": get_headerId(headerText),
-        "numDataRows": len(mergetable["tableData"]),
-        "numTables": mergetable["numTables"] + table.get("numTables", 1),
-        "pivots": mergetable["pivots"] + table.get("pivots", [table.get("pivot")]),
-        "partColAligns": mergetable["partColAligns"] + [partColAlign],
-    })
+    return Table(
+        {
+            **mergetable,
+            "tableHeaders": tableHeaders,
+            "tableData": tableData,
+            "headerId": get_headerId(headerText),
+            "numDataRows": len(mergetable["tableData"]),
+            "numTables": mergetable["numTables"] + table.get("numTables", 1),
+            "pivots": mergetable["pivots"] + table.get("pivots", [table.get("pivot")]),
+            "partColAligns": mergetable["partColAligns"] + [partColAlign],
+        }
+    )
 
 
 def cluster_columns(

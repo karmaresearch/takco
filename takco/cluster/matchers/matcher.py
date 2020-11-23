@@ -1,4 +1,6 @@
+import os
 from pathlib import Path
+import pickle
 import logging as log
 import sqlite3
 import re
@@ -15,6 +17,8 @@ from abc import ABC, abstractmethod
 
 import toml
 
+from takco.storage import Storage
+
 
 def default_tokenize(text):
     if text.startswith("_"):
@@ -27,12 +31,15 @@ Table = dict
 
 
 class Matcher(ABC):
-    name: Optional[str] = None
+    name: str
 
-    def set_mdir(self, fdir):
-        self.mdir = (Path(fdir) / Path(self.name)) if fdir else None
-        if self.mdir and self.mdir.exists():
-            self.indexed = True
+    def set_storage(self, fdir):
+        if fdir:
+            self.storage = Storage(fdir, self.name)
+            if self.storage:
+                self.mdir = self.storage.root
+                if self.storage.exists():
+                    self.indexed = True
 
     def __enter__(self):
         return self

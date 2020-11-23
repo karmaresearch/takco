@@ -23,7 +23,7 @@ class Dataset:
         else:
             raise Exception(f'No path to put {params.get("name", classname)}!')
         path.mkdir(exist_ok=True, parents=True)
-        params['path'] = path
+        params["path"] = path
 
         if "download" in params:
             from urllib.request import urlretrieve
@@ -68,7 +68,7 @@ class Dataset:
                 else:
                     log.warning(f"Could not load data from {vpath}")
                     params[k] = {}
-    
+
         return params
 
 

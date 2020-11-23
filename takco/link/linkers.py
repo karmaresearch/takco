@@ -38,7 +38,9 @@ class First(Linker):
         self.class_cover = class_cover
         self.majority_class_search = bool(majority_class_search)
         self.exclude_about = exclude_about
-        self.add_about = list(exclude_about or []) + ([majority_class] if majority_class else [])
+        self.add_about = list(exclude_about or []) + (
+            [majority_class] if majority_class else []
+        )
         self.normalize = normalize
 
     def __enter__(self):
@@ -88,7 +90,7 @@ class First(Linker):
 
             ci_majorcls = {}
             for ci, cls_ents in ci_cls_ents.items():
-                cls_count = {c:len(ents) for c, ents in cls_ents.items()}
+                cls_count = {c: len(ents) for c, ents in cls_ents.items()}
                 n = len(set.union(*cls_ents.values()))
                 for cls in sorted(cls_count, key=cls_count.get)[::-1]:
                     if cls_count[cls] / n >= self.class_cover:
@@ -113,7 +115,9 @@ class First(Linker):
 
                     def isbad(r):
                         try:
-                            return any(v.__class__(o) == v for o in os for v in r.get(p, []))
+                            return any(
+                                v.__class__(o) == v for o in os for v in r.get(p, [])
+                            )
                         except:
                             return False
 

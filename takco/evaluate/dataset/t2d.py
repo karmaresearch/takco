@@ -19,16 +19,20 @@ class T2D(Dataset):
     def get_name(self, fpath):
         return Path(fpath).name.split(".")[0]
 
-    def __init__(self, datadir: Path = None, resourcedir: Path = None, path: Path = None, version=2, fixuri={}, **kwargs):
+    def __init__(
+        self,
+        datadir: Path = None,
+        resourcedir: Path = None,
+        path: Path = None,
+        version=2,
+        fixuri={},
+        **kwargs,
+    ):
         kwargs = self.params(
-            path=path,
-            datadir=datadir,
-            resourcedir=resourcedir,
-            fixuri=fixuri,
-            **kwargs
+            path=path, datadir=datadir, resourcedir=resourcedir, fixuri=fixuri, **kwargs
         )
-        root = Path(kwargs.get('path')) 
-        fixuri = dict(kwargs['fixuri'])
+        root = Path(kwargs.get("path"))
+        fixuri = dict(kwargs["fixuri"])
 
         def fix_uri(uri):
 

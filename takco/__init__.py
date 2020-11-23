@@ -13,11 +13,14 @@ import logging as log
 
 from .util import *
 from . import config
+from .storage import Storage, HDFSPath
 
 from . import pages, reshape, link, cluster, evaluate
 
+
 class Pipeline(list):
     pass
+
 
 class TableSet:
     """A set of tables that can be clustered and linked."""
@@ -38,14 +41,13 @@ class TableSet:
 
     @classmethod
     def csvs(
-        cls,
-        *path: Path,
-        executor: HashBag = HashBag(),
+        cls, *path: typing.Union[HDFSPath, Path], executor: HashBag = HashBag(),
     ):
 
         log.info(f"Reading csv tables")
         import csv
 
+        # TODO: HDFSPath
         data = (
             {
                 "tableData": [
@@ -59,10 +61,7 @@ class TableSet:
 
     @classmethod
     def load(
-        cls,
-        *path: Path,
-        executor: HashBag = HashBag(),
-        **_,
+        cls, *path: typing.Union[HDFSPath, Path], executor: HashBag = HashBag(), **_,
     ):
         log.debug(f"Loading tables {path} using executor {executor}")
         if path and all(str(val).endswith("csv") for val in path):
@@ -126,7 +125,6 @@ class TableSet:
         restructure: bool = True,
         prefix_header_rules: typing.List[typing.Dict] = [],
         unpivot_heuristics: typing.List[reshape.PivotFinder] = [],
-        workdir: Path = None,
         centralize_pivots: bool = False,
         compound_splitter: reshape.CompoundSplitter = None,
         discard_headerless_tables: bool = False,
@@ -137,7 +135,7 @@ class TableSet:
 
         Args:
             restructure: Whether to restructure tables heuristically
-            unpivot_heuristics: Use a subset of available heuristics
+            unpivot_heuristics: Specifications of pivot finders
             centralize_pivots: If True, find pivots on unique headers instead of tables
             compound_splitter: Splitter for compound columns
 
@@ -149,35 +147,30 @@ class TableSet:
             tables = tables.pipe(reshape.restructure, prefix_header_rules)
 
         if unpivot_heuristics is not None:
-            unpivot_heuristics = {
-                getattr(h, 'name', h.__class__.__name__): h
-                for h in unpivot_heuristics
+            unpivoters = {
+                getattr(h, "name", h.__class__.__name__): h for h in unpivot_heuristics
             }
-            log.info(f"Unpivoting with heuristics: {', '.join(unpivot_heuristics)}")
+            log.info(f"Unpivoting with heuristics: {', '.join(unpivoters)}")
 
             tables = tables.persist()
 
             log.debug(f"Building heuristics...")
-            for name, h in tables.pipe(
-                reshape.build_heuristics, heuristics=unpivot_heuristics
-            ):
-                unpivot_heuristics[name].merge(h)
-            
+            for name, h in tables.pipe(reshape.build_heuristics, heuristics=unpivoters):
+                unpivoters[name].merge(h)
+
             headerId_pivot = None
             if centralize_pivots:
                 log.debug(f"Finding unpivots centrally...")
                 headers = tables.fold(reshape.table_get_headerId, reshape.get_header)
 
-                pivots = headers.pipe(
-                    reshape.yield_pivots, heuristics=unpivot_heuristics
-                )
+                pivots = headers.pipe(reshape.yield_pivots, heuristics=unpivoters)
 
                 headerId_pivot = {p["headerId"]: p for p in pivots}
                 log.info(f"Found {len(headerId_pivot)} pivots")
 
             log.debug(f"Unpivoting...")
             tables = tables.pipe(
-                reshape.unpivot_tables, headerId_pivot, heuristics=unpivot_heuristics,
+                reshape.unpivot_tables, headerId_pivot, heuristics=unpivoters,
             )
 
         if compound_splitter is not None:
@@ -198,14 +191,14 @@ class TableSet:
     def filter(self: TableSet, filters: typing.List[str]):
         tables = TableSet(self).tables
 
-        filters = [eval('lambda table: '+f) for f in filters]
+        filters = [eval("lambda table: " + f) for f in filters]
+
         def filt(tables, filters):
             for table in tables:
                 if not any(not c(table) for c in filters):
                     yield table
 
         return tables.pipe(filt, filters)
-
 
     @staticmethod
     def number_table_columns(tables):
@@ -273,107 +266,119 @@ class TableSet:
         tables = TableSet(self).tables
         agg_threshold_col = agg_threshold_col or agg_threshold
 
-        import tqdm # type: ignore
-        import sqlite3 # type: ignore
-        import pandas as pd # type: ignore
+        import tqdm  # type: ignore
+        import sqlite3  # type: ignore
+        import pandas as pd  # type: ignore
 
         if addcontext:
             tables = tables.pipe(cluster.tables_add_context_rows, fields=addcontext)
 
         if headerunions:
             if headerunions_attributes:
+
                 def key(t):
                     hid = cluster.table_get_headerId(t)
                     return str([hid] + [t.get(a) for a in headerunions_attributes])
+
             else:
                 key = cluster.table_get_headerId
-            tables = tables.fold(
-                key,
-                cluster.combine_by_first_header
-            )
+            tables = tables.fold(key, cluster.combine_by_first_header)
 
         if matchers:
+            storage = None
             if workdir:
                 log.info(f"Using workdir {workdir}")
+                storage = Storage(workdir)
 
             ## Create or load matchers
-            tablenumberfile = Path(workdir) / Path("tablenumbers.csv") if workdir else None
-            if tablenumberfile and tablenumberfile.exists():
-                log.info(f"Loading table numbers from {tablenumberfile}")
-                tablenums = pd.read_csv(tablenumberfile, index_col=0).to_dict(orient='index')
+            if storage and storage.exists_df("tablenumbers"):
+                tablenums = storage.load_df("tablenumbers").to_dict(orient="index")
+
                 def put_table_numbers(tables, tablenums):
                     for t in tables:
-                        t.update(tablenums[t['_id']])
+                        t.update(tablenums[t["_id"]])
                         yield t
+
                 tables = tables.pipe(put_table_numbers, tablenums).persist()
-                
             else:
                 tables = TableSet.number_table_columns(tables).persist()
-                
-                if tablenumberfile:
+
+                if storage:
+
                     def get_table_numbers(tables):
                         for t in tables:
                             yield t["_id"], {
-                                "tableIndex": t["tableIndex"], 
-                                "columnIndexOffset": t["columnIndexOffset"]
+                                "tableIndex": t["tableIndex"],
+                                "columnIndexOffset": t["columnIndexOffset"],
                             }
+
                     tablenums = dict(tables.pipe(get_table_numbers))
-                    log.info(f"Writing table numbers to {tablenumberfile}")
-                    pd.DataFrame.from_dict(tablenums, orient='index').to_csv(tablenumberfile)
+                    storage.save_df(
+                        pd.DataFrame.from_dict(tablenums, orient="index"),
+                        "tablenumbers",
+                    )
 
             for m in matchers + filters:
-                m.set_mdir(workdir)
+                m.set_storage(workdir)
 
-            if workdir and all(Path(m.mdir).exists() for m in matchers):
+            if all(m.storage and m.indexed for m in matchers):
                 log.info(f"Loading matchers: {', '.join(m.name for m in matchers)}")
             else:
                 log.info(f"Building matchers: {', '.join(m.name for m in matchers)}")
                 matchers = TableSet.build_matchers(matchers, tables)
-            
-            if workdir and all(Path(m.mdir).exists() for m in filters):
+
+            if all(m.storage and m.indexed for m in filters):
                 log.info(f"Loading filters: {', '.join(m.name for m in filters)}")
             else:
                 log.info(f"Building filters: {', '.join(m.name for m in filters)}")
                 filters = TableSet.build_matchers(filters, tables)
 
             ## Partition table similarity graph
-            # Get blocked column match scores
+            log.info(f"Getting table IDs")
             tableid_colids = dict(tables.pipe(cluster.get_table_ids))
-            ntables = len(tableid_colids)
-            chunksize = cluster.get_table_chunk_size(ntables)
-            log.info(f"Comparing {ntables} tables in chunks of size {chunksize}")
 
-            # chunksize = round(10**4 / (len(tableid_colids) ** .5)) + 1
-            tablesim = pd.concat(
-                tables.pipe(
-                    cluster.get_tablesims,
-                    tableid_colids=tableid_colids,
-                    matchers=matchers,
-                    filters=filters,
-                    agg_func=agg_func,
-                    agg_threshold=agg_threshold,
-                    align_columns=align_columns,
-                    align_width_norm=align_width_norm,
-                    align_use_total_width=align_use_total_width,
+            if storage and storage.exists_df("tablesim"):
+                tablesim = storage.load_df("tablesim")["tablesim"]
+                tableids = pd.Index(list(tableid_colids))
+                tablesim = tablesim.loc[tableids, tableids]
+            else:
+                # Get blocked column match scores
+                ntables = len(tableid_colids)
+                chunksize = cluster.get_table_chunk_size(ntables)
+                log.info(f"Comparing {ntables} tables in chunks of size {chunksize}")
+
+                # chunksize = round(10**4 / (len(tableid_colids) ** .5)) + 1
+                tablesim = pd.concat(
+                    tables.pipe(
+                        cluster.get_tablesims,
+                        tableid_colids=tableid_colids,
+                        matchers=matchers,
+                        filters=filters,
+                        agg_func=agg_func,
+                        agg_threshold=agg_threshold,
+                        align_columns=align_columns,
+                        align_width_norm=align_width_norm,
+                        align_use_total_width=align_use_total_width,
+                    )
                 )
-            )
-            # assure all tables are clustered using identity matrix
-            itups = ((ti, ti) for ti in tableid_colids)
-            ii = pd.MultiIndex.from_tuples(itups, names=["ti1", "ti2"])
-            tablesim = pd.concat([tablesim, pd.Series(1, index=ii)])
-            reduction = (len(tableid_colids) ** 2) / len(tablesim)
-            log.info(
-                f"Got {len(tablesim)} table similarities; {reduction:.0f}x reduction"
-            )
-            if workdir:
-                tablesim.to_csv(Path(workdir) / Path("tablesim.csv"))
+                # assure all tables are clustered using identity matrix
+                itups = ((ti, ti) for ti in tableid_colids)
+                ii = pd.MultiIndex.from_tuples(itups, names=["ti1", "ti2"])
+                tablesim = pd.concat([tablesim, pd.Series(1, index=ii)])
+                reduction = (len(tableid_colids) ** 2) / len(tablesim)
+                log.info(
+                    f"Got {len(tablesim)} table similarities; {reduction:.0f}x reduction"
+                )
+                if storage:
+                    storage.save_df(tablesim.to_frame("tablesim"), "tablesim")
 
+            log.info(f"Clustering with {len(tablesim)} similarities")
             louvain_partition = cluster.louvain(tablesim, edge_exp=edge_exp)
             nonsingle = [p for p in louvain_partition if len(p) > 1]
             log.info(f"Found {len(nonsingle)}/{len(louvain_partition)} >1 partitions")
             largest = max(map(len, louvain_partition))
             log.info(f"Largest partition has {largest} tables")
-            
+
             if (max_cluster_size is not None) and (largest > max_cluster_size):
                 log.info(f"That's too big. Re-sizing to {max_cluster_size}")
                 louvain_partition = [
@@ -382,7 +387,9 @@ class TableSet:
                     for i in range(0, len(part), max_cluster_size)
                 ]
                 nonsingle = [p for p in louvain_partition if len(p) > 1]
-                log.info(f"Made {len(nonsingle)}/{len(louvain_partition)} >1 partitions")
+                log.info(
+                    f"Made {len(nonsingle)}/{len(louvain_partition)} >1 partitions"
+                )
                 largest = max(map(len, louvain_partition))
                 log.info(f"Largest partition has {largest} tables")
 
@@ -395,23 +402,19 @@ class TableSet:
                 agg_func=agg_func,
                 agg_threshold_col=agg_threshold_col,
             )
-            from collections import ChainMap
-
-            ti_pi, pi_ncols, ci_pci, ti_colsim = (
+            ti_pi, pi_ncols, ci_pci, pi_colsim = (
                 {k: v for d in ds for k, v in d.items()} for ds in zip(*chunks)
             )
 
             if workdir:
-                colsimdir = Path(workdir) / Path("colsims")
-                colsimdir.mkdir(exist_ok=True, parents=True)
-                for ti, colsim in ti_colsim.items():
-                    colsim.to_csv(colsimdir / Path(f"{ti}.csv"), header=True)
+                for pi, colsim in pi_colsim.items():
+                    Storage(workdir, "colsim").save_df(colsim, f"pi={pi}")
 
             log.info(f"Merging clustered tables...")
             tables = tables.pipe(
                 cluster.set_partition_columns, ti_pi, pi_ncols, ci_pci
             ).fold(
-                lambda t: t.get("_id", 'untitled-0'),
+                lambda t: t.get("_id", "untitled-0"),
                 lambda a, b: cluster.merge_partition_tables(
                     a,
                     b,
@@ -423,8 +426,7 @@ class TableSet:
         return TableSet(tables)
 
     def coltypes(
-        self: TableSet,
-        typer: link.Typer = link.SimpleTyper(),
+        self: TableSet, typer: link.Typer = link.SimpleTyper(),
     ):
         """Find column types.
         
@@ -436,9 +438,7 @@ class TableSet:
         return TableSet(tables.pipe(link.coltypes, typer=typer))
 
     def integrate(
-        self: TableSet,
-        db: link.Database = None,
-        pfd_threshold: float = 0.9,
+        self: TableSet, db: link.Database = None, pfd_threshold: float = 0.9,
     ):
         """Integrate tables with KB properties and classes.
 
@@ -452,17 +452,15 @@ class TableSet:
                 prediction
         """
         tables = TableSet(self).tables
-        
+
         if db is None:
             db = link.RDFSearcher(
-                statementURIprefix = "http://www.wikidata.org/entity/statement/",
-                store = link.SparqlStore()
+                statementURIprefix="http://www.wikidata.org/entity/statement/",
+                store=link.SparqlStore(),
             )
 
         log.info(f"Integrating with {db}")
-        tables = tables.pipe(
-            link.integrate, db=db, pfd_threshold=pfd_threshold,
-        )
+        tables = tables.pipe(link.integrate, db=db, pfd_threshold=pfd_threshold,)
         return TableSet(tables)
 
     def link(
@@ -530,8 +528,7 @@ class TableSet:
         return TableSet(tables)
 
     def novelty(
-        self: TableSet,
-        searcher: link.Searcher,
+        self: TableSet, searcher: link.Searcher,
     ):
         tables = TableSet(self).tables
 
@@ -544,7 +541,9 @@ class TableSet:
         tables = tables.pipe(evaluate.table_triples, include_type=include_type)
         return TableSet(tables)
 
-    def report(self: TableSet, keycol_only: bool = False, curve: bool = False) -> typing.Dict:
+    def report(
+        self: TableSet, keycol_only: bool = False, curve: bool = False
+    ) -> typing.Dict:
         """Generate report
 
         Args:
@@ -616,8 +615,8 @@ class TableSet:
     def run(
         cls,
         pipeline: Pipeline,
-        input_tables: typing.Union[pages.PageSource, Path] = None,
-        workdir: Path = None,
+        input_tables: typing.Union[pages.PageSource, HDFSPath, Path] = None,
+        workdir: typing.Union[HDFSPath, Path] = None,
         datadir: Path = None,
         resourcedir: Path = None,
         forcesteps: typing.List[int] = [],
@@ -652,11 +651,12 @@ class TableSet:
 
         def wrap_step(stepfunc, stepargs, stepdir):
             if cache:
-                stepdir.mkdir(exist_ok=True, parents=True)
+                Storage(stepdir).mkdir()
                 log.info(f"Writing cache to {stepdir}")
                 tablefile = str(stepdir) + "/*.jsonl"
-                for f in glob.glob(tablefile):
-                    os.remove(f)
+                for f in Storage(stepdir).ls():
+                    if f.endswith(".jsonl"):
+                        Storage(stepdir).rm(f)
                 return stepfunc(**stepargs).dump(tablefile)
             else:
                 return stepfunc(**stepargs)
@@ -666,9 +666,9 @@ class TableSet:
             if "step" in stepargs:
                 stepfuncname = stepargs.pop("step")
                 stepname = f"{si}-{stepargs.get('name', stepfuncname)}"
-                stepdir = workdir / Path(stepname) if workdir else None
+                stepdir = os.path.join(workdir, stepname) if workdir else None
 
-                nodir = (not stepdir) or (not stepdir.exists()) or (not any(stepdir.iterdir()))
+                nodir = (not stepdir) or (not Storage(stepdir).exists())
                 if force or (stepforce is not None and si >= stepforce) or nodir:
                     stepfunc = getattr(TableSet, stepfuncname)
                     if not stepfunc:
@@ -686,14 +686,14 @@ class TableSet:
                     yield workdir, wrap_step(stepfunc, stepargs, stepdir)
                 else:
                     log.warn(f"Skipping step {stepname}, using cache instead")
-                    tablefile = str(stepdir) + "/*.jsonl"
+                    tablefile = os.path.join(str(stepdir), "*.jsonl")
                     yield workdir, TableSet(executor.load(tablefile))
             elif "split" in stepargs:
                 # Persist pre-split tables
                 tableset.tables.persist()
                 for split, splitargs in enumerate(stepargs["split"]):
                     splitname = f"{si}-split-{split}"
-                    splitdir = workdir / Path(splitname) if workdir else None
+                    splitdir = os.path.join(workdir, splitname) if workdir else None
                     yield from chain_step(tableset, splitdir, si, splitargs)
             else:
                 raise Exception(f"Pipeline step {si} has no step type")
@@ -705,22 +705,24 @@ class TableSet:
         elif isinstance(input_tables, pages.PageSource):
             log.info(f"Getting input tabels from extraction: {input_tables}")
             streams = [(workdir, [])]
-            pipeline.insert(0, {'step':'extract', 'source':input_tables })
+            pipeline.insert(0, {"step": "extract", "source": input_tables})
         elif isinstance(input_tables, HashBag):
             streams = [(workdir, input_tables)]
         elif input_tables is not None:
             log.info(f"Getting input tabels from spec: {input_tables}")
-            if not isinstance(input_tables.get('path'), list):
-                input_tables['path'] = [input_tables['path']]
-            tables = TableSet.load(*input_tables.pop('path'), **input_tables, executor=executor)
+            if not isinstance(input_tables.get("path"), list):
+                input_tables["path"] = [input_tables["path"]]
+            tables = TableSet.load(
+                *input_tables.pop("path"), **input_tables, executor=executor
+            )
             streams = [(workdir, tables)]
         else:
             streams = [(workdir, [])]
 
         if cache and workdir:
             if force:
-                shutil.rmtree(workdir, ignore_errors=True)
-            workdir.mkdir(exist_ok=True, parents=True)
+                Storage(workdir).rmtree()
+            Storage(workdir).mkdir()
 
         log.info(f"Running pipeline in {workdir} using {executor}")
 

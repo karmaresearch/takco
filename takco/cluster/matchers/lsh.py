@@ -15,8 +15,9 @@ from .. import cluster
 try:
     import datasketch  # type: ignore
     import numpy as np  # type: ignore
+    import pandas as pd  # type: ignore
 except:
-    log.error(f"Cannot import datasketch/numpy")
+    log.error(f"Cannot import datasketch / numpy / pandas")
 
 
 class LSHMatcher(Matcher):
@@ -37,8 +38,8 @@ class LSHMatcher(Matcher):
         **kwargs,
     ):
         self.name = name or self.__class__.__name__
-        self.set_mdir(fdir)
         self.indexed = False
+        self.set_storage(fdir)
 
         self.source = source
         self.redis_dir = redis_dir if redis_dir and Path(redis_dir).exists() else None
@@ -173,20 +174,27 @@ class LSHMatcher(Matcher):
             log.info(f"Saved redis with code {r.returncode}")
 
         self.indexed = True
-        if self.mdir:
-            self.mdir.mkdir(parents=True, exist_ok=True)
-            log.debug(f"Serializing {self} to {self.mdir}")
-            np.save(self.mdir / Path("digests.npy"), self.digests)
-            with open(self.mdir / Path("ci_tidi.pickle"), "wb") as fw:
-                pickle.dump(self.ci_tidi, fw)
-            with open(self.mdir / Path("lshindex.pickle"), "wb") as fw:
-                pickle.dump(self.lshindex, fw)
+        if self.storage:
+            digestsdf = (
+                pd.DataFrame(self.digests)
+                .reset_index()
+                .melt(id_vars=["index"], var_name="dim", value_name="val")
+            )
+            self.storage.save_df(digestsdf, "digests")
+            self.storage.save_pickle(self.ci_tidi, "ci_tidi")
+            self.storage.save_pickle(self.lshindex, "vi_tici")
             self.close()
 
     def __enter__(self):
-        super().__enter__()
+        if self.indexed and self.storage:
+            digestsdf = self.storage.load_df("digests")
+            self.digests = digestsdf.set_index(["index", "dim"]).unstack().values
+            self.ci_tidi = self.storage.load_pickle("ci_tidi")
+            self.lshindex = self.storage.load_pickle("lshindex")
+        return self
+
+    def load_old(self):
         if self.indexed and self.mdir:
-            log.debug(f"Loading {self} from disk...")
             self.digests = np.load(self.mdir / Path("digests.npy"), mmap_mode="r")
             with open(self.mdir / Path("ci_tidi.pickle"), "rb") as fr:
                 self.ci_tidi = pickle.load(fr)
@@ -195,7 +203,7 @@ class LSHMatcher(Matcher):
         return self
 
     def close(self):
-        if self.indexed and self.mdir:
+        if self.indexed and self.storage:
             del self.digests
             del self.ci_tidi
             del self.lshindex

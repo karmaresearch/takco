@@ -53,7 +53,7 @@ class GraphDB(Database, rdflib.Graph):
 
     def about(self, uri, att_uris=None):
         about = {}
-        if att_uris and hasattr(att_uris, '__iter__'):
+        if att_uris and hasattr(att_uris, "__iter__"):
             for att in att_uris:
                 for _, p, o in self.triples([URIRef(uri), URIRef(att), None]):
                     about.setdefault(p, []).append(o)
@@ -188,7 +188,9 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
 
             results = [
                 SearchResult(
-                    str(e), self.about(e, add_about) if add_about else {}, score=e_score.get(e, 1)
+                    str(e),
+                    self.about(e, add_about) if add_about else {},
+                    score=e_score.get(e, 1),
                 )
                 for e in result_uris[:limit]
             ]

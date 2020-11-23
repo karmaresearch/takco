@@ -24,8 +24,8 @@ class CellJaccMatcher(Matcher):
         **kwargs,
     ):
         self.name = name or self.__class__.__name__
-        self.set_mdir(fdir)
         self.indexed = False
+        self.set_storage(fdir)
 
         self.source = source
         self.tokenize = tokenize
@@ -38,7 +38,7 @@ class CellJaccMatcher(Matcher):
         rows = []
         if self.source in table:
             r = table[self.source]
-            rows = zip(*[r if isinstance(r, list) else [r]])
+            rows = list(zip(*[r if isinstance(r, list) else [r]]))
             ci_range = [table["tableIndex"]]
         else:
             if self.source != "head":
@@ -47,9 +47,11 @@ class CellJaccMatcher(Matcher):
                 rows += table.get("tableHeaders", [])
 
             rows = [[c.get("text", "") for c in r] for r in rows]
-            ci_range = range(
-                table["columnIndexOffset"],
-                table["columnIndexOffset"] + table["numCols"],
+            ci_range = list(
+                range(
+                    table["columnIndexOffset"],
+                    table["columnIndexOffset"] + table["numCols"],
+                )
             )
 
         for row in rows:
@@ -81,26 +83,19 @@ class CellJaccMatcher(Matcher):
     def index(self):
         if not self.indexed:
             self.indexed = True
-            if self.mdir:
-                log.debug(f"Serializing {self} to {self.mdir}")
-                self.mdir.mkdir(parents=True, exist_ok=True)
+            if self.storage:
                 for p in self.pickles:
-                    with (self.mdir / Path(f"{p}.pickle")).open("wb") as fw:
-                        pickle.dump(getattr(self, p), fw)
+                    self.storage.save_pickle(getattr(self, p), p)
                 self.close()
 
     def __enter__(self):
-        super().__enter__()
-        if self.indexed and self.mdir:
-            log.debug(f"Loading {self} from disk...")
+        if self.indexed and self.storage:
             for p in self.pickles:
-                fpath = self.mdir / Path(f"{p}.pickle")
-                if fpath.exists():
-                    setattr(self, p, pickle.load(fpath.open("rb")))
+                setattr(self, p, self.storage.load_pickle(p))
         return self
 
     def close(self):
-        if self.indexed and self.mdir:
+        if self.indexed and self.storage:
             for p in self.pickles:
                 delattr(self, p)
 

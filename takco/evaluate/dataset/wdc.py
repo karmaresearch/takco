@@ -30,8 +30,8 @@ class WebDataCommons(Dataset):
         for doc in docs:
             if doc.get("headerPosition") == "FIRST_ROW":
                 header, *body = zip(*doc.pop("relation"))
-                if 'url' in doc:
-                    domain = urllib.parse.urlparse(doc['url']).netloc
+                if "url" in doc:
+                    domain = urllib.parse.urlparse(doc["url"]).netloc
 
                 yield {
                     "_id": "wdc-" + str(abs(hash(str(doc)))),

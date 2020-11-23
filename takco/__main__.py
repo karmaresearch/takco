@@ -6,19 +6,17 @@ import argparse
 import logging as log
 import types
 from pathlib import Path
-from typing import (
-    Dict,
-    Any
-)
+from typing import Dict, Any
 
 import toml
-import defopt # type: ignore
+import defopt  # type: ignore
 
 import takco
 from takco import TableSet, HashBag
 from . import config
 
-assets : Dict[str, Any] = {}
+assets: Dict[str, Any] = {}
+
 
 class SetConfig(argparse.Action):
     def __init__(self, option_strings, dest, nargs="?", **kwargs):
@@ -32,7 +30,7 @@ class SetConfig(argparse.Action):
                 assets.update(conf)
                 log.debug(f"Loaded config {conf}")
             else:
-                raise Exception(f'Could not parse config {values}!')
+                raise Exception(f"Could not parse config {values}!")
         else:
             assets.update(os.environ)
             log.debug(f"Loaded config from environment")
@@ -47,7 +45,7 @@ class SetExecutor(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         global assets
         if self.dest:
-            
+
             if values:
                 executor = config.build(config.parse(values), assets)
             else:
@@ -80,6 +78,7 @@ class SetVerbosity(argparse.Action):
             log.getLogger().addHandler(log.FileHandler(logfile))
         log.info(f"Set log level to {log.getLogger().getEffectiveLevel()}")
 
+
 def main():
 
     funcs = (
@@ -101,15 +100,15 @@ def main():
                 if obj.__module__.startswith(mod.__name__):
                     yield obj
             elif isinstance(obj, types.ModuleType):
-                if hasattr(obj, '__name__') and obj.__name__.startswith(mod.__name__):
+                if hasattr(obj, "__name__") and obj.__name__.startswith(mod.__name__):
                     yield from getclasses(obj)
-    
+
     def parse_tableset_arg(x):
         try:
             return TableSet.load(**config.build(config.parse(x), assets))
         except:
             return TableSet.load(x, executor=assets.get("executor"))
-    
+
     parser = defopt._create_parser(
         funcs,
         strict_kwonly=False,
@@ -121,7 +120,7 @@ def main():
                 for cls in getclasses(takco)
             },
             HashBag: HashBag,
-            TableSet: parse_tableset_arg
+            TableSet: parse_tableset_arg,
         },
         argparse_kwargs={"description": __doc__},
     )
@@ -154,7 +153,7 @@ def main():
                 )
 
     args = parser.parse_args(sys.argv[1:])
-    
+
     # Output result as json (or newline-delimited json if generator)
     result = defopt._call_function(parser, args._func, args)
     if result:
@@ -167,7 +166,7 @@ def main():
                 log.info(f"Writing {result} to {out}")
                 for _ in result.dump(out):
                     pass
-            elif isinstance(result, (types.GeneratorType, map, filter)): # type: ignore
+            elif isinstance(result, (types.GeneratorType, map, filter)):  # type: ignore
                 for r in result:
                     print(json.dumps(r))
             else:
@@ -181,6 +180,7 @@ def main():
                 pass
     else:
         log.debug(f"No results")
+
 
 if __name__ == "__main__":
     main()

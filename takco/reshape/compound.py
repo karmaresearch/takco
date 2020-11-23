@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple, NamedTuple, Any, Iterator
+from typing import List, Dict, Tuple, NamedTuple, Any, Iterator, Optional
 import re
 import datetime
 from collections import Counter
@@ -82,12 +82,13 @@ class PrefixCompoundSplitter(CompoundSplitter):
                     newcol = [{"text": c} for c in newcol]
                     yield CompoundSplit(prefix, "string", newcol)
 
+
 @dataclass
 class TemplateCompoundSplitter(CompoundSplitter):
     min_block_size: int = 2
-    min_cell_size: int = None
-    max_cell_size: int = None
-    
+    min_cell_size: Optional[int] = None
+    max_cell_size: Optional[int] = None
+
     def __post_init__(self):
         import templater
 
@@ -106,16 +107,16 @@ class TemplateCompoundSplitter(CompoundSplitter):
         from templater import Templater
 
         column = [c.get("text", "") for c in column]
-        template = Templater(min_block_size = self.min_block_size)
+        template = Templater(min_block_size=self.min_block_size)
         for cell in column:
             try:
                 template.learn(cell)
             except:
                 log.debug(f"Failed to add {cell} to template")
                 return
-            
+
         if any(template._template):
-            log.debug(f'Template found: {template._template}')
+            log.debug(f"Template found: {template._template}")
             try:
                 newrows = []
                 for cell in column:
@@ -124,20 +125,19 @@ class TemplateCompoundSplitter(CompoundSplitter):
                 if newcols:
                     for i, newcol in enumerate(newcols):
                         if self.col_is_ok(newcol):
-                            
+
                             prefix = template._template[i].strip()
                             if prefix:
-                                if prefix.isnumeric(): # TODO: check numeric suffix
-                                    newcol = [prefix+c for c in newcol]
+                                if prefix.isnumeric():  # TODO: check numeric suffix
+                                    newcol = [prefix + c for c in newcol]
                                     prefix = str(i)
                             else:
                                 prefix = str(i)
-                            
+
                             newcol = [{"text": c} for c in newcol]
                             yield CompoundSplit(prefix, "string", newcol)
             except Exception as e:
                 log.debug(f"Failed to parse {cell} using template {template._template}")
-
 
 
 class SpacyCompoundSplitter(CompoundSplitter):

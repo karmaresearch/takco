@@ -97,9 +97,7 @@ class WarcPages(PageSource):
     """
 
     def __init__(
-        self,
-        globstrings: typing.Union[str, typing.List[str]],
-        datadir: Path = None,
+        self, globstrings: typing.Union[str, typing.List[str]], datadir: Path = None,
     ):
         if not isinstance(globstrings, list):
             globstrings = [globstrings]
@@ -111,7 +109,7 @@ class WarcPages(PageSource):
     @staticmethod
     def parse_warc(fnames):
         """Yield html pages from WARC files"""
-        from warcio.archiveiterator import ArchiveIterator # type: ignore
+        from warcio.archiveiterator import ArchiveIterator  # type: ignore
 
         for fname in fnames:
             with open(fname, "rb") as stream:
@@ -201,4 +199,3 @@ class LinePages(PageSource):
             f"Extracting pages from {len(fnames)} line files using executor {executor}"
         )
         return executor.new(fnames).pipe(self.parse_line, self.lookup, self.title_regex)
-

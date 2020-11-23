@@ -240,13 +240,14 @@ class Linker(Asset):
                                     SearchResult(e, score=score)
                                     for e, score in existing.items()
                                 ]
-            queries = [(q, {'classes': cs}) for q, cs in query_rowcols]
+            queries = [(q, {"classes": cs}) for q, cs in query_rowcols]
             allresults = self.searcher.search_entities(queries, **kwargs)
-            for ((query, clss), rowcols), results in zip(query_rowcols.items(), allresults):
+            for ((query, clss), rowcols), results in zip(
+                query_rowcols.items(), allresults
+            ):
                 for rowcol in rowcols:
                     rowcol_searchresults[rowcol] = results
 
-        
         return rowcol_searchresults
 
     def link(self, rows, usecols=None, skiprows=None, existing=None):

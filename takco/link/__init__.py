@@ -28,7 +28,7 @@ except:
 def get_hrefs(datarows, lookup_cells=False):
     def cell_ok(c):
         c = c.get("text", "")
-        return bool(c and (not c.isnumeric()) and len(c)>1)
+        return bool(c and (not c.isnumeric()) and len(c) > 1)
 
     return [
         [
@@ -158,9 +158,7 @@ def coltypes(tables: List[dict], typer: Typer):
             yield table
 
 
-def integrate(
-    tables: List[dict], db: NaryDB, pfd_threshold=0.9
-):
+def integrate(tables: List[dict], db: NaryDB, pfd_threshold=0.9):
     """Integrate tables with n-ary relations
 
     Args:

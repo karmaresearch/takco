@@ -34,8 +34,8 @@ class EmbeddingMatcher(Matcher):
     ):
         """Matcher based on embeddings and FAISS"""
         self.name = name or self.__class__.__name__
-        self.set_mdir(fdir)
         self.indexed = False
+        self.set_storage(fdir)
 
         self.source = source
         self.topn = topn
@@ -112,30 +112,29 @@ class EmbeddingMatcher(Matcher):
 
         self.means = np.array(self.vecs).astype("float32")
         del self.vecs
+        self.means = np.ascontiguousarray(self.means)
+        self.means /= np.sqrt((self.means ** 2).sum(axis=1))[:, None]
+
         self.ci_vi = {ci: vi for vi, (_, ci) in enumerate(self.vi_tici)}
 
-        # Create FAISS index
-        V = np.ascontiguousarray(self.means)
-        V /= np.sqrt((V ** 2).sum(axis=1))[:, None]
-
-        self.faissindex = faiss.IndexFlatIP(V.shape[1])  # build the index
-        # add vectors to the index
-        self.faissindex.add(np.array(V))  # type: ignore
-        log.debug("faiss info: %s", faiss.MatrixStats(V).comments)
-        self.indexed = True
-
-        if self.mdir:
-            log.debug(f"Serializing {self} to {self.mdir}")
-            faissindex_fname = self.mdir / Path("index.faiss")
-            Path(faissindex_fname).parent.mkdir(parents=True, exist_ok=True)
-            faiss.write_index(self.faissindex, str(faissindex_fname))
-            del self.faissindex
-
-            self.mdir.mkdir(parents=True, exist_ok=True)
-            np.save(self.mdir / Path("means.npy"), self.means)
-            with open(self.mdir / Path("vi_tici.pickle"), "wb") as fw:
-                pickle.dump(self.vi_tici, fw)
+        if self.storage:
+            meansdf = (
+                pd.DataFrame(self.means)
+                .reset_index()
+                .melt(id_vars=["index"], var_name="dim", value_name="val")
+            )
+            self.storage.save_df(meansdf, "means")
+            self.storage.save_pickle(self.vi_tici, "vi_tici")
             self.close()
+        else:
+            # Create FAISS index
+            faissindex = faiss.IndexFlatIP(self.means.shape[1])  # build the index
+            # add vectors to the index
+            faissindex.add(np.array(self.means))  # type: ignore
+            log.debug("faiss info: %s", faiss.MatrixStats(self.means).comments)
+            self.faissindex = faissindex
+
+        self.indexed = True
 
     def __enter__(self):
         log.info(f"Loading word vectors {self.wordvec_fname}")
@@ -149,6 +148,15 @@ class EmbeddingMatcher(Matcher):
         self.word_i = {w: i for i, w in enumerate(wordvecs.index)}
         self.wordvecarray = np.array(wordvecs)
 
+        if self.indexed and self.storage:
+            meansdf = self.storage.load_df("means")
+            self.means = meansdf.set_index(["index", "dim"]).unstack().values
+            self.vi_tici = self.storage.load_pickle("vi_tici")
+            self.ci_vi = {ci: vi for vi, (_, ci) in enumerate(self.vi_tici)}
+
+        return self
+
+    def load_old(self):
         if self.indexed and self.mdir:
             log.debug(f"Loading {self} from disk...")
             self.means = np.load(self.mdir / Path("means.npy"), mmap_mode="r")
@@ -164,17 +172,18 @@ class EmbeddingMatcher(Matcher):
         if hasattr(self, "word_i"):
             del self.word_i
 
-        if self.indexed and self.mdir:
+        if self.indexed and self.storage:
             del self.means
             del self.vi_tici
             del self.ci_vi
 
     def prepare_block(self, tableid_colids: Dict[int, Set[int]]):
-        if self.mdir:
-            faissindex_fname = self.mdir / Path("index.faiss")
-            if not faissindex_fname.exists():
-                return
-            faissindex = faiss.read_index(str(faissindex_fname))
+        if self.storage:
+            # Create FAISS index
+            faissindex = faiss.IndexFlatIP(self.means.shape[1])  # build the index
+            # add vectors to the index
+            faissindex.add(np.array(self.means))  # type: ignore
+            log.debug("faiss info: %s", faiss.MatrixStats(self.means).comments)
         else:
             faissindex = self.faissindex
 
