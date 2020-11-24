@@ -7,6 +7,8 @@ import typing
 
 
 class Dataset:
+    tables = None
+    
     def params(self, resourcedir: Path = None, datadir: Path = None, **params):
         params = dict(params)
         classname = self.__class__.__name__
@@ -72,13 +74,30 @@ class Dataset:
         return params
 
 
+    def get_unannotated_tables(self):
+        for table in self.tables:
+            rows = [[{"text": c} for c in row] for row in table.get("rows")]
+            headers = [[{"text": c} for c in row] for row in table.get("headers", [])]
+            yield {
+                "_id": table.get("name", ""),
+                "tableData": rows,
+                "tableHeaders": headers,
+                "keycol": table.get("keycol"),
+                "gold": {
+                    task: table.get(task, {})
+                    for task in ["entities", "classes", "properties"]
+                }
+            }
+
+    def get_annotated_tables(self):
+        return {table["name"]: table for table in self.tables}
+
+
 class Annotation(Dataset):
     def __init__(self, fname: str = None, name=None, **kwargs):
+        assert(fname)
         self.fpath = Path(fname)
         self.name = name or ""
-
-    def get_unannotated_tables(self):
-        return self.tables
 
     @property
     def tables(self):

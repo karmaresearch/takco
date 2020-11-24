@@ -498,7 +498,7 @@ class TableSet:
 
     def score(
         self: TableSet,
-        annotations: evaluate.dataset.Dataset,
+        annotations: evaluate.dataset.Dataset = None,
         datadir: Path = None,
         resourcedir: Path = None,
         keycol_only: bool = False,
@@ -516,15 +516,19 @@ class TableSet:
         """
         tables = TableSet(self).tables
 
-        table_annot = annotations.get_annotated_tables()
-        log.info(f"Loaded {len(table_annot)} annotated tables")
+        if annotations:
+            table_annot = annotations.get_annotated_tables()
+            log.info(f"Loaded {len(table_annot)} annotated tables")
 
-        def with_gold(tables, annotations):
-            for t in tables:
-                yield t, annotations.get(t["_id"], {})
+            def add_gold(tables, table_annot):
+                tasks = ["entities", "classes", "properties"]
+                for t in tables:
+                    goldtable = table_annot.get(t["_id"], {})
+                    t["gold"] = {t: goldtable.get(t, {}) for t in tasks}
+                    yield t
 
-        pairs = tables.pipe(with_gold, table_annot)
-        tables = pairs.pipe(evaluate.table_score, keycol_only=keycol_only)
+            tables = tables.pipe(add_gold, table_annot)
+        tables = tables.pipe(evaluate.table_score, keycol_only=keycol_only)
         return TableSet(tables)
 
     def novelty(
@@ -661,12 +665,12 @@ class TableSet:
             else:
                 return stepfunc(**stepargs)
 
-        def chain_step(tableset, workdir, si, stepargs):
+        def chain_step(tableset, steppath, si, stepargs):
             stepargs = dict(stepargs)
             if "step" in stepargs:
                 stepfuncname = stepargs.pop("step")
                 stepname = f"{si}-{stepargs.get('name', stepfuncname)}"
-                stepdir = os.path.join(workdir, stepname) if workdir else None
+                stepdir = os.path.join(workdir, steppath, stepname) if workdir else None
 
                 nodir = (not stepdir) or (not Storage(stepdir).exists())
                 if force or (stepforce is not None and si >= stepforce) or nodir:
@@ -683,31 +687,31 @@ class TableSet:
                             stepargs[k] = v
 
                     log.info(f"Chaining pipeline step {stepname}")
-                    yield workdir, wrap_step(stepfunc, stepargs, stepdir)
+                    yield steppath, wrap_step(stepfunc, stepargs, stepdir)
                 else:
                     log.warn(f"Skipping step {stepname}, using cache instead")
                     tablefile = os.path.join(str(stepdir), "*.jsonl")
-                    yield workdir, TableSet(executor.load(tablefile))
+                    yield steppath, TableSet(executor.load(tablefile))
             elif "split" in stepargs:
                 # Persist pre-split tables
                 tableset.tables.persist()
                 for split, splitargs in enumerate(stepargs["split"]):
                     splitname = f"{si}-split-{split}"
-                    splitdir = os.path.join(workdir, splitname) if workdir else None
-                    yield from chain_step(tableset, splitdir, si, splitargs)
+                    splitpath = os.path.join(steppath, splitname)
+                    yield from chain_step(tableset, splitpath, si, splitargs)
             else:
                 raise Exception(f"Pipeline step {si} has no step type")
 
         # Prepend input tables to pipeline
+        streams = [('', TableSet(executor.new([])))]
         if isinstance(input_tables, Path) or isinstance(input_tables, str):
             log.info(f"Getting input tabels from path: {input_tables}")
-            streams = [(workdir, TableSet.load(input_tables, executor=executor))]
+            streams = [('', TableSet.load(input_tables, executor=executor))]
         elif isinstance(input_tables, pages.PageSource):
             log.info(f"Getting input tabels from extraction: {input_tables}")
-            streams = [(workdir, [])]
             pipeline.insert(0, {"step": "extract", "source": input_tables})
         elif isinstance(input_tables, HashBag):
-            streams = [(workdir, input_tables)]
+            streams = [('', TableSet(input_tables))]
         elif input_tables is not None:
             log.info(f"Getting input tabels from spec: {input_tables}")
             if not isinstance(input_tables.get("path"), list):
@@ -715,24 +719,31 @@ class TableSet:
             tables = TableSet.load(
                 *input_tables.pop("path"), **input_tables, executor=executor
             )
-            streams = [(workdir, tables)]
-        else:
-            streams = [(workdir, [])]
+            streams = [('', tables)]
+            
 
         if cache and workdir:
             if force:
-                Storage(workdir).rmtree()
+                try:
+                    Storage(workdir).rmtree()
+                except Exception as e:
+                    log.error(e)
             Storage(workdir).mkdir()
 
-        log.info(f"Running pipeline in {workdir} using {executor}")
+        log.info(f"Running pipeline {getattr(pipeline, 'name', '')} of {len(pipeline)} steps in {workdir} using {executor}")
 
         for si, args in enumerate(pipeline):
             streams = [c for wd, ts in streams for c in chain_step(ts, wd, si, args)]
 
         if cache:
-            for workdir, tableset in streams:
+            for _, tableset in streams:
                 for _ in tableset:
                     pass
         else:
             _, tablesets = zip(*streams)
-            return tablesets[0].tables.__class__.concat([t.tables for t in tablesets])
+            if all(isinstance(t, TableSet) for t in tablesets):
+                return tablesets[0].tables.__class__.concat([
+                    t.tables for t in tablesets
+                ])
+            else:
+                return streams

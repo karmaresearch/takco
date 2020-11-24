@@ -1,0 +1,52 @@
+datadir = 'data'
+resourcedir = 'resources'
+n = 1
+
+[t2d]
+class = 'evaluate.dataset.T2D'
+version = 2
+fixuri = 't2d_fix.csv'
+datadir = 'data'
+resourcedir = 'resources'
+path = 'data/t2d-v2'
+
+[limaye]
+class = 'evaluate.dataset.LimayeGS'
+path = 'data/efthymiou/'
+
+[toughtables]
+class = 'evaluate.dataset.ToughTables'
+path = 'data/tough-tables/'
+part = '2T'
+
+
+[[eval]]
+    [[eval.split]]
+    step = 'dataset'
+    dataset = {resolve = 't2d'}
+    take = {resolve = 'n'}
+
+    [[eval.split]]
+    step = 'dataset'
+    dataset = {resolve = 'limaye'}
+    take = {resolve = 'n'}
+
+    [[eval.split]]
+    step = 'dataset'
+    dataset = {resolve = 'toughtables'}
+    take = {resolve = 'n'}
+
+
+[[eval]]
+step = 'link'
+usecols = 'keycol'
+linker = {resolve = 'baseline_linker'}
+
+[[eval]]
+step = 'score'
+keycol_only = true
+
+[[eval]]
+step = 'report'
+keycol_only = true
+curve = false

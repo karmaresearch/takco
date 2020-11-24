@@ -1,14 +1,178 @@
+name = 'TabEL'
+
+
+[[assets]]
+name  = 'tabel'
+class = 'Annotation'
+download = [
+    'http://websail-fe.cs.northwestern.edu/TabEL/tables.json.gz',
+]
+path = 'data/TabEL'
+fname = 'tables.json.gz'
+
 [[assets]]
 name = 'lookup'
 resolve = 'wiki-sqlite'
+sqlitedb = 'data/wdid_wpname.sqlitedb'
+#fallback = {class = 'MediaWikiAPI'}
 
 [[assets]]
 name = 'linker'
 resolve = 'wikidata-trident'
 
-[input_tables]
-input = 'extract'
-    [input_tables.source]
-    class = 'WarcPages'
-    globstrings = ['./data/wikipedia-2019-12-P2291/*-00000.warc.gz']
 
+## Pipeline ##
+
+[inputs]
+# path = '/bigstore/kruit/tabel/split-parts/*'
+path = 'hdfs://bricks07:9000/user/kruit/wikidump-tables//*'
+# executor = {class = 'DaskHashBag', address = 'tcp://192.168.62.207:8786'}
+
+[[step]]
+step = 'reshape'
+restructure = true
+prefix_header_rules = [{find='Precededby ', header='Preceded by'}, {find='Succeededby ', header='Succeeded by'}]
+# compound_splitter = {class = "reshape.SpacyCompoundSplitter"}
+discard_headerless_tables = true
+
+    [[step.unpivot_heuristics]]
+    class = 'reshape.NumSuffix'
+    
+    [[step.unpivot_heuristics]]
+    class = 'reshape.SeqPrefix'
+
+    [[step.unpivot_heuristics]]
+    name = 'year-prefix'
+    class = 'reshape.RegexFinder'
+    find_regex = '[\W\s]*[0-9]{4}.*'
+    split_regex = '(?P<cell>[\d\W]{4})[\W\s]*(?P<head>.*?)[\W\s]*$'
+    
+    [[step.unpivot_heuristics]]
+    name = 'three-letter-acronyms'
+    class = 'reshape.RegexFinder'
+    find_regex = '[A-Z]{3}'
+
+    [[step.unpivot_heuristics]]
+    class = 'reshape.SpannedRepeat'
+    
+    [[step.unpivot_heuristics]]
+    class = 'reshape.AgentLikeHyperlink'
+    lookup = {resolve = 'lookup'}
+    kb = {resolve = 'linker'}
+    bad_types = [
+        'http://www.wikidata.org/entity/Q4167410',
+        'http://www.wikidata.org/entity/Q13406463',
+        'http://www.wikidata.org/entity/Q47574',
+    ]
+    bad_props = [
+        'http://www.wikidata.org/prop/direct/P1687',
+    ]
+
+    [[step.unpivot_heuristics]]
+    class = 'reshape.AttributePrefix'
+    attname = 'pgTitle'
+
+    [[step.unpivot_heuristics]]
+    class = 'reshape.Rule'
+    id_vars = ["Poll source", "Date(s) administered", "Sample size", "Margin of error"]
+
+
+[[step]]
+step = 'cluster'
+addcontext = ['pgTitle']
+headerunions = true
+
+
+[[step]]
+step = 'filter'
+filters = ['table["numDataRows"] > 10', 'table.get("numTables", 1) > 1']
+
+[[step]]
+step = 'link'
+lookup_cells = true
+lookup = {resolve = 'wiki-sqlite'}
+
+    
+[[step]]
+step = 'coltypes'
+    [step.typer]
+    class = 'link.EntityTyper'
+    db = {resolve = 'linker'}
+    type_prop = 'http://www.wikidata.org/prop/direct/P31'
+    supertype_prop = 'http://www.wikidata.org/prop/direct/P279'
+    cover_threshold = 0.333
+
+[[step]]
+step = 'cluster'
+addcontext = []
+headerunions = false
+agg_func = '@mean(  @max(headjacc, @pow(headvec, 4)), @max(bodylsh, @pow(bodyvec, 4), bodytype ) )'
+agg_threshold = 0.98
+#align_columns = 'max1' # much faster than 'greedy' but it sucks
+edge_exp = 6
+agg_threshold_col = 0.1
+keep_partition_meta = ['_id', 'tableHeaders', 'tableData', 'entities', 'classes']
+mergeheaders_topn = 1
+max_cluster_size = 250
+
+    [[step.filters]]
+    name  = 'section'
+    class = 'cluster.matchers.CellJaccMatcher'
+    source='sectionTitle'
+
+    [[step.filters]]
+    name  = 'headjacc' # use headjacc as both matcher and filter
+    class = 'cluster.matchers.CellJaccMatcher'
+    source = 'head'
+
+    
+    [[step.matchers]]
+    name  = 'headjacc' # use headjacc as both matcher and filter
+    class = 'cluster.matchers.CellJaccMatcher'
+    source = 'head'
+    
+    [[step.matchers]]
+    name  = 'headvec'
+    class = 'cluster.matchers.EmbeddingMatcher'
+    source = 'head'
+    wordvec_fname = './data/glove.6B.50d.pickle'
+    threshold = 0.5
+
+    [[step.matchers]]
+    name  = 'bodylsh'
+    class = 'cluster.matchers.LSHMatcher'
+    source = 'body'
+    threshold = 0.5
+    
+    [[step.matchers]]
+    name  = 'bodyvec'
+    class = 'cluster.matchers.EmbeddingMatcher'
+    source = 'body'
+    wordvec_fname = './data/glove.6B.50d.pickle'
+    threshold = 0.5
+    
+    [[step.matchers]]
+    name  = 'bodytype'
+    class = 'cluster.matchers.TypeCosMatcher'
+
+[[step]]
+step = 'link'
+lookup_cells = true
+lookup = {resolve = 'wiki-sqlite'}
+
+[[step]]
+step = 'coltypes'
+    [step.typer]
+    class = 'link.EntityTyper'
+    db = {resolve = 'linker'}
+    type_prop = 'http://www.wikidata.org/prop/direct/P31'
+    supertype_prop = ''
+    cover_threshold = 0.333
+
+[[step]]
+step = 'integrate'
+pfd_threshold = 0.95
+db = {resolve = 'linker'}
+
+[[step]]
+step = 'triples'

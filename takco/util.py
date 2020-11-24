@@ -109,7 +109,8 @@ class HashBag:
                     yield r
             fw.close()
 
-        Path(f).parent.mkdir(exist_ok=True, parents=True)
+        if isinstance(f, str):
+            Path(f).parent.mkdir(exist_ok=True, parents=True)
 
         return self.__class__(dumped_it(f))
 

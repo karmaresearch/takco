@@ -19,7 +19,7 @@ try:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
             p, r, t = precision_recall_curve(df.gold, df.pred)
-            return dict(precision=p, recall=r, thresholds=t)
+            return dict(precision=list(p), recall=list(r), thresholds=list(t))
 
 
 except ImportError:

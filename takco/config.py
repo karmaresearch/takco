@@ -26,6 +26,7 @@ def build(conf, assets=(), base=None, **kwargs):
         # don't pass assets here, should already be resolved
         conf = {k: build(v, base=base, **kwargs) for k, v in conf.items()}
         if "class" in conf:
+            clsname = conf['class']
             try:
                 mod, name = None, conf.pop("class")
                 if "." in name:
@@ -50,7 +51,7 @@ def build(conf, assets=(), base=None, **kwargs):
                     obj.name = conf["name"]
                 return obj
             except Exception as e:
-                log.error(e)
+                log.error(f"Error when constructing {clsname} from {conf}: {e}")
                 raise e
     return conf
 

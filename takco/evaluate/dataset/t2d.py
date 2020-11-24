@@ -31,7 +31,7 @@ class T2D(Dataset):
         kwargs = self.params(
             path=path, datadir=datadir, resourcedir=resourcedir, fixuri=fixuri, **kwargs
         )
-        root = Path(kwargs.get("path"))
+        root = Path(kwargs.get("path", "."))
         fixuri = dict(kwargs["fixuri"])
 
         def fix_uri(uri):
@@ -153,20 +153,6 @@ class T2D(Dataset):
                     "keycol": table_keycol.get(name),
                 }
             )
-
-    def get_unannotated_tables(self):
-        for table in self.tables:
-            rows = [[{"text": c} for c in row] for row in table.get("rows")]
-            headers = [[{"text": c} for c in row] for row in table.get("headers")]
-            yield {
-                "_id": table.get("name", ""),
-                "tableData": rows,
-                "tableHeaders": headers,
-                "keycol": table["keycol"],
-            }
-
-    def get_annotated_tables(self):
-        return {table["name"]: table for table in self.tables}
 
 
 TYPE_URI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"

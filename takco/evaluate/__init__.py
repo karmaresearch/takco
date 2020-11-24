@@ -14,15 +14,12 @@ task_flatten = {
 
 
 def table_score(tablepairs, keycol_only=False):
-    for table, goldtable in tablepairs:
+    for table in tablepairs:
         _id = table["_id"]
 
-        table["gold"] = {}
         table["score"] = {}
         for task, flatten in task_flatten.items():
-            gold = goldtable.get(task, {})
-            table["gold"][task] = gold
-
+            gold = table["gold"].get(task, {})
             if gold:
                 pred = table.get(task, {})
                 if keycol_only and pred.get(str(table.get("keycol"))):

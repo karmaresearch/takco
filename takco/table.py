@@ -86,3 +86,38 @@ class Table(dict):
 
     def keys(self):
         return dict.keys(self)
+
+
+from typing import Optional, Dict, List
+from dataclasses import dataclass, field
+
+
+@dataclass
+class TableAnnotation:
+    """Table annotation
+
+    >>> TableAnnotation([[{'foo': 0.5}]])
+    TableAnnotation(entities=[[Annotation({'foo': 0.5})]], classes=None, properties=None)
+
+    """
+
+    class Annotation(Dict[str, float]):
+        def __repr__(self):
+            return self.__class__.__name__ + f"({dict(self)})"
+
+    entities: Optional[List[List[Annotation]]] = None
+    classes: Optional[List[Annotation]] = None
+    properties: Optional[List[List[Annotation]]] = None
+    keycol: Optional[int] = None
+
+    def __post_init__(self):
+        if self.entities is not None:
+            self.entities = [
+                [self.Annotation(anno) for anno in col] for col in self.entities
+            ]
+        if self.classes is not None:
+            self.classes = [self.Annotation(anno) for anno in self.classes]
+        if self.properties is not None:
+            self.properties = [
+                [self.Annotation(anno) for anno in col] for col in self.properties
+            ]

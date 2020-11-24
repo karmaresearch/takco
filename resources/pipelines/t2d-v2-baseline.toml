@@ -58,7 +58,7 @@ params = 't2d-v2'
 
 [[step]]
 step = 'score'
-labels = 't2d-v2'
+annotations = 't2d-v2'
 keycol_only = true
 
 [[step]]

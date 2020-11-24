@@ -1,6 +1,7 @@
 import sys
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
 import logging as log
+import string
 
 from .base import *
 from .external import *
@@ -68,7 +69,7 @@ def lookup_hyperlinks(tables: List[dict], lookup: Lookup, lookup_cells=False):
 
 
 def link(
-    tables: List[dict], linker: Linker, usecols: Union[str, List[int]] = [],
+    tables: List[dict], linker: Linker, usecols: Union[str, List[int]] = None,
 ):
     """Link table entities to KB
 
@@ -85,24 +86,26 @@ def link(
                 log.debug(f"No rows in table {table.get('_id')}")
 
             # Restrict columns to link (e.g. 'keycol', or 'entcols')
-            def isnum(col):
-                num = lambda x: x.translate(str.maketrans("", "", "-.,%")).isnumeric()
-                return sum(int(num(c)) for c in col) / len(col) > 0.5
+            nopunct = str.maketrans("", "", string.punctuation+" ")
+            def isnum(x):
+                x = x.translate(nopunct)
+                return sum(map(str.isnumeric, x)) / len(x) > .5 if x else False
+            def numscore(col):
+                return sum(int(isnum(c)) for c in col) / len(col)
+            def uniqscore(col):
+                return len(set(col)) / len(col)
 
             table["non_numeric_cols"] = [
-                i for i, c in enumerate(zip(*rows)) if not isnum(c)
+                i for i, c in enumerate(zip(*rows)) if not numscore(c) > 0.5
             ]
 
             def heur(col):
-                isnum = lambda x: x.translate(str.maketrans("", "", "-.,%")).isnumeric()
-                numscore = sum(int(isnum(c)) for c in col) / len(col)
-                uniqscore = len(set(col)) / len(col)
-                return (numscore < 0.5) and (uniqscore > 0.9)
+                return (numscore(col) < 0.5) and (uniqscore(col) > 0.9)
 
             heuristic_keys = [i for i, c in enumerate(zip(*rows)) if heur(c)]
             table["heuristic_key"] = heuristic_keys[0] if heuristic_keys else []
 
-            table_usecols = table.get(str(usecols), [])
+            table_usecols = table.get(str(usecols)) or table["non_numeric_cols"]
             if type(table_usecols) != list:
                 table_usecols = [table_usecols]
             if not all(type(c) == int for c in table_usecols):

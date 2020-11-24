@@ -161,7 +161,7 @@ class ElasticSearcher(Searcher):
         for char in "([,:":
             for qpart in query.split(char):
                 qpart = qpart.translate(str.maketrans("", "", ")]")).strip()
-                if qpart != query:
+                if qpart != query and not qpart.isnumeric():
                     yield qpart
 
     def make_query_body(self, query, **kwargs):
