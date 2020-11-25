@@ -158,7 +158,7 @@ tr.hidden {
                 {% set ent = (ents | list | select | first | string) %}
                 <!-- "noent" means that the annotated entity is not in the KG -->
                 <!-- {{ (classes.append('noent') if (
-                            ents and rowannotated and (
+                            kbinfo and ents and rowannotated and (
                                 (ent not in kbinfo) or (not kbinfo[ent].inlinks + kbinfo[ent].outlinks)
                             )
                         ) else 'ent') }} -->

@@ -182,7 +182,7 @@ class LSHMatcher(Matcher):
             )
             self.storage.save_df(digestsdf, "digests")
             self.storage.save_pickle(self.ci_tidi, "ci_tidi")
-            self.storage.save_pickle(self.lshindex, "vi_tici")
+            self.storage.save_pickle(self.lshindex, "lshindex")
             self.close()
 
     def __enter__(self):

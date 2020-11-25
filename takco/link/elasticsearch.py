@@ -376,21 +376,20 @@ class ElasticSearcher(Searcher):
                     if st.get("prop") == uri_type and ("id" in st):
                         types.add(st["id"])
                     else:
-                        if output_statements:
-                            filtered_statements.append(st)
-                            if "id" in st and "prop" in st:
-                                vals = set()
-                                if extract_surface:
-                                    vals.add(normalize_surface(st["id"]))
-                                for l, ls in id_surfaceformscores.get(
-                                    st["id"], {}
-                                ).items():
-                                    if ls >= context_label_threshold:
-                                        vals.add(l)
-                                if vals:
-                                    prop_context.setdefault(st["prop"], set()).update(
-                                        vals
-                                    )
+                        filtered_statements.append(st)
+                        if "id" in st and "prop" in st:
+                            vals = set()
+                            if extract_surface:
+                                vals.add(normalize_surface(st["id"]))
+                            for l, ls in id_surfaceformscores.get(
+                                st["id"], {}
+                            ).items():
+                                if ls >= context_label_threshold:
+                                    vals.add(l)
+                            if vals:
+                                prop_context.setdefault(st["prop"], set()).update(
+                                    vals
+                                )
                 context = [
                     {"prop": p, "value": list(vs)} for p, vs in prop_context.items()
                 ]
@@ -406,7 +405,9 @@ class ElasticSearcher(Searcher):
                     "surface": [
                         {"value": l, "score": c} for l, c in surface_score.items()
                     ],
-                    "statements": filtered_statements,
+                    **(
+                        {"statements": filtered_statements} if output_statements else {}
+                    ),
                     "context": context,
                     **({"refs": id_refcount[id]} if id in id_refcount else {}),
                 }

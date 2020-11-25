@@ -58,7 +58,7 @@ class TypeCosMatcher(Matcher):
     def index(self):
         log.debug(f"TypeCos index is len {len(self.coltypes)}")
         if self.storage:
-            self.storage.save_pickle("coltypes", self.coltypes)
+            self.storage.save_pickle(self.coltypes, "coltypes")
             self.indexed = True
             self.close()
 

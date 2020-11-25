@@ -304,7 +304,7 @@ except Exception as e:
     log.debug(e)
 
 
-def preview(tables, nrows=5, ntables=10, nchars=100, hide_correct_rows=False):
+def preview(tables, nrows=5, ntables=10, nchars=50, hide_correct_rows=False):
     """Show table previews in Jupyter"""
     import json
     from jinja2 import Environment, PackageLoader
@@ -326,12 +326,11 @@ def preview(tables, nrows=5, ntables=10, nchars=100, hide_correct_rows=False):
 
         ri_ann = {}
         hidden_rows = {}
-        if hide_correct_rows:
-            for ci, res in table.get("gold", {}).get("entities", {}).items():
-                for ri, es in res.items():
+        for ci, res in table.get("gold", {}).get("entities", {}).items():
+            for ri, es in res.items():
+                ri_ann[ri] = bool(es)
+                if hide_correct_rows:
                     if es:
-                        ri_ann[ri] = True
-
                         predents = table.get("entities", {}).get(ci, {}).get(ri, {})
                         hide = all(e in predents for e in es)
                         hidden_rows[ri] = hidden_rows.get(ri, True) and hide

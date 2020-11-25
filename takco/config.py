@@ -65,7 +65,10 @@ def resolve(conf, assets):
         conf = dict(conf)
         name = conf.pop("resolve")
         assert name in assets, f"Asset {name} not found in {tuple(assets)}!"
-        conf = assets[name]
+        if isinstance(assets[name], dict):
+            conf = {**assets[name], **conf}
+        else:
+            conf = assets[name]
 
     if isinstance(conf, dict):
         if "resolve" in conf:

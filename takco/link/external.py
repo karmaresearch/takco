@@ -8,7 +8,6 @@ warnings.filterwarnings("ignore")
 
 import typing
 from decimal import Decimal
-from datetime import datetime
 
 from .base import Searcher, SearchResult, Database, Lookup
 

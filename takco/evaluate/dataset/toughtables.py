@@ -26,6 +26,7 @@ class ToughTables(Dataset):
         path = Path(kwargs.get("path", "."))
         if not part:
             raise Exception(f"You must supply `part`")
+        assert part in ["2T", "2T_WD"]
         self.part = part
         self.root = path.joinpath(self.part)
 
@@ -47,13 +48,13 @@ class ToughTables(Dataset):
 
     @property
     def tables(self):
-        classes_gt = dict(self.iter_gt(self.root.joinpath('gt','CTA_2T_gt.csv')))
-        for name, ents_gt in self.iter_gt(self.root.joinpath('gt','CEA_2T_gt.csv')):
+        classes_gt = dict(self.iter_gt(self.root.joinpath('gt',f'CTA_{self.part}_gt.csv')))
+        for name, ents_gt in self.iter_gt(self.root.joinpath('gt',f'CTA_{self.part}_gt.csv')):
             rows = list(csv.reader(open(self.root.joinpath('tables', f"{name}.csv"))))
 
             entities = {} # type: ignore
-            for ci, ri, ents in ents_gt:
-                ci, ri = str(ci), str(ri)
+            for ri, ci, ents in ents_gt:
+                ci, ri = str(ci), str(int(ri) - 1)
                 entities.setdefault(ci, {})[ri] = {e:1 for e in ents.split()}
             
             classes = {} # type: ignore

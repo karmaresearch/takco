@@ -1,9 +1,9 @@
-from typing import List, Container, Tuple, NamedTuple, Iterator, Dict, Optional, Set
+from typing import List, Container, Tuple, NamedTuple, Iterator, Dict, Optional, Set, Collection
 from collections import defaultdict, Counter
 import re
 import logging as log
 from dataclasses import dataclass, field
-
+from abc import ABC, abstractmethod
 
 def get_colspan_repeats(
     rows: List[List[str]],
@@ -20,9 +20,9 @@ def get_colspan_repeats(
     header_colspan, header_repeats = [], []
     for row in rows:
         colspan = [1 for _ in row]
-        repeats = {}
+        repeats: Dict[Optional[str], int] = {}
         c, span = None, 1
-        for ci, cell in enumerate(list(row) + [None]):
+        for ci, cell in enumerate(list(row) + [None]): # type: ignore
             cell = str(cell)
             if cell == c:
                 span += 1
@@ -32,9 +32,8 @@ def get_colspan_repeats(
                 span = 1
                 repeats[c] = repeats.get(c, 0) + 1
             c = cell
-        repeats = [repeats.get(str(cell), 0) for cell in row]
         header_colspan.append(colspan)
-        header_repeats.append(repeats)
+        header_repeats.append([repeats.get(str(cell), 0) for cell in row])
     return header_colspan, header_repeats
 
 
@@ -59,13 +58,14 @@ def get_colspan_fromto(rows: List[List[str]]) -> List[List[Tuple[int, int]]]:
     return fromto
 
 
-def longest_seq(numbers: Container[int]) -> Container[int]:
+def longest_seq(numbers: Collection[int]) -> List[int]:
     """Find the longest sequence in a set of numbers"""
     if not numbers:
         return []
     numbers = set(numbers)
     i = min(numbers)
-    longest, seq = [], []
+    longest: List[int] = []
+    seq: List[int] = []
     while numbers:
         seq.append(i)
         numbers -= set([i])
@@ -86,7 +86,7 @@ class Pivot(NamedTuple):
     colto: int  #: Rightmost column index
 
 
-class PivotFinder:
+class PivotFinder(ABC):
     def build(self, tables):
         return
 
@@ -99,8 +99,9 @@ class PivotFinder:
     def __exit__(self, *exc):
         return False
 
+    @abstractmethod
     def find_pivot_cells(
-        self, headerrows: List[List[str]]
+        self, headerrows: List[List[Dict]]
     ) -> Iterator[Tuple[int, int]]:
         """Yield positions of pivoted cells"""
         return
@@ -160,7 +161,7 @@ class RegexFinder(PivotFinder):
 class NumSuffix(RegexFinder):
     """Find cells with a numeric suffix"""
 
-    find_regex = re.compile(".*\d[\W\s]*$")
+    find_regex = re.compile(r".*\d[\W\s]*$")
     split_regex = re.compile("(?P<head>.*?)[\W\s]*(?P<cell>[\d\W]+?)[\W\s]*$")
 
 
@@ -187,13 +188,13 @@ class SeqPrefix(PivotFinder):
 
             for p, pcount in Counter(prefixes).most_common(1):
                 if pcount > 1:
-                    for ri, cell in enumerate(row):
+                    for ci, cell in enumerate(row):
                         if str(cell or "").startswith(p):
                             yield ri, ci
 
-    def split_header(headrow, colfrom, colto):
+    def split_header(self, headrow, colfrom, colto):
         prefixes = []
-        for cell in row:
+        for cell in headrow:
             p = (cell or "").strip().split()
             if p:
                 prefixes.append(p[0])

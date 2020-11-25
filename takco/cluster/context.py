@@ -50,7 +50,7 @@ def tables_add_context_rows(tables, fields=()):
             table["tableData"] = [
                 copy.deepcopy(context_cells) + list(drow) for drow in table["tableData"]
             ]
-            table["numCols"] = len(table["tableData"][0])
+            table["numCols"] = len(table["tableData"][0]) if table["tableData"] else 0
 
         n = len(fields)
         if "entities" in table:
