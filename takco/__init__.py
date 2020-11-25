@@ -266,9 +266,9 @@ class TableSet:
         tables = TableSet(self).tables
         agg_threshold_col = agg_threshold_col or agg_threshold
 
-        import tqdm  # type: ignore
-        import sqlite3  # type: ignore
-        import pandas as pd  # type: ignore
+        import tqdm 
+        import sqlite3 
+        import pandas as pd 
 
         if addcontext:
             tables = tables.pipe(cluster.tables_add_context_rows, fields=addcontext)

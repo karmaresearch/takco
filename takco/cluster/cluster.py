@@ -13,10 +13,10 @@ from .matchers import Matcher, ScoredMatch
 from ..table import Table
 
 try:
-    from pandas import DataFrame, Series  # type: ignore
-    import pandas as pd  # type: ignore
-    import numpy as np  # type: ignore
-    from sklearn.cluster import AgglomerativeClustering  # type: ignore
+    from pandas import DataFrame, Series 
+    import pandas as pd 
+    import numpy as np 
+    from sklearn.cluster import AgglomerativeClustering 
 except:
     import typing
 
@@ -54,7 +54,7 @@ class Timer(dict):
 def progress(it, desc=None):
     if log.getLogger().level <= log.INFO:
         try:
-            import tqdm  # type: ignore
+            import tqdm 
 
             return tqdm.tqdm(it, desc=desc)
         except:
@@ -96,7 +96,7 @@ def louvain(tablesim, edge_exp=1) -> Collection[Collection[int]]:
         - `Louvain modularity <https://en.wikipedia.org/wiki/Louvain_modularity>`_
 
     """
-    import igraph as ig  # type: ignore
+    import igraph as ig 
 
     # Make graph
     G = ig.Graph(

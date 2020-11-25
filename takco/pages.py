@@ -109,7 +109,7 @@ class WarcPages(PageSource):
     @staticmethod
     def parse_warc(fnames):
         """Yield html pages from WARC files"""
-        from warcio.archiveiterator import ArchiveIterator  # type: ignore
+        from warcio.archiveiterator import ArchiveIterator 
 
         for fname in fnames:
             with open(fname, "rb") as stream:
