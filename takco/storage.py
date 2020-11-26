@@ -29,7 +29,7 @@ class Storage:
 
     def mkdir(self):
         if self.is_hdfs:
-            import pyarrow as pa 
+            import pyarrow as pa
 
             fs = pa.hdfs.connect()
             fs.mkdir(self.root)
@@ -38,7 +38,7 @@ class Storage:
 
     def rmtree(self):
         if self.is_hdfs:
-            import pyarrow as pa 
+            import pyarrow as pa
 
             fs = pa.hdfs.connect()
             fs.delete(self.root, recursive=True)
@@ -50,7 +50,7 @@ class Storage:
     def rm(self, fname):
         path = os.path.join(self.root, fname)
         if self.is_hdfs:
-            import pyarrow as pa 
+            import pyarrow as pa
 
             fs = pa.hdfs.connect()
             return fs.delete(path)
@@ -59,7 +59,7 @@ class Storage:
 
     def ls(self):
         if self.is_hdfs:
-            import pyarrow as pa 
+            import pyarrow as pa
 
             fs = pa.hdfs.connect()
             return fs.ls(self.root)
@@ -70,15 +70,15 @@ class Storage:
         fname = f"{name}.parquet"
         path = os.path.join(self.root, fname)
         if self.is_hdfs:
-            import pyarrow as pa 
-            import pyarrow.parquet as pq 
+            import pyarrow as pa
+            import pyarrow.parquet as pq
 
             log.debug(f"Loading table {path} from HDFS")
             fs = pa.hdfs.connect()
             with fs.open(path) as f:
                 return pq.read_table(f).to_pandas()
         else:
-            import pandas as pd 
+            import pandas as pd
 
             log.debug(f"Loading table {path} from disk")
             return pd.read_parquet(path)
@@ -87,8 +87,8 @@ class Storage:
         fname = f"{name}.parquet"
         path = os.path.join(self.root, fname)
         if self.is_hdfs:
-            import pyarrow as pa 
-            import pyarrow.parquet as pq 
+            import pyarrow as pa
+            import pyarrow.parquet as pq
 
             fs = pa.hdfs.connect()
             fs.mkdir(self.root)
@@ -104,7 +104,7 @@ class Storage:
         fname = f"{name}.pickle"
         path = os.path.join(self.root, fname)
         if self.is_hdfs:
-            import pyarrow as pa 
+            import pyarrow as pa
 
             log.debug(f"Loading object {path} from HDFS")
             fs = pa.hdfs.connect()
@@ -119,7 +119,7 @@ class Storage:
         fname = f"{name}.pickle"
         path = os.path.join(self.root, fname)
         if self.is_hdfs:
-            import pyarrow as pa 
+            import pyarrow as pa
 
             fs = pa.hdfs.connect()
             fs.mkdir(self.root)
@@ -135,7 +135,7 @@ class Storage:
     def exists(self, fname=None):
         path = os.path.join(self.root, fname) if fname else self.root
         if self.is_hdfs:
-            import pyarrow as pa 
+            import pyarrow as pa
 
             fs = pa.hdfs.connect()
             return fs.exists(path)

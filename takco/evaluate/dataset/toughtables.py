@@ -11,14 +11,11 @@ import urllib
 import tarfile, zipfile, io
 
 from .dataset import Dataset
+
+
 class ToughTables(Dataset):
     def __init__(
-        self,
-        datadir = None,
-        resourcedir = None,
-        path = None,
-        part=None,
-        **kwargs,
+        self, datadir=None, resourcedir=None, path=None, part=None, **kwargs,
     ):
         kwargs = self.params(
             path=path, datadir=datadir, resourcedir=resourcedir, **kwargs
@@ -32,7 +29,7 @@ class ToughTables(Dataset):
 
     def iter_gt(self, fname):
         chunkname = None
-        chunk : List[List[str]] = []
+        chunk: List[List[str]] = []
         with open(fname) as f:
             for row in csv.reader(f):
                 try:
@@ -48,20 +45,27 @@ class ToughTables(Dataset):
 
     @property
     def tables(self):
-        classes_gt = dict(self.iter_gt(self.root.joinpath('gt',f'CTA_{self.part}_gt.csv')))
-        for name, ents_gt in self.iter_gt(self.root.joinpath('gt',f'CTA_{self.part}_gt.csv')):
-            rows = list(csv.reader(open(self.root.joinpath('tables', f"{name}.csv"))))
+        classes_gt = dict(
+            self.iter_gt(self.root.joinpath("gt", f"CTA_{self.part}_gt.csv"))
+        )
+        for name, ents_gt in self.iter_gt(
+            self.root.joinpath("gt", f"CEA_{self.part}_gt.csv")
+        ):
+            rows = list(csv.reader(open(self.root.joinpath("tables", f"{name}.csv"))))
 
-            entities = {} # type: ignore
-            for ri, ci, ents in ents_gt:
+            entities = {}  # type: ignore
+            for ci, ri, ents in ents_gt:
+                if self.part == "2T_WD":
+                    # in the Wikidata dataset, row and column indices are switched!
+                    ci, ri = ri, ci
+
                 ci, ri = str(ci), str(int(ri) - 1)
-                entities.setdefault(ci, {})[ri] = {e:1 for e in ents.split()}
-            
-            classes = {} # type: ignore
+                entities.setdefault(ci, {})[ri] = {e: 1 for e in ents.split()}
+
+            classes = {}  # type: ignore
             for ci, ents in classes_gt.get(name, []):
                 ci = str(ci)
-                classes[ci] = {e:1 for e in ents.split()}
-
+                classes[ci] = {e: 1 for e in ents.split()}
 
             yield {
                 "name": name,
@@ -70,4 +74,3 @@ class ToughTables(Dataset):
                 "entities": entities,
                 "classes": classes,
             }
-    

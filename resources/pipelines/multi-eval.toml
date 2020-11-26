@@ -2,51 +2,58 @@ datadir = 'data'
 resourcedir = 'resources'
 n = 1
 
-[t2d]
-class = 'evaluate.dataset.T2D'
-version = 2
-fixuri = 't2d_fix.csv'
-datadir = 'data'
-resourcedir = 'resources'
-path = 'data/t2d-v2'
+[dbpedia_t2ksubset_es]
+class = 'link.ElasticSearcher'
+index = 'dbpediasub-7'
+baseuri = 'http://dbpedia.org/resource/'
+es_kwargs = {hosts = ['bricks07'], timeout = 60}
+prop_uri = {type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"}
+prop_baseuri = {type = 'http://dbpedia.org/ontology/'}
+propbaseuri = "http://dbpedia.org/ontology/"
 
-[limaye]
-class = 'evaluate.dataset.LimayeGS'
-path = 'data/efthymiou/'
+[wikidata_es]
+class = 'link.ElasticSearcher'
+index = 'wikidata-20190701-1'
+baseuri = 'http://www.wikidata.org/entity/'
+es_kwargs = {hosts = ['bricks07'], timeout = 60}
+prop_uri = {type = "http://www.wikidata.org/prop/direct/P31"}
+prop_baseuri = {type = 'http://www.wikidata.org/entity/'}
+propbaseuri = "http://www.wikidata.org/prop/direct/"
 
-[toughtables]
-class = 'evaluate.dataset.ToughTables'
-path = 'data/tough-tables/'
-part = '2T'
 
+[linker]
+class = "link.First"
+limit = 1
+contextual = true
+search_limit = 1
+majority_class = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+majority_class_search = true
+searcher = {resolve = 'dbpedia_t2ksubset_es'}
 
 [[eval]]
     [[eval.split]]
     step = 'dataset'
-    dataset = {resolve = 't2d'}
+    dataset = {resolve = 't2d-v2'}
     take = {resolve = 'n'}
 
     [[eval.split]]
     step = 'dataset'
-    dataset = {resolve = 'limaye'}
+    dataset = {resolve = 'limaye-dbpedia'}
     take = {resolve = 'n'}
 
     [[eval.split]]
     step = 'dataset'
-    dataset = {resolve = 'toughtables'}
+    dataset = {resolve = 'toughtables-dbpedia'}
     take = {resolve = 'n'}
 
 
 [[eval]]
 step = 'link'
 usecols = 'keycol'
-linker = {resolve = 'baseline_linker'}
-
-[[eval]]
-step = 'score'
-keycol_only = true
+linker = {resolve = 'linker'}
 
 [[eval]]
 step = 'report'
 keycol_only = true
 curve = false
+any_ok = true

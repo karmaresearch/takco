@@ -147,7 +147,7 @@ class HashBag:
 
 
 try:
-    import tqdm, inspect 
+    import tqdm, inspect
 
     class TqdmHashBag(HashBag):
         """A HashBag that displays `tqdm <https://tqdm.github.io/>`_ progress bars."""
@@ -181,14 +181,14 @@ try:
 
         def start_client(self, **kwargs):
             global client
-            from dask.distributed import Client 
+            from dask.distributed import Client
 
             try:
                 self.client = Client(**kwargs)
             except Exception as e:
                 log.warn(e)
 
-        def __init__(self, it=(), npartitions=1, client=None, **kwargs):
+        def __init__(self, it=(), npartitions=None, client=None, **kwargs):
             self.client = client
             self.kwargs = kwargs
 
@@ -308,7 +308,7 @@ def preview(tables, nrows=5, ntables=10, nchars=50, hide_correct_rows=False):
     """Show table previews in Jupyter"""
     import json
     from jinja2 import Environment, PackageLoader
-    from IPython.display import HTML 
+    from IPython.display import HTML
 
     if isinstance(tables, dict):
         tables = [tables]
@@ -389,7 +389,7 @@ def preview(tables, nrows=5, ntables=10, nchars=50, hide_correct_rows=False):
 
 
 def tableobj_to_dataframe(table):
-    import pandas as pd 
+    import pandas as pd
 
     body = [[c.get("text", "") for c in r] for r in table.get("tableData", [])]
     head = [[c.get("text", "") for c in r] for r in table.get("tableHeaders", [])]

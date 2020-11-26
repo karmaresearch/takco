@@ -10,7 +10,10 @@ from pathlib import Path
 import toml
 
 
-def build(conf, assets=(), base=None, **kwargs):
+def build(conf, assets=(), base=None, load=None, **kwargs):
+    if load:
+        assets = parse(load)
+
     if base is None:
         base = __name__.split(".")[0]
 
@@ -26,7 +29,7 @@ def build(conf, assets=(), base=None, **kwargs):
         # don't pass assets here, should already be resolved
         conf = {k: build(v, base=base, **kwargs) for k, v in conf.items()}
         if "class" in conf:
-            clsname = conf['class']
+            clsname = conf["class"]
             try:
                 mod, name = None, conf.pop("class")
                 if "." in name:

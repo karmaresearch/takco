@@ -13,9 +13,9 @@ from .matcher import Matcher
 from .. import cluster
 
 try:
-    import datasketch 
-    import numpy as np 
-    import pandas as pd 
+    import datasketch
+    import numpy as np
+    import pandas as pd
 except:
     log.error(f"Cannot import datasketch / numpy / pandas")
 

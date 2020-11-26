@@ -16,7 +16,7 @@ from typing import Dict, List, Tuple
 from pathlib import Path
 from dataclasses import dataclass, field
 
-from rdflib import URIRef, Literal 
+from rdflib import URIRef, Literal
 
 from .base import Typer, LiteralMatchResult, Database
 
@@ -263,9 +263,9 @@ class EntityBloom(SimpleTyper):
 
     @staticmethod
     def create(infile, outfile, capacity: int, error_rate: float = 0.05):
-        import tqdm 
+        import tqdm
         import urllib
-        from pybloomfilter import BloomFilter 
+        from pybloomfilter import BloomFilter
 
         bf = BloomFilter(capacity, error_rate, outfile)
         with open(infile) as f:
@@ -290,7 +290,7 @@ class EntityBloom(SimpleTyper):
 
 
 if __name__ == "__main__":
-    import defopt, json, os, typing 
+    import defopt, json, os, typing
 
     r = defopt.run(
         {"entitybloom": EntityBloom.create},

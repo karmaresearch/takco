@@ -1,5 +1,6 @@
-from typing import Container, List, Dict
+from typing import Container, List, Dict, Optional
 import logging as log
+from dataclasses import dataclass, field
 
 from .base import Linker, Searcher, SearchResult
 from .rdf import GraphDB
@@ -7,6 +8,7 @@ from .rdf import GraphDB
 URI = str
 
 
+@dataclass
 class First(Linker):
     """Returns the first match for entity linking, under possible constraints
 
@@ -18,30 +20,20 @@ class First(Linker):
 
     """
 
-    def __init__(
-        self,
-        searcher: Searcher,
-        limit: int = 1,
-        contextual: bool = False,
-        search_limit: int = 10,
-        majority_class: URI = None,
-        class_cover: float = 0.5,
-        exclude_about: Dict[URI, List[URI]] = None,
-        normalize: bool = False,
-        majority_class_search: bool = False,
-    ):
-        self.searcher = searcher
-        self.limit = limit
-        self.contextual = contextual
-        self.search_limit = search_limit
-        self.majority_class = majority_class
-        self.class_cover = class_cover
-        self.majority_class_search = bool(majority_class_search)
-        self.exclude_about = exclude_about
-        self.add_about = list(exclude_about or []) + (
-            [majority_class] if majority_class else []
+    searcher: Searcher
+    limit: int = 1
+    contextual: bool = False
+    search_limit: int = 10
+    majority_class: Optional[URI] = None
+    class_cover: float = 0.5
+    exclude_about: Dict[URI, List[URI]] = field(default_factory=dict)
+    normalize: bool = False
+    majority_class_search: bool = False
+
+    def __post_init__(self):
+        self.add_about = list(self.exclude_about or []) + (
+            [self.majority_class] if self.majority_class else []
         )
-        self.normalize = normalize
 
     def __enter__(self):
         self.searcher.__enter__()

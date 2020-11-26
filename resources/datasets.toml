@@ -1,0 +1,48 @@
+[t2d-v1]
+class = 'evaluate.dataset.T2D'
+download = [
+    'http://webdatacommons.org/webtables/tables_instance.tar.gz',
+    'http://webdatacommons.org/webtables/entities_instance.tar.gz',
+    'http://webdatacommons.org/webtables/classes_instance.csv',
+    'http://webdatacommons.org/webtables/attributes_instance.tar.gz',
+]
+version = 1
+fixuri = 't2d_fix.csv'
+datadir = 'data'
+resourcedir = 'resources'
+
+[t2d-v2]
+class = 'evaluate.dataset.T2D'
+download = [
+    'http://webdatacommons.org/webtables/extended_instance_goldstandard.tar.gz',
+]
+version = 2
+fixuri = 't2d_fix.csv'
+datadir = 'data'
+resourcedir = 'resources'
+
+
+[limaye-dbpedia]
+class = 'evaluate.dataset.LimayeGS'
+path = 'data/efthymiou/'
+download = [
+    "http://www.cs.toronto.edu/~oktie/webtables/csv/LimayeGS.zip",
+]
+# alternatively https://springernature.figshare.com/ndownloader/files/8933107
+
+
+[toughtables-dbpedia]
+class = 'evaluate.dataset.ToughTables'
+path = 'data/tough-tables/'
+part = '2T'
+download = [
+    "https://zenodo.org/record/4246370/files/2T.zip"
+]
+
+[toughtables-wikidata]
+class = 'evaluate.dataset.ToughTables'
+path = 'data/tough-tables/'
+part = '2T_WD'
+download = [
+    "https://zenodo.org/record/4246370/files/2T_WD.zip"
+]

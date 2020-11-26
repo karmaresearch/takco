@@ -266,9 +266,9 @@ class TableSet:
         tables = TableSet(self).tables
         agg_threshold_col = agg_threshold_col or agg_threshold
 
-        import tqdm 
-        import sqlite3 
-        import pandas as pd 
+        import tqdm
+        import sqlite3
+        import pandas as pd
 
         if addcontext:
             tables = tables.pipe(cluster.tables_add_context_rows, fields=addcontext)
@@ -502,6 +502,7 @@ class TableSet:
         datadir: Path = None,
         resourcedir: Path = None,
         keycol_only: bool = False,
+        any_ok: bool = False,
     ):
         """Calculate evaluation scores
 
@@ -528,7 +529,9 @@ class TableSet:
                     yield t
 
             tables = tables.pipe(add_gold, table_annot)
-        tables = tables.pipe(evaluate.table_score, keycol_only=keycol_only)
+        tables = tables.pipe(
+            evaluate.table_score, keycol_only=keycol_only, any_ok=any_ok
+        )
         return TableSet(tables)
 
     def novelty(
@@ -546,7 +549,10 @@ class TableSet:
         return TableSet(tables)
 
     def report(
-        self: TableSet, keycol_only: bool = False, curve: bool = False
+        self: TableSet,
+        keycol_only: bool = False,
+        curve: bool = False,
+        any_ok: bool = False,
     ) -> typing.Dict:
         """Generate report
 
@@ -596,7 +602,7 @@ class TableSet:
                     f"Collected {len(gold)} gold and {len(pred)} pred for task {task}"
                 )
 
-                task_scores = evaluate.score.classification(gold, pred)
+                task_scores = evaluate.score.classification(gold, pred, any_ok=any_ok)
                 task_scores["predictions"] = len(pred)
                 scores[task] = task_scores
                 if curve:
@@ -703,15 +709,15 @@ class TableSet:
                 raise Exception(f"Pipeline step {si} has no step type")
 
         # Prepend input tables to pipeline
-        streams = [('', TableSet(executor.new([])))]
+        streams = [("", TableSet(executor.new([])))]
         if isinstance(input_tables, Path) or isinstance(input_tables, str):
             log.info(f"Getting input tabels from path: {input_tables}")
-            streams = [('', TableSet.load(input_tables, executor=executor))]
+            streams = [("", TableSet.load(input_tables, executor=executor))]
         elif isinstance(input_tables, pages.PageSource):
             log.info(f"Getting input tabels from extraction: {input_tables}")
             pipeline.insert(0, {"step": "extract", "source": input_tables})
         elif isinstance(input_tables, HashBag):
-            streams = [('', TableSet(input_tables))]
+            streams = [("", TableSet(input_tables))]
         elif input_tables is not None:
             log.info(f"Getting input tabels from spec: {input_tables}")
             if not isinstance(input_tables.get("path"), list):
@@ -719,8 +725,7 @@ class TableSet:
             tables = TableSet.load(
                 *input_tables.pop("path"), **input_tables, executor=executor
             )
-            streams = [('', tables)]
-            
+            streams = [("", tables)]
 
         if cache and workdir:
             if force:
@@ -730,7 +735,9 @@ class TableSet:
                     log.error(e)
             Storage(workdir).mkdir()
 
-        log.info(f"Running pipeline {getattr(pipeline, 'name', '')} of {len(pipeline)} steps in {workdir} using {executor}")
+        log.info(
+            f"Running pipeline {getattr(pipeline, 'name', '')} of {len(pipeline)} steps in {workdir} using {executor}"
+        )
 
         for si, args in enumerate(pipeline):
             streams = [c for wd, ts in streams for c in chain_step(ts, wd, si, args)]
@@ -742,8 +749,8 @@ class TableSet:
         else:
             _, tablesets = zip(*streams)
             if all(isinstance(t, TableSet) for t in tablesets):
-                return tablesets[0].tables.__class__.concat([
-                    t.tables for t in tablesets
-                ])
+                return tablesets[0].tables.__class__.concat(
+                    [t.tables for t in tablesets]
+                )
             else:
                 return streams

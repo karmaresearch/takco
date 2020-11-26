@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 import toml
-import defopt 
+import defopt
 
 import takco
 from takco import TableSet, HashBag

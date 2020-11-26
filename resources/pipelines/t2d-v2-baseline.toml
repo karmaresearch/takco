@@ -1,8 +1,25 @@
-name = 't2d-v2-baseline'
 datadir = 'data'
 resourcedir = 'resources'
-workdir = 'output/t2d-v2-baseline/'
-cache = false
+
+[dbpedia_t2ksubset_es]
+class = 'link.ElasticSearcher'
+index = 'dbpediasub-7'
+baseuri = 'http://dbpedia.org/resource/'
+es_kwargs = {hosts = ['bricks07'], timeout = 60}
+prop_uri = {type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"}
+prop_baseuri = {type = 'http://dbpedia.org/ontology/'}
+propbaseuri = "http://dbpedia.org/ontology/"
+
+
+[linker]
+class = "link.First"
+limit = 1
+contextual = true
+search_limit = 1
+majority_class = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+majority_class_search = true
+searcher = {resolve = 'dbpedia_t2ksubset_es'}
+
 
 [[baseline]]
 step = 'dataset'
@@ -11,13 +28,13 @@ dataset = {resolve = 't2d-v2'}
 [[baseline]]
 step = 'link'
 usecols = 'keycol'
-linker = {resolve = 'baseline_linker'}
+linker = {resolve = 'linker'}
 
 
 [[step]]
 step = 'dataset'
 params = 't2d-v2'
-#sample = 5
+#take = n
 
 [[step]]
     [[step.split]]

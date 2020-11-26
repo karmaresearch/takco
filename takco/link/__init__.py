@@ -86,12 +86,15 @@ def link(
                 log.debug(f"No rows in table {table.get('_id')}")
 
             # Restrict columns to link (e.g. 'keycol', or 'entcols')
-            nopunct = str.maketrans("", "", string.punctuation+" ")
+            nopunct = str.maketrans("", "", string.punctuation + " ")
+
             def isnum(x):
                 x = x.translate(nopunct)
-                return sum(map(str.isnumeric, x)) / len(x) > .5 if x else False
+                return sum(map(str.isnumeric, x)) / len(x) > 0.5 if x else False
+
             def numscore(col):
                 return sum(int(isnum(c)) for c in col) / len(col)
+
             def uniqscore(col):
                 return len(set(col)) / len(col)
 

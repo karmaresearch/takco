@@ -1,4 +1,4 @@
-import pandas as pd 
+import pandas as pd
 
 
 @pd.api.extensions.register_dataframe_accessor("takco")

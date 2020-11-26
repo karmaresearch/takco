@@ -1,6 +1,6 @@
 import logging as log
 import time
-from rdflib import URIRef, Literal 
+from rdflib import URIRef, Literal
 from collections import defaultdict
 import urllib
 

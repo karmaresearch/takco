@@ -1,0 +1,45 @@
+
+[wikidata-trident]
+class = 'link.RDFSearcher'
+encoding = 'wikidata'
+typeProperties = ['http://www.wikidata.org/prop/direct/P31']
+    [wikidata-trident.store]
+    class = 'link.Trident'
+    configuration = 'data/wikidata.tridentdb'
+
+[wikidata-live]
+class = 'link.RDFSearcher'
+typeProperties = ['http://www.wikidata.org/prop/direct/P31']
+    [wikidata-live.store]
+    class = 'link.SparqlStore'
+    configuration = 'https://query.wikidata.org/sparql'
+
+[wikidata-hdt]
+class = 'link.RDFSearcher'
+encoding = 'wikidata'
+typeProperties = ['http://www.wikidata.org/prop/direct/P31']
+    [wikidata-hdt.store]
+    class = 'link.HDTStore'
+    path = '/var/scratch/bbkruit/wikidata20200309.hdt'
+    
+
+[wdid-sqlite]
+class = 'link.SQLiteLookup'
+sqlite_kwargs = {timeout = 60.0}
+sqlitedb = 'data/wdid_wpname.sqlitedb'
+baseuri = 'http://www.wikidata.org/entity/Q'
+
+[wikidata-elastic]
+class = 'link.ElasticDB'
+cache = true
+es_kwargs.hosts = ['bricks07:9200']
+index='test-wd-statements,test-wd-wikilookup'
+baseuri='http://www.wikidata.org/entity/Q'
+propbaseuri='http://www.wikidata.org/prop/direct/P'
+
+[wikidata-cache]
+class = 'link.SQLiteDB'
+sqlite_kwargs = {timeout = 60.0}
+sqlitedb = 'data/wikidata-cache.sqlitedb'
+baseuri='http://www.wikidata.org/entity/Q'
+propbaseuri='http://www.wikidata.org/prop/direct/P'

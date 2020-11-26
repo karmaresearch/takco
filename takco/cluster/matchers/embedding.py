@@ -10,9 +10,9 @@ from .matcher import Matcher, default_tokenize
 from .. import cluster
 
 try:
-    import faiss 
-    import pandas as pd 
-    import numpy as np 
+    import faiss
+    import pandas as pd
+    import numpy as np
 except:
     log.error(f"Cannot import faiss/pandas/numpy")
 

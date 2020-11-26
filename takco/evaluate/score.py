@@ -3,10 +3,16 @@ try:
     from sklearn.exceptions import UndefinedMetricWarning
     import pandas as pd
 
-    def classification(gold, pred):
+    def classification(gold, pred, any_ok=False):
         import warnings
 
         df = pd.DataFrame({"gold": gold, "pred": pred}).fillna(0).applymap(bool)
+        if any_ok:
+            levels = list(range(len(df.index.levels)))[:-1]
+            df = df.groupby(level=levels).apply(
+                lambda g: g.head(1) if not g.pred.any() else g[g.pred].head(1)
+            )
+
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
             return classification_report(df.gold, df.pred, output_dict=True).get("True")

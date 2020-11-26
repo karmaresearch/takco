@@ -218,10 +218,11 @@ class Linker(Asset):
                                     SearchResult(e, score=score)
                                     for e, score in existing.items()
                                 ]
-            queries, _ = zip(*query_rowcols)
-            allresults = self.searcher.search_entities(queries, **kwargs)
-            for (query, rowcol), results in zip(query_rowcols, allresults):
-                rowcol_searchresults[rowcol] = results
+            if query_rowcols:
+                queries, _ = zip(*query_rowcols)
+                allresults = self.searcher.search_entities(queries, **kwargs)
+                for (query, rowcol), results in zip(query_rowcols, allresults):
+                    rowcol_searchresults[rowcol] = results
         else:
             rowcol_searchresults = {}
             query_rowcols = {}

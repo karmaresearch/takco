@@ -381,15 +381,11 @@ class ElasticSearcher(Searcher):
                             vals = set()
                             if extract_surface:
                                 vals.add(normalize_surface(st["id"]))
-                            for l, ls in id_surfaceformscores.get(
-                                st["id"], {}
-                            ).items():
+                            for l, ls in id_surfaceformscores.get(st["id"], {}).items():
                                 if ls >= context_label_threshold:
                                     vals.add(l)
                             if vals:
-                                prop_context.setdefault(st["prop"], set()).update(
-                                    vals
-                                )
+                                prop_context.setdefault(st["prop"], set()).update(vals)
                 context = [
                     {"prop": p, "value": list(vs)} for p, vs in prop_context.items()
                 ]

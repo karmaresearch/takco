@@ -1,9 +1,20 @@
-from typing import List, Container, Tuple, NamedTuple, Iterator, Dict, Optional, Set, Collection
+from typing import (
+    List,
+    Container,
+    Tuple,
+    NamedTuple,
+    Iterator,
+    Dict,
+    Optional,
+    Set,
+    Collection,
+)
 from collections import defaultdict, Counter
 import re
 import logging as log
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
+
 
 def get_colspan_repeats(
     rows: List[List[str]],
@@ -22,7 +33,7 @@ def get_colspan_repeats(
         colspan = [1 for _ in row]
         repeats: Dict[Optional[str], int] = {}
         c, span = None, 1
-        for ci, cell in enumerate(list(row) + [None]): # type: ignore
+        for ci, cell in enumerate(list(row) + [None]):  # type: ignore
             cell = str(cell)
             if cell == c:
                 span += 1
