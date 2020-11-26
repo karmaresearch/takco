@@ -29,31 +29,43 @@ class LimayeGS(Dataset):
             return cls.fix(s, depth - 1)
         return s
 
+    @classmethod
+    def mapping_entities(cls, rows, mappings, fname):
+        fix_uri = lambda x: urllib.parse.unquote_plus(x)
+
+        entities = {}
+        for row in mappings:
+            if row:
+                uri, celltext, rownum = row
+                celltext = html.unescape(cls.fix(celltext, 3))
+                ri = int(rownum)
+                if int(rownum) >= len(rows):
+                    continue
+                c_ci = {c: ci for ci, c in enumerate(rows[ri])}
+                if celltext not in c_ci:
+                    log.warn(f"{celltext} not found in {rows[ri]} in {fname}")
+                    log.warn(str(rows))
+                    continue
+                ci = c_ci[celltext]
+                entities.setdefault(str(ci), {})[str(ri)] = {fix_uri(uri): 1.0}
+        return entities
+
     @property
     def tables(self):
         for fname in self.root.joinpath("tables_instance").glob("*.csv"):
             name = fname.stem
-            tablefile = html.unescape(self.fix(open(fname).read(), 3))
-            rows = list(csv.reader(tablefile.splitlines()))
-            mapping_file = self.root.joinpath("entities_instance", fname.name)
-            if mapping_file.exists():
-                mappings = list(csv.reader(open(mapping_file)))
+            file_rows = csv.reader(open(fname))
+            rows = [[html.unescape(self.fix(c, 3)) for c in r] for r in file_rows]
+            mapping_path = self.root.joinpath("entities_instance", fname.name)
+            if mapping_path.exists():
+                mappings = list(csv.reader((open(mapping_path))))
                 if any(mappings):
-
-                    fix_uri = lambda x: urllib.parse.unquote_plus(x)
-
-                    row_uris = {}
-                    for row in mappings:
-                        keycol = 0  # ??
-                        if row:
-                            uri, celltext, rownum = row
-                            rownum = str(int(rownum))
-                            row_uris[rownum] = {fix_uri(uri): 1.0}
-                    entities = {str(keycol): row_uris} if row_uris else {}
+                    entities = self.mapping_entities(rows, mappings, fname) or {}
 
                     yield {
                         "name": name,
+                        "headers": [],
                         "rows": rows,
                         "entities": entities,
-                        "keycol": keycol,
+                        "keycol": None,
                     }

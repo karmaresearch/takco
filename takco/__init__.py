@@ -91,7 +91,7 @@ class TableSet:
 
         tables = dataset.get_unannotated_tables()
         if not isinstance(tables, HashBag):
-            tables = executor.new(tables)
+            tables = executor.new(list(tables))
         if take:
             tables = tables.take(take)
         return TableSet(tables)

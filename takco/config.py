@@ -6,13 +6,30 @@ import argparse
 import typing
 import logging as log
 from pathlib import Path
-
+from typing import Optional, List, Dict, Union, Collection, Any
 import toml
 
 
-def build(conf, assets=(), base=None, load=None, **kwargs):
+def build(
+    conf: Union[str, Dict],
+    assets: Optional[Dict[str, Any]] = None,
+    base: Optional[str] = None,
+    load: Optional[str] = None,
+    **kwargs,
+):
+    """Instantiate classes from config specification
+
+    Args:
+        conf: Specification to instantiate
+        assets: Other specifications for dereferencing
+        base: Base module
+        load: Filename or serialized specification to load as assets
+
+    """
+    assets = assets or {}
+
     if load:
-        assets = parse(load)
+        assets.update(parse(load))
 
     if base is None:
         base = __name__.split(".")[0]

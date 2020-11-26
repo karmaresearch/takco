@@ -1,6 +1,8 @@
 datadir = 'data'
 resourcedir = 'resources'
-n = 1
+use_n = 1
+use_dataset = false
+use_linker = false
 
 [dbpedia_t2ksubset_es]
 class = 'link.ElasticSearcher'
@@ -21,7 +23,7 @@ prop_baseuri = {type = 'http://www.wikidata.org/entity/'}
 propbaseuri = "http://www.wikidata.org/prop/direct/"
 
 
-[linker]
+[linker-dbpedia]
 class = "link.First"
 limit = 1
 contextual = true
@@ -30,27 +32,20 @@ majority_class = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 majority_class_search = true
 searcher = {resolve = 'dbpedia_t2ksubset_es'}
 
+[linker-wikidata]
+resolve = 'linker-dbpedia'
+searcher = {resolve = 'wikidata_es'}
+
+
 [[eval]]
-    [[eval.split]]
-    step = 'dataset'
-    dataset = {resolve = 't2d-v2'}
-    take = {resolve = 'n'}
-
-    [[eval.split]]
-    step = 'dataset'
-    dataset = {resolve = 'limaye-dbpedia'}
-    take = {resolve = 'n'}
-
-    [[eval.split]]
-    step = 'dataset'
-    dataset = {resolve = 'toughtables-dbpedia'}
-    take = {resolve = 'n'}
-
+step = 'dataset'
+dataset = {resolve = 'use_dataset'}
+take = {resolve = 'use_n'}
 
 [[eval]]
 step = 'link'
 usecols = 'keycol'
-linker = {resolve = 'linker'}
+linker = {resolve = 'use_linker'}
 
 [[eval]]
 step = 'report'

@@ -199,11 +199,12 @@ try:
                 self.bag = it
             else:
                 it = list(it)
-                npartitions = npartitions or len(it)
+                npartitions = npartitions or len(it) or None
                 self.bag = db.from_sequence(it, npartitions=npartitions)
 
         def new(self, it):
-            return DaskHashBag(it, npartitions=self.bag.npartitions, client=self.client)
+            npartitions = self.bag.npartitions if self.bag.npartitions > 1 else None
+            return DaskHashBag(it, npartitions=npartitions, client=self.client)
 
         def __repr__(self):
             kwargs = {"npartitions": self.bag.npartitions, **self.kwargs}

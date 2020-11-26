@@ -12,7 +12,7 @@ fname = 'tables.json.gz'
 
 [[assets]]
 name = 'lookup'
-resolve = 'wiki-sqlite'
+resolve = 'wdid-sqlite'
 sqlitedb = 'data/wdid_wpname.sqlitedb'
 #fallback = {class = 'MediaWikiAPI'}
 
@@ -90,7 +90,7 @@ filters = ['table["numDataRows"] > 10', 'table.get("numTables", 1) > 1']
 [[step]]
 step = 'link'
 lookup_cells = true
-lookup = {resolve = 'wiki-sqlite'}
+lookup = {resolve = 'wdid-sqlite'}
 
     
 [[step]]
@@ -158,7 +158,7 @@ max_cluster_size = 250
 [[step]]
 step = 'link'
 lookup_cells = true
-lookup = {resolve = 'wiki-sqlite'}
+lookup = {resolve = 'wdid-sqlite'}
 
 [[step]]
 step = 'coltypes'

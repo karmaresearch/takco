@@ -45,12 +45,10 @@ class ToughTables(Dataset):
 
     @property
     def tables(self):
-        classes_gt = dict(
-            self.iter_gt(self.root.joinpath("gt", f"CTA_{self.part}_gt.csv"))
-        )
-        for name, ents_gt in self.iter_gt(
-            self.root.joinpath("gt", f"CEA_{self.part}_gt.csv")
-        ):
+        cta_file = self.root.joinpath("gt", f"CTA_{self.part}_gt.csv")
+        cea_file = self.root.joinpath("gt", f"CEA_{self.part}_gt.csv")
+        classes_gt = dict(self.iter_gt(cta_file))
+        for name, ents_gt in self.iter_gt(cea_file):
             rows = list(csv.reader(open(self.root.joinpath("tables", f"{name}.csv"))))
 
             entities = {}  # type: ignore

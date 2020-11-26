@@ -298,6 +298,7 @@ class DBpediaLookup(Searcher, Lookup):
         self.log = log
 
     def _query(self, **params):
+        params = {**params, "format": "json"}
         self.log.debug(f"Requesting {self.__class__.__name__} with {params}")
         return self.get_json(self.url, params=params)
 
@@ -326,11 +327,13 @@ class DBpediaLookup(Searcher, Lookup):
             )
             if results:
                 sr = []
-                for r in results.get("results", []):
-                    if "classes" in r:
-                        r[RDF_type] = r.pop("classes")
-                    score = 1 - (1 / (1 + r.get("refCount", 0)))
-                    sr.append(SearchResult(r.pop("uri"), r, score=score))
+                for r in results.get("docs", []):
+                    for uri in r.get("resource", []):
+                        if "type" in r:
+                            r[RDF_type] = r.pop("type")
+                            refcount = int((r.get("refCount") or ["0"])[0])
+                        score = 1 - (1 / (1 + refcount))
+                        sr.append(SearchResult(uri, r, score=score))
                 yield sr
             else:
                 yield []
