@@ -66,7 +66,7 @@ class TableSet:
         log.debug(f"Loading tables {path} using executor {executor}")
         if path and all(str(val).endswith("csv") for val in path):
             return cls.csvs(*path, executor=executor)
-
+    
         return TableSet(executor.load(*path))
 
     @classmethod
@@ -91,7 +91,7 @@ class TableSet:
 
         tables = dataset.get_unannotated_tables()
         if not isinstance(tables, HashBag):
-            tables = executor.new(list(tables))
+            tables = executor.new(tables)
         if take:
             tables = tables.take(take)
         return TableSet(tables)
@@ -502,7 +502,8 @@ class TableSet:
         datadir: Path = None,
         resourcedir: Path = None,
         keycol_only: bool = False,
-        any_ok: bool = False,
+        any_annotated: bool = False,
+        only_annotated: bool = False
     ):
         """Calculate evaluation scores
 
@@ -530,7 +531,8 @@ class TableSet:
 
             tables = tables.pipe(add_gold, table_annot)
         tables = tables.pipe(
-            evaluate.table_score, keycol_only=keycol_only, any_ok=any_ok
+            evaluate.table_score, keycol_only=keycol_only, 
+            any_annotated=any_annotated, only_annotated = only_annotated,
         )
         return TableSet(tables)
 
@@ -552,8 +554,9 @@ class TableSet:
         self: TableSet,
         keycol_only: bool = False,
         curve: bool = False,
-        any_ok: bool = False,
-    ) -> typing.Dict:
+        any_annotated: bool = False,
+        only_annotated: bool = False
+    ) -> HashBag:
         """Generate report
 
         Args:
@@ -602,7 +605,11 @@ class TableSet:
                     f"Collected {len(gold)} gold and {len(pred)} pred for task {task}"
                 )
 
-                task_scores = evaluate.score.classification(gold, pred, any_ok=any_ok)
+                task_scores = evaluate.score.classification(
+                    gold, pred, 
+                    any_annotated = any_annotated,
+                    only_annotated = only_annotated,
+                )
                 task_scores["predictions"] = len(pred)
                 scores[task] = task_scores
                 if curve:
@@ -619,7 +626,7 @@ class TableSet:
                     kind_novelty_hashes
                 )
 
-        return data
+        return TableSet([data])
 
     @classmethod
     def run(
@@ -695,14 +702,14 @@ class TableSet:
                     log.info(f"Chaining pipeline step {stepname}")
                     yield steppath, wrap_step(stepfunc, stepargs, stepdir)
                 else:
-                    log.warn(f"Skipping step {stepname}, using cache instead")
+                    log.warn(f"Skipping step {steppath}/{stepname}, using cache instead")
                     tablefile = os.path.join(str(stepdir), "*.jsonl")
                     yield steppath, TableSet(executor.load(tablefile))
             elif "split" in stepargs:
                 # Persist pre-split tables
                 tableset.tables.persist()
                 for split, splitargs in enumerate(stepargs["split"]):
-                    splitname = f"{si}-split-{split}"
+                    splitname = splitargs.pop("name", f"{si}-split-{split}")
                     splitpath = os.path.join(steppath, splitname)
                     yield from chain_step(tableset, splitpath, si, splitargs)
             else:

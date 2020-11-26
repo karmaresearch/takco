@@ -157,6 +157,7 @@ def main():
     # Output result as json (or newline-delimited json if generator)
     result = defopt._call_function(parser, args._func, args)
     if result:
+        log.info(f"End result is a {type(result)}")
         try:
             if isinstance(result, TableSet):
                 result = result.tables

@@ -1,14 +1,12 @@
 datadir = 'data'
 resourcedir = 'resources'
-use_n = 1
-use_dataset = false
-use_linker = false
+n = 1
 
 [dbpedia_t2ksubset_es]
 class = 'link.ElasticSearcher'
 index = 'dbpediasub-7'
 baseuri = 'http://dbpedia.org/resource/'
-es_kwargs = {hosts = ['bricks07'], timeout = 60}
+es_kwargs = {hosts = ['bricks07'], timeout = 120}
 prop_uri = {type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"}
 prop_baseuri = {type = 'http://dbpedia.org/ontology/'}
 propbaseuri = "http://dbpedia.org/ontology/"
@@ -17,7 +15,7 @@ propbaseuri = "http://dbpedia.org/ontology/"
 class = 'link.ElasticSearcher'
 index = 'wikidata-20190701-1'
 baseuri = 'http://www.wikidata.org/entity/'
-es_kwargs = {hosts = ['bricks07'], timeout = 60}
+es_kwargs = {hosts = ['bricks07'], timeout = 120}
 prop_uri = {type = "http://www.wikidata.org/prop/direct/P31"}
 prop_baseuri = {type = 'http://www.wikidata.org/entity/'}
 propbaseuri = "http://www.wikidata.org/prop/direct/"
@@ -37,17 +35,51 @@ resolve = 'linker-dbpedia'
 searcher = {resolve = 'wikidata_es'}
 
 
-[[eval]]
-step = 'dataset'
-dataset = {resolve = 'use_dataset'}
-take = {resolve = 'use_n'}
+[[eval-dbp]]
+    # [[eval-dbp.split]]
+    # name = 't2d'
+    # step = 'dataset'
+    # dataset = {resolve = 't2d-v2'}
+    # take = {resolve = 'n'}
 
-[[eval]]
+    # [[eval-dbp.split]]
+    # name = 'limaye'
+    # step = 'dataset'
+    # dataset = {resolve = 'limaye-dbpedia'}
+    # take = {resolve = 'n'}
+
+    [[eval-dbp.split]]
+    name = 'toughtables'
+    step = 'dataset'
+    dataset = {resolve = 'toughtables-dbpedia'}
+    take = {resolve = 'n'}
+
+[[eval-dbp]]
 step = 'link'
 usecols = 'keycol'
-linker = {resolve = 'use_linker'}
+linker = {resolve = 'linker-dbpedia'}
 
-[[eval]]
+[[eval-dbp]]
+step = 'report'
+keycol_only = true
+curve = false
+any_annotated = true
+only_annotated = true
+
+
+[[eval-wd]]
+    [[eval-wd.split]]
+    name = 'toughtables'
+    step = 'dataset'
+    dataset = {resolve = 'toughtables-wikidata'}
+    take = {resolve = 'n'}
+
+[[eval-wd]]
+step = 'link'
+usecols = 'keycol'
+linker = {resolve = 'linker-wikidata'}
+
+[[eval-wd]]
 step = 'report'
 keycol_only = true
 curve = false

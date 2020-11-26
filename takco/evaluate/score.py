@@ -1,17 +1,31 @@
+import logging as log
+
 try:
     from sklearn.metrics import classification_report, precision_recall_curve
     from sklearn.exceptions import UndefinedMetricWarning
     import pandas as pd
 
-    def classification(gold, pred, any_ok=False):
+    def classification(gold, pred, any_annotated=False, only_annotated=False):
         import warnings
 
         df = pd.DataFrame({"gold": gold, "pred": pred}).fillna(0).applymap(bool)
-        if any_ok:
-            levels = list(range(len(df.index.levels)))[:-1]
-            df = df.groupby(level=levels).apply(
-                lambda g: g.head(1) if not g.pred.any() else g[g.pred].head(1)
-            )
+        levels = list(range(len(df.index.levels)))[:-1]
+
+        if only_annotated:
+            # Not all targets are annotated, so only take annotated targets
+            df = df[ df.groupby(level=levels).gold.transform('any') ]
+    
+        if any_annotated:
+            # For each target (cell, column, column pair), there are multiple right answers
+            # So, only take one per fn, fp and tp.
+            anypred = df.pred.groupby(level=levels).transform('any')
+            anycorrect = (df.pred & df.gold).groupby(level=levels).transform('any')
+
+            df = pd.concat([
+                df[~anypred].groupby(level=levels).head(1), # unpredicted (fn)
+                df[(~anycorrect) & df.pred].groupby(level=levels).head(1), # incorrect (fp)
+                df[df.pred & df.gold].groupby(level=levels).head(1), # correct (tp)
+            ])
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UndefinedMetricWarning)

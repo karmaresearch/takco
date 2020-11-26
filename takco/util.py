@@ -120,6 +120,8 @@ class HashBag:
 
         def it(files):
             for f in files:
+                if isinstance(f, list):
+                    raise Exception(f"Cannot load HashBag from {f}")
                 try:
                     if isinstance(f, TextIOBase):
                         yield from robust_json_loads_lines(f)
@@ -135,9 +137,9 @@ class HashBag:
                     elif "*" in str(f):
                         import glob
 
-                        yield from self.load(glob.glob(str(f)))
+                        yield from self.load(*glob.glob(str(f)))
                     elif Path(f).exists() and Path(f).is_dir():
-                        yield from self.load(Path(f).glob("*.jsonl"))
+                        yield from self.load(*Path(f).glob("*.jsonl"))
                     else:
                         raise Exception(f"Could not load {f}!")
                 except GeneratorExit:
@@ -184,6 +186,7 @@ try:
             from dask.distributed import Client
 
             try:
+                client = Client(**kwargs)
                 self.client = Client(**kwargs)
             except Exception as e:
                 log.warn(e)
@@ -191,6 +194,7 @@ try:
         def __init__(self, it=(), npartitions=None, client=None, **kwargs):
             self.client = client
             self.kwargs = kwargs
+            self.try_npartitions = npartitions
 
             if kwargs:
                 self.start_client(**kwargs)
@@ -203,7 +207,7 @@ try:
                 self.bag = db.from_sequence(it, npartitions=npartitions)
 
         def new(self, it):
-            npartitions = self.bag.npartitions if self.bag.npartitions > 1 else None
+            npartitions = max(self.try_npartitions or 1, self.bag.npartitions or 1)
             return DaskHashBag(it, npartitions=npartitions, client=self.client)
 
         def __repr__(self):
@@ -216,11 +220,12 @@ try:
             from io import TextIOBase
 
             if isinstance(f, TextIOBase):
-                return cls(robust_json_loads_lines(f), **self.kwargs)
+                return cls(robust_json_loads_lines(f), client=self.client)
             else:
+                log.info(f"Reading {f} with {self.client}?")
                 return cls(
                     db.read_text(f).map_partitions(robust_json_loads_lines),
-                    **self.kwargs,
+                    client=self.client,
                 )
 
         @classmethod
