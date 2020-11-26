@@ -13,19 +13,23 @@ try:
 
         if only_annotated:
             # Not all targets are annotated, so only take annotated targets
-            df = df[ df.groupby(level=levels).gold.transform('any') ]
-    
+            df = df[df.groupby(level=levels).gold.transform("any")]
+
         if any_annotated:
             # For each target (cell, column, column pair), there are multiple right answers
             # So, only take one per fn, fp and tp.
-            anypred = df.pred.groupby(level=levels).transform('any')
-            anycorrect = (df.pred & df.gold).groupby(level=levels).transform('any')
+            anypred = df.pred.groupby(level=levels).transform("any")
+            anycorrect = (df.pred & df.gold).groupby(level=levels).transform("any")
 
-            df = pd.concat([
-                df[~anypred].groupby(level=levels).head(1), # unpredicted (fn)
-                df[(~anycorrect) & df.pred].groupby(level=levels).head(1), # incorrect (fp)
-                df[df.pred & df.gold].groupby(level=levels).head(1), # correct (tp)
-            ])
+            df = pd.concat(
+                [
+                    df[~anypred].groupby(level=levels).head(1),  # unpredicted (fn)
+                    df[(~anycorrect) & df.pred]
+                    .groupby(level=levels)
+                    .head(1),  # incorrect (fp)
+                    df[df.pred & df.gold].groupby(level=levels).head(1),  # correct (tp)
+                ]
+            )
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UndefinedMetricWarning)

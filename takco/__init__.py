@@ -66,7 +66,7 @@ class TableSet:
         log.debug(f"Loading tables {path} using executor {executor}")
         if path and all(str(val).endswith("csv") for val in path):
             return cls.csvs(*path, executor=executor)
-    
+
         return TableSet(executor.load(*path))
 
     @classmethod
@@ -503,7 +503,7 @@ class TableSet:
         resourcedir: Path = None,
         keycol_only: bool = False,
         any_annotated: bool = False,
-        only_annotated: bool = False
+        only_annotated: bool = False,
     ):
         """Calculate evaluation scores
 
@@ -531,8 +531,10 @@ class TableSet:
 
             tables = tables.pipe(add_gold, table_annot)
         tables = tables.pipe(
-            evaluate.table_score, keycol_only=keycol_only, 
-            any_annotated=any_annotated, only_annotated = only_annotated,
+            evaluate.table_score,
+            keycol_only=keycol_only,
+            any_annotated=any_annotated,
+            only_annotated=only_annotated,
         )
         return TableSet(tables)
 
@@ -555,7 +557,7 @@ class TableSet:
         keycol_only: bool = False,
         curve: bool = False,
         any_annotated: bool = False,
-        only_annotated: bool = False
+        only_annotated: bool = False,
     ) -> HashBag:
         """Generate report
 
@@ -606,9 +608,10 @@ class TableSet:
                 )
 
                 task_scores = evaluate.score.classification(
-                    gold, pred, 
-                    any_annotated = any_annotated,
-                    only_annotated = only_annotated,
+                    gold,
+                    pred,
+                    any_annotated=any_annotated,
+                    only_annotated=only_annotated,
                 )
                 task_scores["predictions"] = len(pred)
                 scores[task] = task_scores
@@ -702,7 +705,9 @@ class TableSet:
                     log.info(f"Chaining pipeline step {stepname}")
                     yield steppath, wrap_step(stepfunc, stepargs, stepdir)
                 else:
-                    log.warn(f"Skipping step {steppath}/{stepname}, using cache instead")
+                    log.warn(
+                        f"Skipping step {steppath}/{stepname}, using cache instead"
+                    )
                     tablefile = os.path.join(str(stepdir), "*.jsonl")
                     yield steppath, TableSet(executor.load(tablefile))
             elif "split" in stepargs:

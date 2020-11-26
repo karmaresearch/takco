@@ -13,7 +13,9 @@ task_flatten = {
 }
 
 
-def table_score(tablepairs, keycol_only=False, any_annotated=False, only_annotated=False):
+def table_score(
+    tablepairs, keycol_only=False, any_annotated=False, only_annotated=False
+):
     for table in tablepairs:
         _id = table["_id"]
 
@@ -30,7 +32,12 @@ def table_score(tablepairs, keycol_only=False, any_annotated=False, only_annotat
                 golds = dict(flatten(gold))
 
                 if preds and golds:
-                    task_scores = score.classification(golds, preds, any_annotated=any_annotated, only_annotated=only_annotated)
+                    task_scores = score.classification(
+                        golds,
+                        preds,
+                        any_annotated=any_annotated,
+                        only_annotated=only_annotated,
+                    )
                     task_scores["predictions"] = len(preds)
                     table["score"][task] = task_scores
             else:
