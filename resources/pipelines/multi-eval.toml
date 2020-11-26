@@ -36,17 +36,17 @@ searcher = {resolve = 'wikidata_es'}
 
 
 [[eval-dbp]]
-    # [[eval-dbp.split]]
-    # name = 't2d'
-    # step = 'dataset'
-    # dataset = {resolve = 't2d-v2'}
-    # take = {resolve = 'n'}
+    [[eval-dbp.split]]
+    name = 't2d'
+    step = 'dataset'
+    dataset = {resolve = 't2d-v2'}
+    take = {resolve = 'n'}
 
-    # [[eval-dbp.split]]
-    # name = 'limaye'
-    # step = 'dataset'
-    # dataset = {resolve = 'limaye-dbpedia'}
-    # take = {resolve = 'n'}
+    [[eval-dbp.split]]
+    name = 'limaye'
+    step = 'dataset'
+    dataset = {resolve = 'limaye-dbpedia'}
+    take = {resolve = 'n'}
 
     [[eval-dbp.split]]
     name = 'toughtables'

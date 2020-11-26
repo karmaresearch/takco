@@ -13,5 +13,4 @@ Submodules
    :maxdepth: 4
 
    takco.extract.database
-   takco.extract.fetahu
    takco.extract.htmltables

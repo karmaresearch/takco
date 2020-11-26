@@ -10,6 +10,7 @@ import logging as log
 from pathlib import Path
 import re
 import datetime
+import itertools
 from dataclasses import dataclass, field
 
 from .base import (
@@ -137,7 +138,7 @@ class ElasticSearcher(Searcher):
     baseuri: typing.Dict = field(default_factory=dict)
     propbaseuri: typing.Dict = field(default_factory=dict)
     es_kwargs: typing.Dict = field(default_factory=dict)
-    parts: bool = True
+    parts: bool = False
     prop_uri: typing.Dict[str, typing.Dict] = field(default_factory=dict)
     prop_baseuri: typing.Dict = field(default_factory=dict)
     typer: Typer = SimpleTyper()
@@ -175,62 +176,70 @@ class ElasticSearcher(Searcher):
         if not query_params:
             return
 
-        bodies = []
-        for query, params in query_params:
-            context, classes = params.get("context", []), params.get("classes", [])
-            context = [{"value": c} for c in (context or []) if not self.NUM.match(c)]
-            classes = [{"value": c.split("/")[-1]} for c in (classes or [])]
+        it = iter(query_params)
+        while True:
+            query_chunk = tuple(itertools.islice(it, 10 ** 3))  # chunk per 1000
+            if not query_chunk:
+                break
+        
+            log.debug(f"Submitting ES multiquery of size {len(query_chunk)}")
 
-            body = self.make_query_body(
-                query, context=context, classes=classes, limit=limit
-            )
-            bodies.append(())
-            bodies.append(body)
+            bodies = []
+            for query, params in query_chunk:
+                context, classes = params.get("context", []), params.get("classes", [])
+                context = [{"value": c} for c in (context or []) if not self.NUM.match(c)]
+                classes = [{"value": c.split("/")[-1]} for c in (classes or [])]
 
-        esresponses = self.es.msearch_template(index=self.index, body=bodies).get(
-            "responses", []
-        )
-        for (query, params), esresponse in zip(query_params, esresponses):
-            context, classes = params.get("context", []), params.get("classes", [])
-            results = []
-            for hit in esresponse.get("hits", {}).get("hits", []):
-                uri = hit.get("_source", {}).get("id")
-                if self.baseuri:
-                    uri = self.baseuri + uri
-                score = hit.get("_score", 0)
-                about = self._about(hit.get("_source", {}))
-
-                context_matches = {}
-                if ("context" in about) and isinstance(context, dict):
-                    for ec in about["context"]:
-                        prop = ec.get("prop")
-                        if self.propbaseuri:
-                            prop = self.propbaseuri + prop
-                        vals = ec.get("value", [])
-                        for v in vals if isinstance(vals, list) else [vals]:
-                            for c, csource in context.items():
-                                for m in self.typer.literal_match(
-                                    v, c, self.stringmatch
-                                ):
-                                    pms = context_matches.setdefault(csource, {})
-                                    pms.setdefault(prop, []).append(m)
-
-                sr = SearchResult(
-                    uri, about, context_matches=context_matches, score=score
+                body = self.make_query_body(
+                    query, context=context, classes=classes, limit=limit
                 )
-                results.append(sr)
+                bodies.append(())
+                bodies.append(body)
 
-            if not results:
-                log.debug(f"No {self} results for {query}")
-                if self.parts and (not ispart):
-                    partqueries = [(p, context) for p in self.get_parts(query)]
-                    more = self.search_entities(
-                        partqueries, limit=limit, add_about=add_about, ispart=True,
+            esresponses = self.es.msearch_template(index=self.index, body=bodies).get(
+                "responses", []
+            )
+            for (query, params), esresponse in zip(query_chunk, esresponses):
+                context, classes = params.get("context", []), params.get("classes", [])
+                results = []
+                for hit in esresponse.get("hits", {}).get("hits", []):
+                    uri = hit.get("_source", {}).get("id")
+                    if self.baseuri:
+                        uri = self.baseuri + uri
+                    score = hit.get("_score", 0)
+                    about = self._about(hit.get("_source", {}))
+
+                    context_matches = {}
+                    if ("context" in about) and isinstance(context, dict):
+                        for ec in about["context"]:
+                            prop = ec.get("prop")
+                            if self.propbaseuri:
+                                prop = self.propbaseuri + prop
+                            vals = ec.get("value", [])
+                            for v in vals if isinstance(vals, list) else [vals]:
+                                for c, csource in context.items():
+                                    for m in self.typer.literal_match(
+                                        v, c, self.stringmatch
+                                    ):
+                                        pms = context_matches.setdefault(csource, {})
+                                        pms.setdefault(prop, []).append(m)
+
+                    sr = SearchResult(
+                        uri, about, context_matches=context_matches, score=score
                     )
-                    for srs in more:
-                        results += srs
+                    results.append(sr)
 
-            yield results
+                if not results:
+                    # log.debug(f"No {self} results for {query}")
+                    if self.parts and (not ispart):
+                        partqueries = [(p, context) for p in self.get_parts(query)]
+                        more = self.search_entities(
+                            partqueries, limit=limit, add_about=add_about, ispart=True,
+                        )
+                        for srs in more:
+                            results += srs
+
+                yield results
 
     @classmethod
     def create(
