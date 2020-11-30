@@ -3,7 +3,7 @@ import logging as log
 from dataclasses import dataclass, field
 
 from .base import Linker, Searcher, SearchResult
-from .rdf import GraphDB
+from .db.rdf import GraphDB
 
 URI = str
 

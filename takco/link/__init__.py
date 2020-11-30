@@ -4,15 +4,8 @@ import logging as log
 import string
 
 from .base import *
-from .external import *
-from .trident import *
-from .sqlite import *
-from .pickle import *
-from .elasticsearch import *
-from .rdf import *
-
+from .db import *
 from .linkers import *
-
 from .integrate import *
 from .profile import *
 from .types import *

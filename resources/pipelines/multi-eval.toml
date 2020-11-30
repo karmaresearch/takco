@@ -2,26 +2,35 @@ datadir = 'data'
 resourcedir = 'resources'
 n = 1
 
+[dbpedia_t2ksubset]
+class = 'link.RDFSearcher'
+labelProperties = ['http://dbpedia.org/ontology/title']
+store = {class = 'link.Trident', configuration = 'data/kb/dbpedia_t2ksubset/db/'}
+
 [dbpedia_t2ksubset_es]
 class = 'link.ElasticSearcher'
-index = 'dbpediasub-7'
-baseuri = 'http://dbpedia.org/resource/'
 es_kwargs = {hosts = ['bricks07'], timeout = 120}
+index = 'dbpediasub-1'
+baseuri = 'http://dbpedia.org/resource/'
 prop_uri = {type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"}
 prop_baseuri = {type = 'http://dbpedia.org/ontology/'}
 propbaseuri = "http://dbpedia.org/ontology/"
 
+[dbpedia_2020_es]
+resolve = 'dbpedia_t2ksubset_es'
+index = 'dbpedia-20201001-subsetsurface-1'
+
 [wikidata_es]
 class = 'link.ElasticSearcher'
+es_kwargs = {hosts = ['bricks07'], timeout = 120}
 index = 'wikidata-20190701-1'
 baseuri = 'http://www.wikidata.org/entity/'
-es_kwargs = {hosts = ['bricks07'], timeout = 120}
 prop_uri = {type = "http://www.wikidata.org/prop/direct/P31"}
 prop_baseuri = {type = 'http://www.wikidata.org/entity/'}
 propbaseuri = "http://www.wikidata.org/prop/direct/"
 
 
-[linker-dbpedia]
+[linker-dbpedia-sub]
 class = "link.First"
 limit = 1
 contextual = true
@@ -30,8 +39,12 @@ majority_class = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 majority_class_search = true
 searcher = {resolve = 'dbpedia_t2ksubset_es'}
 
+[linker-dbpedia-2020]
+resolve = 'linker-dbpedia-sub'
+searcher = {resolve = 'dbpedia_2020_es'}
+
 [linker-wikidata]
-resolve = 'linker-dbpedia'
+resolve = 'linker-dbpedia-sub'
 searcher = {resolve = 'wikidata_es'}
 
 
@@ -48,21 +61,36 @@ searcher = {resolve = 'wikidata_es'}
     dataset = {resolve = 'limaye-dbpedia'}
     take = {resolve = 'n'}
 
-    [[eval-dbp.split]]
-    name = 'toughtables'
-    step = 'dataset'
-    dataset = {resolve = 'toughtables-dbpedia'}
-    take = {resolve = 'n'}
+    # [[eval-dbp.split]]
+    # name = 'toughtables'
+    # step = 'dataset'
+    # dataset = {resolve = 'toughtables-dbpedia'}
+    # take = {resolve = 'n'}
 
 [[eval-dbp]]
-step = 'link'
-usecols = 'keycol'
-linker = {resolve = 'linker-dbpedia'}
+    [[eval-dbp.split]]
+    name = 'link-dbpedia-subset'
+    step = 'link'
+    usecols = 'keycol'
+    linker = {resolve = 'linker-dbpedia-sub'}
+
+    [[eval-dbp.split]]
+    name = 'link-dbpedia-2020'
+    step = 'link'
+    usecols = 'keycol'
+    linker = {resolve = 'linker-dbpedia-2020'}
+
+[[eval-dbp]]
+step = 'triples'
+
+[[eval-dbp]]
+step = 'novelty'
+searcher = {resolve = 'dbpedia_t2ksubset'}
 
 [[eval-dbp]]
 step = 'report'
 keycol_only = true
-curve = false
+curve = true
 any_annotated = true
 only_annotated = true
 
@@ -83,4 +111,5 @@ linker = {resolve = 'linker-wikidata'}
 step = 'report'
 keycol_only = true
 curve = false
-any_ok = true
+any_annotated = true
+only_annotated = true

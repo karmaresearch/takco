@@ -714,6 +714,7 @@ class TableSet:
                 # Persist pre-split tables
                 tableset.tables.persist()
                 for split, splitargs in enumerate(stepargs["split"]):
+                    splitargs = dict(splitargs)
                     splitname = splitargs.pop("name", f"{si}-split-{split}")
                     splitpath = os.path.join(steppath, splitname)
                     yield from chain_step(tableset, splitpath, si, splitargs)

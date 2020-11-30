@@ -6,6 +6,10 @@ import urllib
 
 
 def get_cell_noveltyhashes(triples, kb):
+
+    log.warn(kb)
+
+
     kind_novelty_hashes = defaultdict(lambda: defaultdict(set))
     for t in triples:
         novelty_hashes = kind_novelty_hashes[t.get("kind")]
@@ -26,7 +30,7 @@ def get_cell_noveltyhashes(triples, kb):
         if t.get("pred"):
             novelty_hashes["pred"].add(triplehash)
 
-        os = set(o for _, _, o in kb.triples([URIRef(s), URIRef(p), None]))
+        os = kb.get_prop_values(s,p)
         if not os:
             novelty_hashes["attnovel"].add(triplehash)
         else:

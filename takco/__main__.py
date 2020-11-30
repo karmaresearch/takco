@@ -12,7 +12,7 @@ import toml
 import defopt
 
 import takco
-from takco import TableSet, HashBag
+from takco import TableSet, HashBag, TqdmHashBag
 from . import config
 
 assets: Dict[str, Any] = {}
@@ -37,7 +37,7 @@ class SetConfig(argparse.Action):
 
 
 class SetExecutor(argparse.Action):
-    DEFAULT = {"class": "TqdmHashBag"}
+    DEFAULT = TqdmHashBag()
 
     def __init__(self, option_strings, dest, nargs="?", **kwargs):
         super(SetExecutor, self).__init__(option_strings, dest, nargs="?", **kwargs)

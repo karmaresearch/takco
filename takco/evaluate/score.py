@@ -20,16 +20,10 @@ try:
             # So, only take one per fn, fp and tp.
             anypred = df.pred.groupby(level=levels).transform("any")
             anycorrect = (df.pred & df.gold).groupby(level=levels).transform("any")
-
-            df = pd.concat(
-                [
-                    df[~anypred].groupby(level=levels).head(1),  # unpredicted (fn)
-                    df[(~anycorrect) & df.pred]
-                    .groupby(level=levels)
-                    .head(1),  # incorrect (fp)
-                    df[df.pred & df.gold].groupby(level=levels).head(1),  # correct (tp)
-                ]
-            )
+            fn = df[~anypred].groupby(level=levels).head(1)  # unpredicted
+            fp = df[(~anycorrect) & df.pred].groupby(level=levels).head(1)  # incorrect
+            tp = df[df.pred & df.gold].groupby(level=levels).head(1)  # correct
+            df = pd.concat([fn, fp, tp])
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
