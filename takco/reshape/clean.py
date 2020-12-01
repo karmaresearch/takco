@@ -22,16 +22,13 @@ def init_captions(table):
 
 def remove_empty_columns(table):
     col_empty = {}
-    for i in range(table["numCols"]):
-        emptycolheads = not any(
-            (row[i].get("text", "") if i < len(row) else "")
-            for row in table["tableHeaders"]
-        )
-        emptycolcells = not any(
-            (row[i].get("text", "") if i < len(row) else "")
-            for row in table["tableData"]
-        )
+    headcols = zip(*table["tableHeaders"])
+    bodycols = zip(*table["tableData"])
+    for i, (headcol, bodycol) in enumerate(zip(headcols, bodycols)):
+        emptycolheads = not any(c.get("text") for c in headcol)
+        emptycolcells = not any(c.get("text") for c in bodycol)
         col_empty[i] = emptycolheads and emptycolcells
+    
     if any(col_empty.values()):
         table["tableHeaders"] = [
             [cell for c, cell in enumerate(row) if not col_empty.get(c, False)]
@@ -41,7 +38,7 @@ def remove_empty_columns(table):
             [cell for c, cell in enumerate(row) if not col_empty.get(c, False)]
             for row in table["tableData"]
         ]
-        table["numCols"] = sum(1 for i, e in col_empty.items() if not e)
+        table["numCols"] = len(table["tableData"][0])
 
 
 def deduplicate_header_rows(table):

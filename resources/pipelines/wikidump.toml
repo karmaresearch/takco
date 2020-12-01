@@ -69,7 +69,7 @@ discard_headerless_tables = true
     ]
 
     [[step.unpivot_heuristics]]
-    class = 'reshape.AttributePrefix'
+    class = 'reshape.AttributeContext'
     attname = 'pgTitle'
 
     [[step.unpivot_heuristics]]

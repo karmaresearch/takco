@@ -317,8 +317,9 @@ def split_compound_columns(tables, splitter):
 
             yield Table(table)
 
+from ..table import Table
 
-def restructure(tables: Iterator[Dict], prefix_header_rules=()) -> Iterator[Dict]:
+def restructure(tables: Iterator[Dict], prefix_header_rules=(), max_cols=100) -> Iterator[Dict]:
     """Restructure tables.
 
     Performs all sorts of heuristic cleaning operations, including:
@@ -334,6 +335,12 @@ def restructure(tables: Iterator[Dict], prefix_header_rules=()) -> Iterator[Dict
     """
     for table in tables:
         try:
+            if isinstance(table, Table):
+                table = table.to_dict()
+
+            if table.get('numCols', 0) >= max_cols:
+                continue
+            
             init_captions(table)
 
             # Analyze headers & data together
@@ -354,6 +361,6 @@ def restructure(tables: Iterator[Dict], prefix_header_rules=()) -> Iterator[Dict
             apply_prefix_header_rules(table, prefix_header_rules)
 
             if table["tableData"]:
-                yield table
+                yield Table(table)
         except Exception as e:
             log.debug(e)

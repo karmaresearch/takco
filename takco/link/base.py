@@ -2,6 +2,7 @@ from typing import (
     Union,
     List,
     Dict,
+    Set,
     Tuple,
     Optional,
     Collection,
@@ -10,6 +11,7 @@ from typing import (
     Iterator,
 )
 import enum
+from abc import ABC, abstractmethod
 
 URI = str
 Literal = str
@@ -82,28 +84,31 @@ class SearchResult(dict):
         return f"SearchResult('{self.uri}', {dict(self)}, {self.context_matches}, score={self.score})"
 
 
-class Typer(Asset):
+class Typer(Asset, ABC):
+    @abstractmethod
     def coltype(
         self, cell_ents: Iterator[Tuple[str, Collection[URI]]],
     ) -> Dict[str, int]:
         """Find column type for cells and their entities"""
-        return {}
+        pass
 
     @classmethod
-    def literal_match(literal: Literal, surface: str) -> Iterator[LiteralMatchResult]:
+    def literal_match(cls, literal: Literal, surface: str) -> Iterator[LiteralMatchResult]:
         """Match a cell value to a KB literal"""
         score = float(bool(str(literal) == surface))
         if score:
             yield LiteralMatchResult(score, literal, None)
 
+    @abstractmethod
     def is_literal_type(self) -> bool:
         """Return whether this is a literal type"""
-        return None
+        pass
 
 
-class Searcher(Asset):
+class Searcher(Asset, ABC):
     """For searching and matching for Knowledge Base entities."""
 
+    @abstractmethod
     def search_entities(
         self,
         query_contexts: Collection[Tuple[str, Collection[str]]],
@@ -120,27 +125,28 @@ class Searcher(Asset):
         Returns:
             Search results per query
         """
-        return
+        pass
 
 
-class Lookup(Asset):
-    def lookup_title(self, title: str) -> str:
+class Lookup(Asset, ABC):
+    @abstractmethod
+    def lookup_title(self, title: str, **kwargs) -> str:
         """Lookup (Wikipedia) page title in KB, return URI
 
         Args:
             title: The title to look up
         """
-        return
+        pass
 
     def lookup_cells(self, hrefs, **kwargs):
-        href_rowcols = {}
+        href_rowcols: Dict[str, Set[Tuple[int,int]]] = {}
         for ri, row in enumerate(hrefs):
             for ci, hs in enumerate(row):
                 for href in hs:
                     if href:
                         href_rowcols.setdefault(href, set()).add((ri, ci))
 
-        ci_ri_ents = {}
+        ci_ri_ents: Dict[str, Dict[str, Dict[str, float]]] = {}
         for href, rowcols in href_rowcols.items():
             uri = self.lookup_title(href, **kwargs)
             if uri:
@@ -149,25 +155,21 @@ class Lookup(Asset):
         return ci_ri_ents
 
 
-class Database(Asset):
+class Database(Asset, ABC):
     """For querying a Knowledge Base."""
 
     def get_prop_values(self, e: URI, prop: URI):
         return self.about(e).get(prop, [])
 
+    @abstractmethod
     def about(self, e: URI, att_uris=None) -> Dict[URI, List[Node]]:
         """Look up facts about an entity
 
         Args:
             e: Entity URI to query
         """
-        about = {}
-        for (_, p, o) in self.triples((e, None, None)):
-            about.setdefault(p, []).append(o)
-        return about
+        pass
 
-    def triples(self, pattern):
-        return []
 
 
 class Linker(Asset):

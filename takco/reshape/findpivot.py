@@ -8,6 +8,7 @@ from typing import (
     Optional,
     Set,
     Collection,
+    Pattern,
 )
 from collections import defaultdict, Counter
 import re
@@ -52,7 +53,7 @@ def get_colspan_fromto(rows: List[List[str]]) -> List[List[Tuple[int, int]]]:
     """Gets colspan (from,to) index of every cell"""
     fromto = []
     for row in rows:
-        fr, to = [], []
+        fr, to = [], [] # type: ignore
         _cell = None
         for ci, cell in enumerate(row):
             if fr and cell == _cell:
@@ -96,7 +97,6 @@ class Pivot(NamedTuple):
     colfrom: int  #: Leftmost column index
     colto: int  #: Rightmost column index
 
-
 class PivotFinder(ABC):
     name: str = 'PivotFinder'
 
@@ -120,7 +120,7 @@ class PivotFinder(ABC):
         self, headerrows: List[List[Dict]]
     ) -> Iterator[Tuple[int, int]]:
         """Yield positions of pivoted cells"""
-        return
+        pass
 
     def find_longest_pivots(self, headerrows: List[List[Dict]]) -> Iterator[Pivot]:
         """Yield longest pivots"""
@@ -138,7 +138,7 @@ class PivotFinder(ABC):
         """Split the header containing the pivot"""
         return
 
-
+@dataclass
 class RegexFinder(PivotFinder):
     """Find pivots based on a regex
     
@@ -146,24 +146,25 @@ class RegexFinder(PivotFinder):
         find_regex: Unpivot cell if this regex matches
         split_regex: Regex that returns groupdict with ``cell`` and ``head``
     """
+    find_regex: Optional[Pattern] = None
+    split_regex: Optional[Pattern] = None
 
-    def __init__(self, find_regex=None, split_regex=None):
-        super().__init__()
-        if find_regex:
-            self.find_regex = re.compile(find_regex)
-        if split_regex:
-            self.split_regex = re.compile(split_regex)
+    def __post_init__(self):
+        if self.find_regex:
+            self.find_regex = re.compile(str(self.find_regex))
+        if self.split_regex:
+            self.split_regex = re.compile(str(self.split_regex))
 
     def find_pivot_cells(self, headerrows):
         for ri, hrow in enumerate(headerrows):
             for ci, c in enumerate(hrow):
                 cell = c.get("text", "")
-                if cell and self.find_regex.match(cell.strip()):
+                if cell and self.find_regex and self.find_regex.match(cell.strip()):
                     yield ri, ci
 
     def split_header(self, headrow, colfrom, colto):
         for ci, cell in enumerate(headrow):
-            if ci in range(colfrom, colto + 1):
+            if self.split_regex and (ci in range(colfrom, colto + 1)):
                 m = self.split_regex.match(cell.strip())
                 if m:
                     cell = m.groupdict().get("cell", cell)
@@ -174,21 +175,21 @@ class RegexFinder(PivotFinder):
             else:
                 yield cell, cell
 
-
+@dataclass
 class NumSuffix(RegexFinder):
     """Find cells with a numeric suffix"""
 
     find_regex = re.compile(r".*\d[\W\s]*$")
-    split_regex = re.compile("(?P<head>.*?)[\W\s]*(?P<cell>[\d\W]+?)[\W\s]*$")
+    split_regex = re.compile(r"(?P<head>.*?)[\W\s]*(?P<cell>[\d\W]+?)[\W\s]*$")
 
-
+@dataclass
 class NumPrefix(RegexFinder):
     """Find cells with a numeric prefix"""
 
-    find_regex = re.compile("[\W\s]*\d")
-    split_regex = re.compile("(?P<cell>[\d\W]+?)[\W\s]*(?P<head>.*?)[\W\s]*$")
+    find_regex = re.compile(r"[\W\s]*\d")
+    split_regex = re.compile(r"(?P<cell>[\d\W]+?)[\W\s]*(?P<head>.*?)[\W\s]*$")
 
-
+@dataclass
 class SeqPrefix(PivotFinder):
     """Find cells with a shared prefix"""
 
@@ -222,7 +223,7 @@ class SeqPrefix(PivotFinder):
                 if cell.startswith(p):
                     yield cell[len(p) :].strip(), p
 
-
+@dataclass
 class SpannedRepeat(PivotFinder):
     """Find cells that span repeating cells"""
 
@@ -248,7 +249,9 @@ class SpannedRepeat(PivotFinder):
                                     # There's a repeating cell in another row
                                     yield ri, ci
 
+from .. import link
 
+@dataclass
 class AgentLikeHyperlink(PivotFinder):
     """Find cells with links to entities that seem agent-like
     
@@ -259,54 +262,55 @@ class AgentLikeHyperlink(PivotFinder):
     - Don't have bad properties (e.g. has associated property)
     
     Args:
-        lookup_config: :mod:`takco.util.Config` for :mod:`takco.link.base.Lookup`
-        kb_config: :mod:`takco.util.Config` for :mod:`takco.link.rdf.GraphDB`
+        lookup_config: Entity lookup object
+        kb_config: Knowledge base
         bad_types: URIs for bad types
         bad_props: URIs for bad props
     """
+    lookup: Optional[link.Lookup] = None
+    kb: Optional[link.GraphDB] = None
+    bad_types: List[str] = field(default_factory=list)
+    bad_props: List[str] = field(default_factory=list)
+    type_props: List[str] = field(default_factory=list)
 
-    def __init__(
-        self, lookup=None, kb=None, bad_types=(), bad_props=(), type_props=(),
-    ):
-        super().__init__()
-        from .. import link
-
-        self.lookup = lookup
-        self.kb = kb
-        self.bad_types = [link.URIRef(b) for b in bad_types]
-        self.bad_props = [link.URIRef(b) for b in bad_props]
+    def __post_init__(self):
+        assert self.lookup is not None and self.kb is not None
+        self.bad_types = [link.URIRef(b) for b in self.bad_types]
+        self.bad_props = [link.URIRef(b) for b in self.bad_props]
         if hasattr(self.kb, "typeProperties"):
             self.typeProperties = self.kb.typeProperties
         else:
-            self.typeProperties = type_props
+            self.typeProperties = self.type_props
 
     def __enter__(self):
+        assert self.lookup is not None and self.kb is not None
         self.lookup.__enter__()
         self.kb.__enter__()
         return self
 
     def __exit__(self, *args):
+        assert self.lookup is not None and self.kb is not None
         self.lookup.__exit__(*args)
         self.kb.__exit__(*args)
 
     def find_pivot_cells(self, headerrows):
-        from .. import link
-
+        
+        assert self.lookup is not None and self.kb is not None
         kb = self.kb
-        tps = self.typeProperties
+        type_props = self.typeProperties
         ents = self.lookup.lookup_cells(link.get_hrefs(headerrows))
 
         for ri, hrow in enumerate(headerrows):
-            for ci, hcell in enumerate(hrow):
+            for ci, _ in enumerate(hrow):
                 for e in ents.get(str(ci), {}).get(str(ri), {}):
                     e = link.URIRef(e)
 
-                    if any(kb.count([None, tp, e]) for tp in tps):
+                    if any(kb.count([None, tp, e]) for tp in type_props):
                         continue  # is type
 
                     if any(
-                        ((e, tp, t) in set(kb.triples([e, tp, None])))
-                        for tp in tps
+                        t in set(kb.get_prop_values(e, tp))
+                        for tp in type_props
                         for t in self.bad_types
                     ):
                         continue  # has bad type
@@ -318,8 +322,8 @@ class AgentLikeHyperlink(PivotFinder):
 
 
 @dataclass
-class AttributePrefix(PivotFinder):
-    name: str = 'AttributePrefix'
+class AttributeContext(PivotFinder):
+    name: str = 'AttributeContext'
     attname: Optional[str] = None
     values: Set[str] = field(default_factory=set)
 
@@ -330,7 +334,7 @@ class AttributePrefix(PivotFinder):
                 for hrow in t.get("tableHeaders"):
                     for hcell in hrow:
                         celltext = hcell.get("text", "").lower()
-                        if celltext and len(celltext) > 1 and att.startswith(celltext):
+                        if celltext and len(celltext) > 1 and att == celltext:
                             self.values.add(celltext)
         return self
 

@@ -151,13 +151,13 @@ class TableSet:
             log.info(f"Unpivoting with heuristics: {', '.join(u.name for u in unpivot_heuristics)}")
 
             tables = tables.persist()
+            log.debug(f"Got {len(tables)} tables")
 
             log.debug(f"Building heuristics...")
-            unpivot_heuristics = list(
-                tables.pipe(reshape.build_heuristics, unpivot_heuristics).fold_tree(
-                    lambda x: x.name, lambda a, b: a.merge(b)
-                )
-            )
+            unpivoters = {h.name: h for h in unpivot_heuristics}
+            for up in tables.pipe(reshape.build_heuristics, unpivot_heuristics):
+                unpivoters[up.name].merge(up)
+            unpivot_heuristics = list(unpivoters.values())
 
             headerId_pivot = None
             if centralize_pivots:

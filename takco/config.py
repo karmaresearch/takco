@@ -14,7 +14,7 @@ def build(
     conf: Union[str, Dict],
     assets: Optional[Dict[str, Any]] = None,
     base: Optional[str] = None,
-    load: Optional[str] = None,
+    load: Optional[Union[str, List[str]]] = None,
     **kwargs,
 ):
     """Instantiate classes from config specification
@@ -29,7 +29,11 @@ def build(
     assets = assets or {}
 
     if load:
-        assets.update(parse(load))
+        if isinstance(load, list):
+            for l in load:
+                assets.update(parse(l))
+        else:
+            assets.update(parse(load))
 
     if base is None:
         base = __name__.split(".")[0]

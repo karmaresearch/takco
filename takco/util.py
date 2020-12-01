@@ -50,6 +50,10 @@ class HashBag:
             except GeneratorExit:
                 return
 
+    def __len__(self):
+        self.persist()
+        return len(self.it)
+
     def pipe(self, func, *args, **kwargs):
         it = self.wrap(self.it) if isinstance(self, HashBag) else self
         it = (copy.deepcopy(x) for x in it)
@@ -245,6 +249,10 @@ try:
 
         def __iter__(self):
             return iter(self.bag.compute())
+
+        def __len__(self):
+            self.persist()
+            return self.bag.count().compute()
 
         def pipe(self, func, *args, **kwargs):
             newargs = list(args)

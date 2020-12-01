@@ -38,74 +38,10 @@ from rdflib.store import Store
 XSD_date = XSD.date
 RDF_type = RDF.type
 
-
-class SparqlStore(Store):
-    DEFAULT_PAGEQUERY = "?page schema:about ?s ."
-
-    def __init__(
-        self,
-        endpoint: str = "https://query.wikidata.org/sparql",
-        pagequery=None,
-        configuration=None,
-    ):
-        self.endpoint = endpoint
-        self.pagequery = self.DEFAULT_PAGEQUERY
-
-    def _triple_query(self, query, triplepattern):
-        s, p, o = triplepattern
-        kv = {"s": s, "p": p, "o": o}
-        bind = "".join(f"BIND ({ URIRef(v).n3() } as ?{k})" for k, v in kv.items() if v)
-        q = query % bind
-        results = get_json(self.endpoint, params={"format": "json", "query": q})
-        return (results or {}).get("results", {}).get("bindings", [])
-
-    def count(self, triplepattern) -> int:
-        q = "select (count(*) as ?c) where { ?s ?p ?o . %s }"
-        for binding in self._triple_query(q, triplepattern):
-            return int(binding.get("c", {}).get("value", 0))
-
-    def __len__(self):
-        return self.count([None, None, None])
-
-    def pages_about(
-        self,
-        triplepattern=(None, None, None),
-        pageprefix="https://en.wikipedia.org/wiki/",
-    ):
-        s, p, o = triplepattern
-        q = f"""
-            select ?s ?page where {{
-                { "?s ?p ?o ." if (p or o) else "" }
-                {self.pagequery}
-                FILTER(regex(str(?page), "{pageprefix}" ) )
-                %s
-            }}
-        """
-        s_pages = {}
-        for binding in self._triple_query(q, triplepattern):
-            s = binding.get("s", {}).get("value")
-            page = binding.get("page", {}).get("value")
-            if page:
-                s_pages.setdefault(s, set()).add(page)
-        return s_pages
-
-    def _make_node(self, d):
-        if d:
-            if d.get("type") == "uri":
-                return URIRef(d["value"])
-            if d.get("type") == "literal":
-                datatype = d.get("datatype")
-                lang = d.get("xml:lang")
-                return Literal(d["value"], lang=lang, datatype=datatype)
-
-    def triples(self, triplepattern, context=None):
-        q = "select ?s ?p ?o where { ?s ?p ?o . %s }"
-        for binding in self._triple_query(q, triplepattern):
-            yield tuple(self._make_node(binding[n]) for n in "spo"), None
-
-    def _collect_triples(self, triplepattern):
-        return [t for t in self._triples(triplepattern)]
-
+try:
+    from rdflib.plugins.stores.sparqlstore import SPARQLStore
+except Exception as e:
+    log.warn(e)
 
 class MediaWikiAPI(Searcher, Lookup):
     """A `MediaWiki API <https://www.mediawiki.org/wiki/API:Main_page>`_ endpoint.
