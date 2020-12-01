@@ -13,7 +13,7 @@ import logging as log
 import sqlite3
 import time
 
-from .base import Searcher, SearchResult, Lookup, Database
+from ..base import Searcher, SearchResult, Lookup, Database
 
 
 class SQLiteCache:

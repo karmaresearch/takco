@@ -442,11 +442,12 @@ def tableobj_to_html(table, nrows=None, uniq=None, number=False):
     return "<table>" + head_html + body_html + "</table>"
 
 
-def reform_dict(dictionary, t=tuple(), reform={}):
+def reform_dict(dictionary, t=tuple(), reform=None):
+    reform = reform or {}
     for key, val in dictionary.items():
         t = t + (key,)
         if isinstance(val, dict) and all(isinstance(v, dict) for v in val.values()):
-            reform_dict(val, t, reform)
+            reform.update(reform_dict(val, t, reform))
         else:
             reform.update({t: val})
         t = t[:-1]

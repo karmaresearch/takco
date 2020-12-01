@@ -98,8 +98,13 @@ class Pivot(NamedTuple):
 
 
 class PivotFinder(ABC):
+    name: str = 'PivotFinder'
+
+    def __init__(self):
+        self.name = self.__class__.__name__
+
     def build(self, tables):
-        return
+        return self
 
     def merge(self, heuristic):
         return self
@@ -143,6 +148,7 @@ class RegexFinder(PivotFinder):
     """
 
     def __init__(self, find_regex=None, split_regex=None):
+        super().__init__()
         if find_regex:
             self.find_regex = re.compile(find_regex)
         if split_regex:
@@ -262,6 +268,7 @@ class AgentLikeHyperlink(PivotFinder):
     def __init__(
         self, lookup=None, kb=None, bad_types=(), bad_props=(), type_props=(),
     ):
+        super().__init__()
         from .. import link
 
         self.lookup = lookup
@@ -312,6 +319,7 @@ class AgentLikeHyperlink(PivotFinder):
 
 @dataclass
 class AttributePrefix(PivotFinder):
+    name: str = 'AttributePrefix'
     attname: Optional[str] = None
     values: Set[str] = field(default_factory=set)
 
@@ -339,6 +347,7 @@ class AttributePrefix(PivotFinder):
 
 @dataclass
 class Rule(PivotFinder):
+    name: str = 'Rule'
     id_vars: List[str] = field(default_factory=list)
     value_vars: List[str] = field(default_factory=list)
     value_name: Optional[str] = None

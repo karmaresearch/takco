@@ -127,7 +127,7 @@ class TableSet:
         unpivot_heuristics: typing.List[reshape.PivotFinder] = [],
         centralize_pivots: bool = False,
         compound_splitter: reshape.CompoundSplitter = None,
-        discard_headerless_tables: bool = False,
+        discard_headerless_tables: bool = True,
     ):
         """Reshape tables
 
@@ -147,30 +147,33 @@ class TableSet:
             tables = tables.pipe(reshape.restructure, prefix_header_rules)
 
         if unpivot_heuristics is not None:
-            unpivoters = {
-                getattr(h, "name", h.__class__.__name__): h for h in unpivot_heuristics
-            }
-            log.info(f"Unpivoting with heuristics: {', '.join(unpivoters)}")
+            
+            log.info(f"Unpivoting with heuristics: {', '.join(u.name for u in unpivot_heuristics)}")
 
             tables = tables.persist()
 
             log.debug(f"Building heuristics...")
-            for name, h in tables.pipe(reshape.build_heuristics, heuristics=unpivoters):
-                unpivoters[name].merge(h)
+            unpivot_heuristics = list(
+                tables.pipe(reshape.build_heuristics, unpivot_heuristics).fold_tree(
+                    lambda x: x.name, lambda a, b: a.merge(b)
+                )
+            )
 
             headerId_pivot = None
             if centralize_pivots:
                 log.debug(f"Finding unpivots centrally...")
                 headers = tables.fold(reshape.table_get_headerId, reshape.get_header)
 
-                pivots = headers.pipe(reshape.yield_pivots, heuristics=unpivoters)
+                pivots = headers.pipe(reshape.yield_pivots, heuristics=unpivot_heuristics)
 
                 headerId_pivot = {p["headerId"]: p for p in pivots}
                 log.info(f"Found {len(headerId_pivot)} pivots")
 
             log.debug(f"Unpivoting...")
             tables = tables.pipe(
-                reshape.unpivot_tables, headerId_pivot, heuristics=unpivoters,
+                reshape.unpivot_tables, 
+                headerId_pivot=headerId_pivot, 
+                heuristics=unpivot_heuristics,
             )
 
         if compound_splitter is not None:
@@ -183,7 +186,8 @@ class TableSet:
                     headers = t.get("tableHeaders", [])
                     if any(h.get("text") for hrow in headers for h in hrow):
                         yield t
-
+            
+            log.debug(f"Discarding headerless tables...")
             tables = tables.pipe(filter_headerless)
 
         return TableSet(tables)

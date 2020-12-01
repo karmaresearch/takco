@@ -16,8 +16,10 @@ from .clean import (
     apply_prefix_header_rules,
 )
 
+from ..table import Table
 
-from typing import Dict, List, Iterator, Any, Tuple
+
+from typing import Dict, List, Iterator, Any, Tuple, Optional
 
 from collections import Counter
 import json
@@ -96,14 +98,14 @@ def unpivot(
     return [list(row) for row in head], [list(row) for row in body]
 
 
-def yield_pivots(headerobjs: Iterator[Dict], heuristics: Dict[str, PivotFinder]):
+def yield_pivots(headerobjs: Iterator[List[List[Dict]]], heuristics: List[PivotFinder]):
     """Detect headers that should be unpivoted using heuristics."""
     import copy
 
-    heuristics = {hname: copy.deepcopy(h) for hname, h in heuristics.items()}
+    heuristics = [copy.deepcopy(h) for h in heuristics]
 
     with contextlib.ExitStack() as hstack:
-        heuristics = {hname: hstack.enter_context(h) for hname, h in heuristics.items()}
+        heuristics = [hstack.enter_context(h) for h in heuristics]
 
         for headerobj in headerobjs:
 
@@ -112,9 +114,9 @@ def yield_pivots(headerobjs: Iterator[Dict], heuristics: Dict[str, PivotFinder])
             if headertext:
 
                 pivot_size = Counter()
-                for hname, h in heuristics.items():
+                for h in heuristics:
                     for level, colfrom, colto in h.find_longest_pivots(headerobj):
-                        pivot_size[(level, colfrom, colto, hname)] = colto - colfrom
+                        pivot_size[(level, colfrom, colto, h.name)] = colto - colfrom
 
                 # Get longest pivot
                 for (level, colfrom, colto, hname), _ in pivot_size.most_common(1):
@@ -142,7 +144,7 @@ def yield_pivots(headerobjs: Iterator[Dict], heuristics: Dict[str, PivotFinder])
                         log.debug(f"Failed to unpivot header {headertext} due to {e}")
 
 
-def try_unpivot(table, pivot, heuristics):
+def try_unpivot(table, pivot, heuristics: List[PivotFinder]):
     headerText = [[c.get("text", "") for c in hrow] for hrow in table["tableHeaders"]]
     log.debug(f"Unpivoting {table.get('_id')}")
     try:
@@ -158,7 +160,8 @@ def try_unpivot(table, pivot, heuristics):
             return
 
         # Allow heuristics to split the colheader
-        heuristic = heuristics.get(pivot["heuristic"])
+        name_heuristic = {h.name: h for h in heuristics}
+        heuristic = name_heuristic.get(pivot["heuristic"])
         if heuristic:
             splits = heuristic.split_header(headerText[level], colfrom, colto)
             splitheaders = []
@@ -236,16 +239,16 @@ def try_unpivot(table, pivot, heuristics):
 
 
 def build_heuristics(
-    tables: Iterator[Dict], heuristics: Dict[str, PivotFinder],
+    tables: Iterator[Dict], heuristics: List[PivotFinder],
 ):
-    for hname, heuristic in heuristics.items():
-        yield hname, heuristic.build(tables)
+    for heuristic in heuristics:
+        yield heuristic.build(tables)
 
 
 def unpivot_tables(
     tables: Iterator[Dict],
-    headerId_pivot: Dict[str, Dict],
-    heuristics: Dict[str, PivotFinder],
+    headerId_pivot: Optional[Dict[str, Dict]],
+    heuristics: List[PivotFinder],
 ):
     """Unpivot tables."""
     tables = list(tables)
@@ -257,7 +260,6 @@ def unpivot_tables(
             headerId_pivot[p["headerId"]] = p
 
     for table in tables:
-
         headerText = [
             [c.get("text", "") for c in hrow] for hrow in table["tableHeaders"]
         ]
@@ -273,7 +275,7 @@ def unpivot_tables(
             yield table
 
 
-from ..table import Table
+
 
 
 def split_compound_columns(tables, splitter):
