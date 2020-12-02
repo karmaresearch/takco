@@ -562,76 +562,21 @@ class TableSet:
         curve: bool = False,
         any_annotated: bool = False,
         only_annotated: bool = False,
-    ) -> HashBag:
+    ):
         """Generate report
 
         Args:
             keycol_only: Only analyse keycol predictions
             curve: Calculate precision-recall tradeoff curve
         """
-        tables = TableSet(self).tables
+        tables = list(TableSet(self).tables)
 
-        data = {}
-
-        all_gold = {}
-        all_pred = {}
-        kb_kind_novelty_hashes = {}
-        for table in tables:
-            key = [table.get("_id")]
-            for task, flatten in evaluate.task_flatten.items():
-                gold = table.get("gold", {}).get(task, {})
-                if gold:
-
-                    pred = table.get(task, {})
-                    if keycol_only and pred.get(str(table.get("keycol"))):
-                        keycol = str(table.get("keycol"))
-                        pred = {keycol: pred.get(keycol)}
-
-                    golds = dict(flatten(gold, key=key))
-                    preds = dict(flatten(pred, key=key))
-                    all_gold.setdefault(task, {}).update(golds)
-                    all_pred.setdefault(task, {}).update(preds)
-
-            if "novelty" in table:
-                for kbname, novelty in table["novelty"].items():
-                    kind_novelty_hashes = kb_kind_novelty_hashes.setdefault(kbname, {})
-                    # aggregate all hashes
-                    for kind, novelty_hashes in novelty.get("hashes", {}).items():
-                        nhs = kind_novelty_hashes.setdefault(kind, {})
-                        for novelty, hashes in novelty_hashes.items():
-                            hs = nhs.setdefault(novelty, set())
-                            hs |= set(hashes)
-
-        scores = {}
-        curves = {}
-        for task in evaluate.task_flatten:
-            gold, pred = all_gold.get(task, {}), all_pred.get(task, {})
-            if pred:
-                log.info(
-                    f"Collected {len(gold)} gold and {len(pred)} pred for task {task}"
-                )
-
-                task_scores = evaluate.score.classification(
-                    gold,
-                    pred,
-                    any_annotated=any_annotated,
-                    only_annotated=only_annotated,
-                )
-                task_scores["predictions"] = len(pred)
-                scores[task] = task_scores
-                if curve:
-                    curves[task] = evaluate.score.pr_curve(gold, pred)
-        if scores:
-            data["scores"] = scores
-        if curves:
-            data["curves"] = curves
-
-        if kb_kind_novelty_hashes:
-            data["novelty"] = {}
-            for kb, kind_novelty_hashes in kb_kind_novelty_hashes.items():
-                data["novelty"][kb] = evaluate.novelty.count_noveltyhashes(
-                    kind_novelty_hashes
-                )
+        data = evaluate.report(tables,
+            keycol_only = keycol_only,
+            curve = curve,
+            any_annotated = any_annotated,
+            only_annotated = only_annotated,
+        )
 
         return TableSet([data])
 
@@ -719,7 +664,9 @@ class TableSet:
                 tableset.tables.persist()
                 for split, splitargs in enumerate(stepargs["split"]):
                     splitargs = dict(splitargs)
-                    splitname = splitargs.pop("name", f"{si}-split-{split}")
+                    if 'name' in splitargs:
+                        split = splitargs.pop('name')
+                    splitname = f"{si}-split-{split}"
                     splitpath = os.path.join(steppath, splitname)
                     yield from chain_step(tableset, splitpath, si, splitargs)
             else:

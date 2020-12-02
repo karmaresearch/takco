@@ -73,6 +73,77 @@ def table_triples(tables, include_type=True):
 
         yield table
 
+def report(
+    tables,
+    keycol_only: bool = False,
+    curve: bool = False,
+    any_annotated: bool = False,
+    only_annotated: bool = False,
+):
+    data = {}
+
+    all_gold = {}
+    all_pred = {}
+    kb_kind_novelty_hashes = {}
+    for table in tables:
+        key = [table.get("_id")]
+        for task, flatten in task_flatten.items():
+            gold = table.get("gold", {}).get(task, {})
+            if gold:
+
+                pred = table.get(task, {})
+                if keycol_only and pred.get(str(table.get("keycol"))):
+                    keycol = str(table.get("keycol"))
+                    pred = {keycol: pred.get(keycol)}
+
+                golds = dict(flatten(gold, key=key))
+                preds = dict(flatten(pred, key=key))
+                all_gold.setdefault(task, {}).update(golds)
+                all_pred.setdefault(task, {}).update(preds)
+
+        if "novelty" in table:
+            for kbname, kind_novelty in table["novelty"].items():
+                kind_novelty_hashes = kb_kind_novelty_hashes.setdefault(kbname, {})
+                # aggregate all hashes
+                for kind, novelty_hashes in kind_novelty.get("hashes", {}).items():
+                    nhs = kind_novelty_hashes.setdefault(kind, {})
+                    for nov, hashes in novelty_hashes.items():
+                        hs = nhs.setdefault(nov, set())
+                        hs |= set(hashes)
+
+    scores = {}
+    curves = {}
+    for task in task_flatten:
+        gold, pred = all_gold.get(task, {}), all_pred.get(task, {})
+        if pred:
+            log.info(
+                f"Collected {len(gold)} gold and {len(pred)} pred for task {task}"
+            )
+
+            task_scores = score.classification(
+                gold,
+                pred,
+                any_annotated=any_annotated,
+                only_annotated=only_annotated,
+            )
+            task_scores["predictions"] = len(pred)
+            scores[task] = task_scores
+            if curve:
+                curves[task] = score.pr_curve(gold, pred)
+    if scores:
+        data["scores"] = scores
+    if curves:
+        data["curves"] = curves
+
+    if kb_kind_novelty_hashes:
+        noveltyscores = []
+        for kb, kind_novelty_hashes in kb_kind_novelty_hashes.items():
+            for counts in novelty.count_noveltyhashes(kind_novelty_hashes):
+                noveltyscores.append({'kb': kb, **counts})
+        data["novelty"] = noveltyscores
+    
+    return data
+
 
 def pr_plot(show_curves, title=None, ylim=[0, 1.0]):
     import matplotlib.pyplot as plt

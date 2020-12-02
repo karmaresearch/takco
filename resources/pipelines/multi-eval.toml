@@ -48,6 +48,39 @@ resolve = 'linker-dbpedia-sub'
 searcher = {resolve = 'wikidata_es'}
 
 
+[[eval-extract]]
+step = 'dataset'
+dataset = {resolve = 't2d-v2'}
+take = {resolve = 'n'}
+
+[[eval-extract]]
+    [[eval-extract.split]]
+    name = 'link-dbpedia-subset'
+    step = 'link'
+    usecols = 'keycol'
+    linker = {resolve = 'linker-dbpedia-sub'}
+
+    [[eval-extract.split]]
+    name = 'link-dbpedia-2020'
+    step = 'link'
+    usecols = 'keycol'
+    linker = {resolve = 'linker-dbpedia-2020'}
+
+[[eval-extract]]
+step = 'triples'
+
+[[eval-extract]]
+step = 'novelty'
+searcher = {resolve = 'dbpedia_t2ksubset'}
+
+[[eval-extract]]
+step = 'report'
+keycol_only = true
+curve = true
+any_annotated = true
+only_annotated = true
+
+
 [[eval-dbp]]
     [[eval-dbp.split]]
     name = 't2d'
@@ -61,11 +94,11 @@ searcher = {resolve = 'wikidata_es'}
     dataset = {resolve = 'limaye-dbpedia'}
     take = {resolve = 'n'}
 
-    # [[eval-dbp.split]]
-    # name = 'toughtables'
-    # step = 'dataset'
-    # dataset = {resolve = 'toughtables-dbpedia'}
-    # take = {resolve = 'n'}
+    [[eval-dbp.split]]
+    name = 'toughtables'
+    step = 'dataset'
+    dataset = {resolve = 'toughtables-dbpedia'}
+    take = {resolve = 'n'}
 
 [[eval-dbp]]
     [[eval-dbp.split]]
@@ -79,13 +112,6 @@ searcher = {resolve = 'wikidata_es'}
     step = 'link'
     usecols = 'keycol'
     linker = {resolve = 'linker-dbpedia-2020'}
-
-[[eval-dbp]]
-step = 'triples'
-
-[[eval-dbp]]
-step = 'novelty'
-searcher = {resolve = 'dbpedia_t2ksubset'}
 
 [[eval-dbp]]
 step = 'report'

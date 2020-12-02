@@ -10,9 +10,9 @@ def get_cell_noveltyhashes(triples, kb):
     log.warn(kb)
 
 
-    kind_novelty_hashes = defaultdict(lambda: defaultdict(set))
+    task_novelty_hashes = defaultdict(lambda: defaultdict(set))
     for t in triples:
-        novelty_hashes = kind_novelty_hashes[t.get("kind")]
+        novelty_hashes = task_novelty_hashes[t.get("kind")]
 
         s, p, v = t.get("s"), t.get("p"), t.get("o")
 
@@ -55,19 +55,19 @@ def get_cell_noveltyhashes(triples, kb):
             else:
                 novelty_hashes["existing"].add(triplehash)
 
-    for k, nhs in kind_novelty_hashes.items():
-        kind_novelty_hashes[k] = {n: list(hs) for n, hs in nhs.items()}
+    for k, nhs in task_novelty_hashes.items():
+        task_novelty_hashes[k] = {n: list(hs) for n, hs in nhs.items()}
 
-    return kind_novelty_hashes
+    return task_novelty_hashes
 
 
-def count_noveltyhashes(kind_novelty_hashes):
+def count_noveltyhashes(task_novelty_hashes):
 
-    kind_counts = {}
+    task_novelty_counts = {}
 
     # Count intersections of correct with others
-    for kind, nhs in kind_novelty_hashes.items():
-        counts = kind_counts.setdefault(kind, {})
+    for task, nhs in task_novelty_hashes.items():
+        counts = task_novelty_counts.setdefault(task, {})
         for n, hs in nhs.items():
             hs = set(hs)
             if n not in ["gold", "pred"]:
@@ -92,4 +92,8 @@ def count_noveltyhashes(kind_novelty_hashes):
             except:
                 pass
 
-    return kind_counts
+    return [
+        {'task':task, 'novelty': novelty, **counts}
+        for task, nov_counts in task_novelty_counts.items()
+        for novelty, counts in nov_counts.items()
+    ]
