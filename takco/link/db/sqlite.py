@@ -12,6 +12,7 @@ import rdflib
 import logging as log
 import sqlite3
 import time
+import re
 
 from ..base import Searcher, SearchResult, Lookup, Database
 
@@ -113,11 +114,13 @@ class SQLiteLookup(SQLiteCache, Lookup):
         self,
         sqlitedb: typing.List[Path],
         baseuri="",
+        extract=None,
         cache_often=False,
         fallback: Lookup = None,
         sqlite_kwargs=None,
     ):
         self.baseuri = baseuri
+        self.extract = extract
         self.cache_often = cache_often
         SQLiteCache.__init__(
             self, files=sqlitedb, fallback=fallback, sqlite_kwargs=sqlite_kwargs
@@ -134,6 +137,12 @@ class SQLiteLookup(SQLiteCache, Lookup):
             self._write_cache()
 
     def lookup_title(self, title: str) -> str:
+        if self.extract:
+            m = re.match(self.extract, title)
+            if m and m.groups():
+                title = m.groups()[0]
+            else:
+                return
         t = title.replace("_", " ").lower()
         """Gets the URI for a DBpedia entity based on wikipedia title."""
         try:

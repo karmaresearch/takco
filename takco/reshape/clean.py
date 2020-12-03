@@ -25,9 +25,8 @@ def remove_empty_columns(table):
     headcols = zip(*table["tableHeaders"])
     bodycols = zip(*table["tableData"])
     for i, (headcol, bodycol) in enumerate(zip(headcols, bodycols)):
-        emptycolheads = not any(c.get("text") for c in headcol)
-        emptycolcells = not any(c.get("text") for c in bodycol)
-        col_empty[i] = emptycolheads and emptycolcells
+        emptycolcells = not any(c.get("text", "").strip() for c in bodycol)
+        col_empty[i] = emptycolcells
     
     if any(col_empty.values()):
         table["tableHeaders"] = [

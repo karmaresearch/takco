@@ -119,6 +119,7 @@ keycol_only = true
 curve = true
 any_annotated = true
 only_annotated = true
+category_split = 'category'
 
 
 [[eval-wd]]
@@ -139,3 +140,4 @@ keycol_only = true
 curve = false
 any_annotated = true
 only_annotated = true
+category_split = 'category'

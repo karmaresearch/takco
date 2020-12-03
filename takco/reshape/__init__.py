@@ -113,15 +113,9 @@ def yield_pivots(headerobjs: Iterator[List[List[Dict]]], heuristics: List[PivotF
 
             if headertext:
 
-                pivot_size = Counter()
-                for h in heuristics:
-                    for level, colfrom, colto in h.find_longest_pivots(headerobj):
-                        pivot_size[(level, colfrom, colto, h.name)] = colto - colfrom
-
-                # Get longest pivot
-                for (level, colfrom, colto, hname), _ in pivot_size.most_common(1):
-                    log.debug(f"Found pivot {(level, colfrom, colto)} using {hname}")
-
+                pivot = find_longest_pivot(headertext, heuristics)
+                if pivot is not None:
+                    level, colfrom, colto, hname = pivot
                     old_headerId = get_headerId(headertext)
 
                     try:

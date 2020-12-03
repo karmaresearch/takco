@@ -558,6 +558,7 @@ class TableSet:
 
     def report(
         self: TableSet,
+        category_split: str = None,
         keycol_only: bool = False,
         curve: bool = False,
         any_annotated: bool = False,
@@ -577,8 +578,26 @@ class TableSet:
             any_annotated = any_annotated,
             only_annotated = only_annotated,
         )
-
-        return TableSet([data])
+        data['category'] = 'all'
+        reports = [data]
+        
+        if category_split:
+            cat_tables = {}
+            for t in tables:
+                cat_tables.setdefault(t.get(category_split), []).append(t)
+            for cat, ctables in cat_tables.items():
+                if cat:
+                    log.info(f"Making report for {cat}...")
+                    data = evaluate.report(ctables,
+                        keycol_only = keycol_only,
+                        curve = curve,
+                        any_annotated = any_annotated,
+                        only_annotated = only_annotated,
+                    )
+                    data['category'] = cat
+                    reports.append(data)
+            
+        return TableSet(reports)
 
     @classmethod
     def run(
@@ -665,8 +684,9 @@ class TableSet:
                 for split, splitargs in enumerate(stepargs["split"]):
                     splitargs = dict(splitargs)
                     if 'name' in splitargs:
-                        split = splitargs.pop('name')
-                    splitname = f"{si}-split-{split}"
+                        splitname = splitargs.pop('name')
+                    else:
+                        splitname = f"{si}-split-{split}"
                     splitpath = os.path.join(steppath, splitname)
                     yield from chain_step(tableset, splitpath, si, splitargs)
             else:

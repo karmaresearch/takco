@@ -1,28 +1,96 @@
 import pandas as pd
-
+from takco.linkedstring import LinkedString
 
 @pd.api.extensions.register_dataframe_accessor("takco")
 class TakcoAccessor:
     def __init__(self, df):
         self._df = df
-
-    @property
-    def entities(self):
-        pass
+        self.provenance = {}
 
     @staticmethod
     def try_html(obj):
         return obj._repr_html_() if hasattr(obj, "_repr_html_") else obj
+    
+    @property
+    def header(self):
+        return tuple(map(tuple, self._df.columns.to_frame().values.T))
+    
+    @classmethod
+    def from_header(cls, head):
+        columns = pd.MultiIndex.from_frame(pd.DataFrame(head).T)
+        return pd.DataFrame([], columns = columns)
+    
+    @property
+    def style(self):
+        head = self._df.columns.to_frame().applymap(self.try_html)
+        head.insert(0, -1, range(len(self._df.columns)))
+        return pd.DataFrame(
+            self._df.applymap(self.try_html).values,
+            columns=pd.MultiIndex.from_arrays(head.values.T)
+        ).style.set_table_styles([
+            {'selector': f'.col_heading.level0','props':[('display','none')]}
+        ])
+    
+    def highlight_cells(self, body=(), head=(), color=None, props=()):
+        props = props or [('background-color', color or '#ff0')]
+        st = self.style
+        for ci, ri in body:
+            st.table_styles.append({'selector': f'.data.row{ri}.col{ci}','props': props})
+        for ci, li in head:
+            st.table_styles.append({'selector': f'.col_heading.level{li+1}.col{ci}','props': props})
+        return st
+    
+    def highlight_pivot(self, level, colfrom, colto, color=None, props=(), **kwargs):
+        head = [(c, level) for c in range(colfrom, colto+1)]
+        return self.highlight_cells(head=head, color=color, props=props)
 
     def to_html(self):
-        return self._repr_html_().to_html()
-
+        return self.style.render()
+        
     def _repr_html_(self):
-        return self._df.style.format(self.try_html)
+        return self.to_html()
 
-    def show(self):
-        return self._repr_html_()
+    
+TABEL_PROBLEMS = [
+    'Error: This is not a valid number. Please refer to the documentation at for correct input.',
+]
+def get_tabel_linkedstrings(matrix):
+    urltemplate = "http://{language}.wikipedia.org/wiki/{title}"
+    newmatrix = []
+    for row in matrix:
+        newrow = []
+        for cell in row:
+            text = cell.get("text", "")
+            for p in TABEL_PROBLEMS:
+                text = text.replace(p, '')
+            
+            links = []
+            for link in cell.get('surfaceLinks', []):
+                target = link.get('target')
+                if not target:
+                    continue
+                start = link.get('offset', 0)
+                end = link.get('endOffset', len(text))
+                if link.get('linkType') in ['INTERNAL', 'INTERNAL_RED']:
+                    url = urltemplate.format(**target)
+                    if target.get('id', 0) > 0:
+                        url += '?curid=' + str(target.get('id'))
+                    if start == 0 and end == 1:
+                        end = len(text)  # HACK
+                    links.append((start, end, url))
+            newrow.append( LinkedString(text, links) )
+        newmatrix.append(newrow)
+    return newmatrix
 
+def from_tabel(obj):
+    body = get_tabel_linkedstrings(obj.get('tableData', []))
+    head = get_tabel_linkedstrings(obj.get('tableHeaders', []))
+    df = pd.DataFrame(body, columns=head or None)
+    provenance = {}
+    for key in ['tableCaption', 'sectionTitle', 'pgTitle', 'tableId', 'pgId']:
+        provenance[key] = obj.get(key)
+    df.attrs['provenance'] = provenance
+    return df
 
 class Table(dict):
     @classmethod

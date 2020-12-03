@@ -16,6 +16,7 @@ import logging as log
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 
+from .. import link
 
 def get_colspan_repeats(
     rows: List[List[str]],
@@ -97,11 +98,9 @@ class Pivot(NamedTuple):
     colfrom: int  #: Leftmost column index
     colto: int  #: Rightmost column index
 
-class PivotFinder(ABC):
-    name: str = 'PivotFinder'
-
-    def __init__(self):
-        self.name = self.__class__.__name__
+@dataclass
+class PivotFinder():
+    min_len: int = 1
 
     def build(self, tables):
         return self
@@ -117,7 +116,7 @@ class PivotFinder(ABC):
 
     @abstractmethod
     def find_pivot_cells(
-        self, headerrows: List[List[Dict]]
+        self, headerrows: List[List[str]]
     ) -> Iterator[Tuple[int, int]]:
         """Yield positions of pivoted cells"""
         pass
@@ -131,12 +130,24 @@ class PivotFinder(ABC):
         for level, cols in row_cols.items():
             pivot_cols = longest_seq(cols)
             colfrom, colto = pivot_cols[0], pivot_cols[-1]
-            if colfrom <= colto:
+            if colfrom <= colto and (colto-colfrom >= self.min_len-1):
                 yield Pivot(level, colfrom, colto)
 
     def split_header(self, headrow: List[str], colfrom: int, colto: int):
         """Split the header containing the pivot"""
-        return
+        return ()
+    
+def find_longest_pivot(headertext, heuristics):
+    pivot_size = Counter()
+    for h in heuristics:
+        for level, colfrom, colto in h.find_longest_pivots(headertext):
+            pivot_size[(level, colfrom, colto, h.name)] = colto - colfrom
+
+    # Get longest pivot
+    for (level, colfrom, colto, hname), _ in pivot_size.most_common(1):
+        log.debug(f"Found pivot {(level, colfrom, colto)} using {hname}")
+        return (level, colfrom, colto, hname)
+        
 
 @dataclass
 class RegexFinder(PivotFinder):
@@ -146,6 +157,7 @@ class RegexFinder(PivotFinder):
         find_regex: Unpivot cell if this regex matches
         split_regex: Regex that returns groupdict with ``cell`` and ``head``
     """
+    name: str = 'RegexFinder'
     find_regex: Optional[Pattern] = None
     split_regex: Optional[Pattern] = None
 
@@ -157,8 +169,7 @@ class RegexFinder(PivotFinder):
 
     def find_pivot_cells(self, headerrows):
         for ri, hrow in enumerate(headerrows):
-            for ci, c in enumerate(hrow):
-                cell = c.get("text", "")
+            for ci, cell in enumerate(hrow):
                 if cell and self.find_regex and self.find_regex.match(cell.strip()):
                     yield ri, ci
 
@@ -178,28 +189,33 @@ class RegexFinder(PivotFinder):
 @dataclass
 class NumSuffix(RegexFinder):
     """Find cells with a numeric suffix"""
-
-    find_regex = re.compile(r".*\d[\W\s]*$")
-    split_regex = re.compile(r"(?P<head>.*?)[\W\s]*(?P<cell>[\d\W]+?)[\W\s]*$")
+    name: str = 'NumSuffix'
+    
+    def __post_init__(self):
+        self.find_regex = re.compile(r".*(^|\s)\d+[\W\s]*$")
+        self.split_regex = re.compile(r"(?P<head>.*?)[\W\s]*(?P<cell>[\d\W]+?)[\W\s]*$")
 
 @dataclass
 class NumPrefix(RegexFinder):
     """Find cells with a numeric prefix"""
-
-    find_regex = re.compile(r"[\W\s]*\d")
-    split_regex = re.compile(r"(?P<cell>[\d\W]+?)[\W\s]*(?P<head>.*?)[\W\s]*$")
+    name: str = 'NumPrefix'
+    
+    def __post_init__(self):
+        self.find_regex = re.compile(r"[\W\s]*\d+($|\s)")
+        self.split_regex = re.compile(r"(?P<cell>[\d\W]+?)[\W\s]*(?P<head>.*?)[\W\s]*$")
 
 @dataclass
 class SeqPrefix(PivotFinder):
     """Find cells with a shared prefix"""
+    name: str = 'SeqPrefix'
+    
 
     def find_pivot_cells(self, headerrows):
         from collections import Counter
 
         for ri, row in enumerate(headerrows):
             prefixes = []
-            for c in row:
-                cell = c.get("text", "")
+            for cell in row:
                 p = (cell or "").strip().split()
                 if p:
                     prefixes.append(p[0])
@@ -207,7 +223,7 @@ class SeqPrefix(PivotFinder):
             for p, pcount in Counter(prefixes).most_common(1):
                 if pcount > 1:
                     for ci, cell in enumerate(row):
-                        if str(cell or "").startswith(p):
+                        if str(cell or "").startswith(p) and str(cell) != str(p):
                             yield ri, ci
 
     def split_header(self, headrow, colfrom, colto):
@@ -226,6 +242,7 @@ class SeqPrefix(PivotFinder):
 @dataclass
 class SpannedRepeat(PivotFinder):
     """Find cells that span repeating cells"""
+    name: str = 'SpannedRepeat'
 
     def find_pivot_cells(self, headerrows):
         header_colspan, header_repeats = get_colspan_repeats(headerrows)
@@ -237,8 +254,7 @@ class SpannedRepeat(PivotFinder):
                 header_fromto[ri],
             )
             cols = []
-            for ci, c in enumerate(row):
-                cell = c.get("text", "")
+            for ci, cell in enumerate(row):
                 f, t = fromto[ci]
                 if colspan[ci] > 1:
                     # This cell is spanning
@@ -248,8 +264,6 @@ class SpannedRepeat(PivotFinder):
                                 if header_repeats[rj][cspan] > 1:
                                     # There's a repeating cell in another row
                                     yield ri, ci
-
-from .. import link
 
 @dataclass
 class AgentLikeHyperlink(PivotFinder):
@@ -267,6 +281,7 @@ class AgentLikeHyperlink(PivotFinder):
         bad_types: URIs for bad types
         bad_props: URIs for bad props
     """
+    name: str = 'AgentLikeHyperlink'
     lookup: Optional[link.Lookup] = None
     kb: Optional[link.GraphDB] = None
     bad_types: List[str] = field(default_factory=list)
@@ -332,9 +347,8 @@ class AttributeContext(PivotFinder):
             att = str(t.get(self.attname, "")).lower()
             if att:
                 for hrow in t.get("tableHeaders"):
-                    for hcell in hrow:
-                        celltext = hcell.get("text", "").lower()
-                        if celltext and len(celltext) > 1 and att == celltext:
+                    for celltext in hrow:
+                        if celltext and len(celltext) > 1 and att == celltext.lower():
                             self.values.add(celltext)
         return self
 
@@ -344,8 +358,8 @@ class AttributeContext(PivotFinder):
 
     def find_pivot_cells(self, headerrows):
         for ri, hrow in enumerate(headerrows):
-            for ci, hcell in enumerate(hrow):
-                if hcell.get("text", "").lower() in self.values:
+            for ci, celltext in enumerate(hrow):
+                if celltext in self.values:
                     yield ri, ci
 
 
@@ -359,14 +373,13 @@ class Rule(PivotFinder):
     def find_pivot_cells(self, headerrows):
         if self.id_vars or self.value_vars:
             for ri, hrow in enumerate(headerrows):
-                htext = [hcell.get("text", "") for hcell in hrow]
-                id_match = all(v in htext for v in self.id_vars)
-                value_match = all(v in htext for v in self.value_vars)
+                id_match = all(v in hrow for v in self.id_vars)
+                value_match = all(v in hrow for v in self.value_vars)
                 if id_match and value_match:
                     for ci, hcell in enumerate(hrow):
                         if self.value_vars:
-                            if hcell.get("text", "") in self.value_vars:
+                            if hcell in self.value_vars:
                                 yield ri, ci
                         else:
-                            if hcell.get("text", "") not in self.id_vars:
+                            if hcell not in self.id_vars:
                                 yield ri, ci

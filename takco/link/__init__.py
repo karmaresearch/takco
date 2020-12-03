@@ -23,19 +23,28 @@ def get_hrefs(datarows, lookup_cells=False):
     def cell_ok(c):
         c = c.get("text", "")
         return bool(c and (not c.isnumeric()) and len(c) > 1)
-
-    return [
-        [
-            [
-                target.get("href", target.get("title", "")).rsplit("/", 1)[-1]
-                for l in c.get("surfaceLinks", [])
-                for target in [l.get("target", {})]
-            ]
-            + ([c.get("text").strip()] if lookup_cells and cell_ok(c) else [])
-            for c in row
-        ]
-        for row in datarows
-    ]
+    
+    hrefrows = []
+    for row in datarows:
+        hrefrow = []
+        for c in row:
+            hrefs = []
+            if isinstance(c, dict):
+                for l in c.get("surfaceLinks", []):
+                    target = l.get("target", {})
+                    h = target.get("href", target.get("title", "")).rsplit("/", 1)[-1]
+                    hrefs.append(h)
+                if lookup_cells and cell_ok(c):
+                    hrefs.append( c.get("text").strip() )
+            else:
+                if lookup_cells and cell_ok(c):
+                    hrefs.append(str(c))
+                for _, _, v in getattr(c, 'links', []):
+                    hrefs.append(v)
+                    
+            hrefrow.append(hrefs)
+        hrefrows.append(hrefrow)
+    return hrefrows
 
 
 def lookup_hyperlinks(tables: List[dict], lookup: Lookup, lookup_cells=False):

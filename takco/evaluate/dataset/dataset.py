@@ -7,7 +7,7 @@ import typing
 
 
 class Dataset:
-    tables = None
+    tables: typing.Sequence[typing.Dict[str,typing.Any]] = ()
 
     def params(self, resourcedir: Path = None, datadir: Path = None, **params):
         params = dict(params)
@@ -75,17 +75,19 @@ class Dataset:
 
     def get_unannotated_tables(self):
         for table in self.tables:
-            rows = [[{"text": c} for c in row] for row in table.get("rows")]
-            headers = [[{"text": c} for c in row] for row in table.get("headers", [])]
+            table = dict(table)
+            rows = [[{"text": c} for c in row] for row in table.pop("rows", [])]
+            headers = [[{"text": c} for c in row] for row in table.pop("headers", [])]
             yield {
-                "_id": table.get("name", ""),
+                "_id": table.pop("name", ""),
                 "tableData": rows,
                 "tableHeaders": headers,
-                "keycol": table.get("keycol"),
+                "keycol": table.pop("keycol", None),
                 "gold": {
-                    task: table.get(task, {})
+                    task: table.pop(task, {})
                     for task in ["entities", "classes", "properties"]
                 },
+                **table
             }
 
     def get_annotated_tables(self):

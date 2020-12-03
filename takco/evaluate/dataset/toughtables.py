@@ -8,10 +8,22 @@ import logging as log
 import csv
 import html
 import urllib
-import tarfile, zipfile, io
+import re
 
 from .dataset import Dataset
 
+categories = {
+ 'CTRL_NOISE2': 'CTRL_.+_NOISE2',
+ 'TOUGH_NOISE1': 'TOUGH_.+_NOISE1',
+ 'TOUGH_NOISE2': 'TOUGH_.+_NOISE2',
+ 'CTRL_WIKI': 'CTRL_WIKI',
+ 'CTRL_DBP': 'CTRL_DBP',
+ 'TOUGH_T2D': 'TOUGH_T2D',
+ 'TOUGH_MISC': 'TOUGH_.+_MISC',
+ 'TOUGH_MISSP': 'TOUGH_.+_MISSP',
+ 'TOUGH_SORTED': 'TOUGH_.+_SORTED',
+ 'TOUGH_HOMO': 'TOUGH_.+_HOMO',
+}
 
 class ToughTables(Dataset):
     def __init__(
@@ -43,6 +55,12 @@ class ToughTables(Dataset):
         if chunk:
             yield chunkname, chunk
 
+    @staticmethod
+    def match_cat(fname):
+        for cat, pat in categories.items():
+            if re.match(pat, fname):
+                return cat
+
     @property
     def tables(self):
         cta_file = self.root.joinpath("gt", f"CTA_{self.part}_gt.csv")
@@ -71,4 +89,5 @@ class ToughTables(Dataset):
                 "rows": rows[1:],
                 "entities": entities,
                 "classes": classes,
+                "category": self.match_cat(name),
             }
