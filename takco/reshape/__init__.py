@@ -25,6 +25,7 @@ from collections import Counter
 import json
 import copy
 import contextlib
+import re
 
 L_COLHEADER = "_Variable"
 R_COLHEADER = "_Value"
@@ -327,6 +328,7 @@ def restructure(tables: Iterator[Dict], prefix_header_rules=(), max_cols=100) ->
         - Process rowspanning body cells (:meth:`takco.extract.clean.process_rowspanning_body_cells`)
 
     """
+
     for table in tables:
         try:
             if isinstance(table, Table):
@@ -334,6 +336,13 @@ def restructure(tables: Iterator[Dict], prefix_header_rules=(), max_cols=100) ->
 
             if table.get('numCols', 0) >= max_cols:
                 continue
+
+            if any('tdHtmlString' in c for r in table.get('tableHeaders') for c in r):
+                hs = table.get('tableHeaders', [])
+                if all(c.get('tdHtmlString', '')[:3] == '<td' for r in hs for c in r):
+                    print('YES')
+                    table['tableData'] = hs + table.get('tableData', [])
+                    table['tableHeaders'] = []
             
             init_captions(table)
 
@@ -357,4 +366,5 @@ def restructure(tables: Iterator[Dict], prefix_header_rules=(), max_cols=100) ->
             if table["tableData"]:
                 yield Table(table)
         except Exception as e:
+            # raise e
             log.debug(e)

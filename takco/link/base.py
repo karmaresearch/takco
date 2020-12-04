@@ -12,19 +12,19 @@ from typing import (
 )
 import enum
 from abc import ABC, abstractmethod
+from contextlib import AbstractContextManager
 
 URI = str
 Literal = str
 Node = Union[URI, Literal]
 
 
-class Asset:
+class Asset(AbstractContextManager):
     def __enter__(self):
         return self
-
-    def __exit__(self, *exc):
-        return False
-
+    
+    def __exit__(self, *args):
+        return
 
 class Annotation(dict):
     """A table annotation object. """
@@ -130,7 +130,7 @@ class Searcher(Asset, ABC):
 
 class Lookup(Asset, ABC):
     @abstractmethod
-    def lookup_title(self, title: str, **kwargs) -> str:
+    def lookup_title(self, title: str, **kwargs) -> Optional[str]:
         """Lookup (Wikipedia) page title in KB, return URI
 
         Args:

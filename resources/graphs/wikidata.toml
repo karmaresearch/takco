@@ -1,4 +1,3 @@
-
 [wikidata-trident]
 class = 'link.RDFSearcher'
 encoding = 'wikidata'
@@ -32,7 +31,7 @@ baseuri = 'http://www.wikidata.org/entity/Q'
 [wikidata-elastic]
 class = 'link.ElasticDB'
 cache = true
-es_kwargs.hosts = ['bricks07:9200']
+es_kwargs = {hosts = ['bricks07:9200']}
 index='test-wd-statements,test-wd-wikilookup'
 baseuri='http://www.wikidata.org/entity/Q'
 propbaseuri='http://www.wikidata.org/prop/direct/P'

@@ -21,7 +21,8 @@ except:
 
 def get_hrefs(datarows, lookup_cells=False):
     def cell_ok(c):
-        c = c.get("text", "")
+        if isinstance(c, dict):
+            c = c.get("text", "")
         return bool(c and (not c.isnumeric()) and len(c) > 1)
     
     hrefrows = []

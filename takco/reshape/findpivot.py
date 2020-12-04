@@ -14,7 +14,6 @@ from collections import defaultdict, Counter
 import re
 import logging as log
 from dataclasses import dataclass, field
-from abc import ABC, abstractmethod
 
 from .. import link
 
@@ -99,7 +98,7 @@ class Pivot(NamedTuple):
     colto: int  #: Rightmost column index
 
 @dataclass
-class PivotFinder():
+class PivotFinder:
     min_len: int = 1
 
     def build(self, tables):
@@ -114,7 +113,6 @@ class PivotFinder():
     def __exit__(self, *exc):
         return False
 
-    @abstractmethod
     def find_pivot_cells(
         self, headerrows: List[List[str]]
     ) -> Iterator[Tuple[int, int]]:
@@ -272,26 +270,26 @@ class AgentLikeHyperlink(PivotFinder):
     Rules for agent-like entities:
     
     - Not used as class
-    - Don't have bad types (e.g. disambiguation pages, list pages, units)
-    - Don't have bad properties (e.g. has associated property)
+    - Don't have attribute-like types (e.g. disambiguation pages, list pages, units)
+    - Don't have attribute-like properties (e.g. has associated property)
     
     Args:
         lookup_config: Entity lookup object
         kb_config: Knowledge base
-        bad_types: URIs for bad types
-        bad_props: URIs for bad props
+        id_types: URIs for attribute-like types
+        id_props: URIs for attribute-like props
     """
     name: str = 'AgentLikeHyperlink'
     lookup: Optional[link.Lookup] = None
     kb: Optional[link.GraphDB] = None
-    bad_types: List[str] = field(default_factory=list)
-    bad_props: List[str] = field(default_factory=list)
+    id_types: List[str] = field(default_factory=list)
+    id_props: List[str] = field(default_factory=list)
     type_props: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         assert self.lookup is not None and self.kb is not None
-        self.bad_types = [link.URIRef(b) for b in self.bad_types]
-        self.bad_props = [link.URIRef(b) for b in self.bad_props]
+        self.id_types = [link.URIRef(b) for b in self.id_types]
+        self.id_props = [link.URIRef(b) for b in self.id_props]
         if hasattr(self.kb, "typeProperties"):
             self.typeProperties = self.kb.typeProperties
         else:
@@ -308,32 +306,36 @@ class AgentLikeHyperlink(PivotFinder):
         self.lookup.__exit__(*args)
         self.kb.__exit__(*args)
 
+    def is_attribute(self, e):
+        assert self.lookup is not None and self.kb is not None
+        e = link.URIRef(e)
+
+        if any(self.kb.count([None, tp, e]) for tp in self.typeProperties):
+            return True  # is type
+
+        if any(
+            t in set(self.kb.get_prop_values(e, tp))
+            for tp in self.typeProperties
+            for t in self.id_types
+        ):
+            return True  # has attr type
+
+        if any(self.kb.count([e, p, None]) for p in self.id_props):
+            return True  # has attr prop
+        
+        return False
+
+
     def find_pivot_cells(self, headerrows):
         
         assert self.lookup is not None and self.kb is not None
-        kb = self.kb
-        type_props = self.typeProperties
-        ents = self.lookup.lookup_cells(link.get_hrefs(headerrows))
+        ents = self.lookup.lookup_cells(link.get_hrefs(headerrows, lookup_cells=True))
 
         for ri, hrow in enumerate(headerrows):
             for ci, _ in enumerate(hrow):
                 for e in ents.get(str(ci), {}).get(str(ri), {}):
-                    e = link.URIRef(e)
-
-                    if any(kb.count([None, tp, e]) for tp in type_props):
-                        continue  # is type
-
-                    if any(
-                        t in set(kb.get_prop_values(e, tp))
-                        for tp in type_props
-                        for t in self.bad_types
-                    ):
-                        continue  # has bad type
-
-                    if any(kb.count([e, p, None]) for p in self.bad_props):
-                        continue  # has bad prop
-
-                    yield ri, ci
+                    if not self.is_attribute(e):
+                        yield ri, ci
 
 
 @dataclass
@@ -347,7 +349,12 @@ class AttributeContext(PivotFinder):
             att = str(t.get(self.attname, "")).lower()
             if att:
                 for hrow in t.get("tableHeaders"):
-                    for celltext in hrow:
+                    for cell in hrow:
+                        if isinstance(cell, dict):
+                            celltext = cell.get('text', '')
+                        else:
+                            celltext = cell
+                            
                         if celltext and len(celltext) > 1 and att == celltext.lower():
                             self.values.add(celltext)
         return self

@@ -53,6 +53,7 @@ class TakcoAccessor:
     
 TABEL_PROBLEMS = [
     'Error: This is not a valid number. Please refer to the documentation at for correct input.',
+    '[[|]]',
 ]
 def get_tabel_linkedstrings(matrix):
     urltemplate = "http://{language}.wikipedia.org/wiki/{title}"
@@ -85,7 +86,10 @@ def get_tabel_linkedstrings(matrix):
 def from_tabel(obj):
     body = get_tabel_linkedstrings(obj.get('tableData', []))
     head = get_tabel_linkedstrings(obj.get('tableHeaders', []))
-    df = pd.DataFrame(body, columns=head or None)
+    try:
+        df = pd.DataFrame(body, columns=head or None)
+    except:
+        df = pd.DataFrame(body)
     provenance = {}
     for key in ['tableCaption', 'sectionTitle', 'pgTitle', 'tableId', 'pgId']:
         provenance[key] = obj.get(key)

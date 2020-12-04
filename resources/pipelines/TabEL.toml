@@ -14,7 +14,8 @@ fname = 'tables.json.gz'
 name = 'lookup'
 resolve = 'wdid-sqlite'
 sqlitedb = 'data/wdid_wpname.sqlitedb'
-#fallback = {class = 'MediaWikiAPI'}
+extract = 'http://[^\.]+.wikipedia.org/wiki/([^?]+)'
+# fallback = {class = 'link.MediaWikiAPI'}
 
 [[assets]]
 name = 'linker'
@@ -40,6 +41,10 @@ discard_headerless_tables = true
     min_len = 2
 
     [[step.unpivot_heuristics]]
+    class = 'reshape.NumPrefix'
+    min_len = 3
+
+    [[step.unpivot_heuristics]]
     name = 'year-prefix'
     class = 'reshape.RegexFinder'
     find_regex = '[\W\s]*[0-9]{4}.*'
@@ -48,13 +53,13 @@ discard_headerless_tables = true
     [[step.unpivot_heuristics]]
     name = 'year-suffix'
     class = 'reshape.RegexFinder'
-    find_regex = '.*[0-9]{4}[\W\s]*$'
-    split_regex = '(?P<head>.*?)[\W\s]*(?P<cell>[0-9]{4}?)[\W\s]*$'
+    find_regex = '.*([–0-9]{4}|present)+[\W\s]*$'
+    split_regex = '(?P<head>.*?)[\W\s]*(?P<cell>([–0-9]{4}|present)+)[\W\s]*$'
     
     [[step.unpivot_heuristics]]
     name = 'short-uppercase-acronyms'
     class = 'reshape.RegexFinder'
-    find_regex = '[A-Z]{2,4}$'
+    find_regex = '[A-Z]{3,4}$'
     min_len = 3
 
     [[step.unpivot_heuristics]]
@@ -66,18 +71,27 @@ discard_headerless_tables = true
     [[step.unpivot_heuristics]]
     class = 'reshape.SpannedRepeat'
     
-    [[step.unpivot_heuristics]]
-    class = 'reshape.AgentLikeHyperlink'
-    lookup = {resolve = 'lookup', extract='http://en.wikipedia.org/wiki/([^?]+)\?'}
-    kb = {resolve = 'linker'}
-    bad_types = [
-        'http://www.wikidata.org/entity/Q4167410',
-        'http://www.wikidata.org/entity/Q13406463',
-        'http://www.wikidata.org/entity/Q47574',
-    ]
-    bad_props = [
-        'http://www.wikidata.org/prop/direct/P1687',
-    ]
+    # [[step.unpivot_heuristics]]
+    # class = 'reshape.AgentLikeHyperlink'
+    # lookup = {resolve = 'lookup'}
+    # kb = {resolve = 'linker'}
+    # id_types = [
+    #     'http://www.wikidata.org/entity/Q4167410', # disambiguation
+    #     'http://www.wikidata.org/entity/Q13406463', # list
+    #     'http://www.wikidata.org/entity/Q4167836', # category
+    #     'http://www.wikidata.org/entity/Q47574', # unit of measurement
+    #     'http://www.wikidata.org/entity/Q1790144', # unit of time
+    #     'http://www.wikidata.org/entity/Q82047057', # UCUM derived unit
+    #     'http://www.wikidata.org/entity/Q1924249', # measured quantity
+    #     'http://www.wikidata.org/entity/Q1949963', # statistic
+    #     'http://www.wikidata.org/entity/Q22298551', # meteorological index
+    #     'http://www.wikidata.org/entity/Q22298492', # hazard scale
+    #     'http://www.wikidata.org/entity/Q2001982', # notation
+    #     'http://www.wikidata.org/entity/Q28829877', # sports terminology
+    # ]
+    # id_props = [
+    #     'http://www.wikidata.org/prop/direct/P1687', # main property
+    # ]
 
     [[step.unpivot_heuristics]]
     class = 'reshape.AttributeContext'
@@ -93,11 +107,21 @@ discard_headerless_tables = true
     name = 'baseball'
     value_vars = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'R', 'H', 'E']
 
+    [[step.unpivot_heuristics]]
+    name = 'sports-round'
+    class = 'reshape.RegexFinder'
+    find_regex = '^[\W\s]*(\d+|OT|Total)[\W\s]*$'
+    split_regex = '(?P<cell>.*)$'
 
     [[step.unpivot_heuristics]]
     class = 'reshape.Rule'
-    name = 'train'
+    name = 'train-template'
     id_vars = ["Preceding station", "Following station"]
+
+    [[step.unpivot_heuristics]]
+    class = 'reshape.Rule'
+    name = 'crater-template'
+    id_vars = ["Latitude", "Longitude", "Diameter"]
     
     
 

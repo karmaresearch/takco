@@ -18,10 +18,10 @@ from ..base import Searcher, SearchResult, Lookup, Database
 
 
 class SQLiteCache:
-    _DBNAME = None
-    _INITDB = None
-    _INSERTDB = None
-    _SELECTDB = None
+    _DBNAME: str
+    _INITDB: str
+    _INSERTDB: str
+    _SELECTDB: str
 
     def __init__(self, files, fallback=None, sqlite_kwargs=None):
         if not isinstance(files, list):
@@ -65,6 +65,7 @@ class SQLiteCache:
 
     def _write_cache(self, end=False):
         l = len(self.cons)
+        assert self.cache is not None
         cache = self.cache.execute(self._SELECTDB).fetchall()
         for ci, con in enumerate(self.cons):
             if cache:
@@ -92,6 +93,7 @@ class SQLiteCache:
             con.__exit__(*args)
         self.cons = []
 
+        assert self.cache is not None
         self.cache.__exit__(*args)
         if self.fallback is not None:
             self.fallback.__exit__(*args)
@@ -136,13 +138,11 @@ class SQLiteLookup(SQLiteCache, Lookup):
         if self.cache_often:
             self._write_cache()
 
-    def lookup_title(self, title: str) -> str:
+    def lookup_title(self, title: str) -> typing.Optional[str]:
         if self.extract:
             m = re.match(self.extract, title)
             if m and m.groups():
                 title = m.groups()[0]
-            else:
-                return
         t = title.replace("_", " ").lower()
         """Gets the URI for a DBpedia entity based on wikipedia title."""
         try:
