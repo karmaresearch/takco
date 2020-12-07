@@ -1,5 +1,6 @@
 import pandas as pd
 from takco.linkedstring import LinkedString
+import typing
 
 @pd.api.extensions.register_dataframe_accessor("takco")
 class TakcoAccessor:
@@ -55,7 +56,7 @@ TABEL_PROBLEMS = [
     'Error: This is not a valid number. Please refer to the documentation at for correct input.',
     '[[|]]',
 ]
-def get_tabel_linkedstrings(matrix):
+def get_tabel_rows(matrix):
     urltemplate = "http://{language}.wikipedia.org/wiki/{title}"
     newmatrix = []
     for row in matrix:
@@ -73,6 +74,7 @@ def get_tabel_linkedstrings(matrix):
                 start = link.get('offset', 0)
                 end = link.get('endOffset', len(text))
                 if link.get('linkType') in ['INTERNAL', 'INTERNAL_RED']:
+                    target.setdefault('language', 'en')
                     url = urltemplate.format(**target)
                     if target.get('id', 0) > 0:
                         url += '?curid=' + str(target.get('id'))
@@ -83,9 +85,30 @@ def get_tabel_linkedstrings(matrix):
         newmatrix.append(newrow)
     return newmatrix
 
+def to_tabel_rows(matrix):
+    return [
+            [
+                {
+                    "text": getattr(c, "text", str(c)),
+                    "surfaceLinks": [
+                        {
+                            'offset': start,
+                            'endOffset': end,
+                            'target': {
+                                'url': url,
+                            }
+                        }
+                        for start, end, url in getattr(c, "links", [])
+                    ]
+                }
+                for c in row
+            ]
+            for row in matrix
+        ]
+
 def from_tabel(obj):
-    body = get_tabel_linkedstrings(obj.get('tableData', []))
-    head = get_tabel_linkedstrings(obj.get('tableHeaders', []))
+    body = get_tabel_rows(obj.get('tableData', []))
+    head = get_tabel_rows(obj.get('tableHeaders', []))
     try:
         df = pd.DataFrame(body, columns=head or None)
     except:
@@ -97,99 +120,76 @@ def from_tabel(obj):
     return df
 
 class Table(dict):
-    @classmethod
-    def minimize(cls, obj):
-        def minlink(ls):
-            if ls:
-                for l in ls:
-                    for f in ["surface", "inTemplate", "isInTemplate", "locType"]:
-                        if f in l:
-                            l.pop(f)
-            return ls
+    head: typing.Collection[typing.Collection[str]]
+    body: typing.Collection[typing.Collection[str]]
+    provenance: typing.Dict[str, str]
 
-        if isinstance(obj, dict) and "tableData" in obj:
-            obj["links"] = [
-                [minlink(c.pop("surfaceLinks", None) or None) for c in row]
-                for row in obj["tableData"]
-            ]
-            obj["rows"] = [
-                [c.get("text", "") for c in row] for row in obj.pop("tableData")
-            ]
-        return obj
-
-    def __init__(self, obj):
-        if not isinstance(obj, Table):
-            self.minimize(obj)
-        self.update(obj)
+    def __init__(self, obj=None, head=(), body=(), provenance=()):
+        if obj is not None and not isinstance(obj, Table):
+            body = get_tabel_rows(obj.get('tableData', []))
+            head = get_tabel_rows(obj.get('tableHeaders', []))
+            provenance = {}
+            for key in ['tableCaption', 'sectionTitle', 'pgTitle', 'tableId', 'pgId']:
+                provenance[key] = obj.get(key)
+        self.head, self.body = head, body
+        self.provenance = dict(provenance)
 
     def to_dict(self):
-        tableData = self["tableData"]
-        obj = {**self, "tableData": tableData}
-        del obj["rows"]
-        del obj["links"]
-        return obj
+        return {
+            "tableData": self["tableData"],
+            "tableHeaders": self["tableHeaders"],
+            **self.provenance
+        }
+    
+    def __repr__(self):
+        return self.to_dict().__repr__()
+
+    @property
+    def df(self):
+        return pd.DataFrame(self.body, columns=pd.MultiIndex.from_arrays(self.head))
+        
 
     def __getitem__(self, k):
         if k == "tableData":
-            rows = dict.__getitem__(self, "rows")
-            links = dict.__getitem__(self, "links")
-            return [
-                [
-                    {"text": c, "surfaceLinks": lc} if lc else {"text": c}
-                    for c, lc in zip(row, lrow)
-                ]
-                for row, lrow in zip(rows, links)
-            ]
+            return to_tabel_rows(self.body)
+        if k == "tableHeaders":
+            return to_tabel_rows(self.head)
+        if k in self.provenance:
+            return self.provenance[k]
         return dict.__getitem__(self, k)
 
     def get(self, k, default=None):
         return self[k] if k in self else default
 
-    def __setitem__(self, k, v):
-        dict.__setitem__(self, k, v)
-
-    def __delitem__(self, k):
-        dict.__delitem__(self, k)
-
     def __contains__(self, k):
-        if k == "tableData":
+        if k in ["tableData", "tableHeaders"] + list(self.provenance):
             return True
-        return dict.__contains__(self, k)
+        return False
 
-    def keys(self):
-        return dict.keys(self)
+    def unpivot(self, level, colfrom, colto, var_name='variable', value_name='value'):
+        df = self.df
+        nhead = df.columns.nlevels
+        
+        colrange = range(colfrom, colto + 1)
+        id_cols = [df.columns[i] for i in range(len(df.columns)) if i not in colrange]
+        value_cols = [df.columns[i] for i in colrange]
+        df = df[value_cols].set_index(pd.MultiIndex.from_frame(df[id_cols]))
+        df.index.names = [LinkedString(' ').join(set(hs)) for hs in df.index.names]
+        
+        
+        if nhead > 1:
+            # For tables with multiple header rows, the right columns get their own headers
+            df = df.stack(level)
+            df.index.names = df.index.names[:-1] + [var_name]
+            df = df.reset_index()
+        else:
+            # For tables with a single header row, the right column needs to be given
+            df.columns = [c[0] for c in df.columns]
+            df = df.stack()
+            df.index.names = df.index.names[:-1] + [(var_name,)]
+            df = df.to_frame((value_name,)).reset_index()
+        
+        head = df.columns.to_frame().T.values
+        body = df.values
+        return Table(head=head, body=body, provenance=self.provenance)
 
-
-from typing import Optional, Dict, List
-from dataclasses import dataclass, field
-
-
-@dataclass
-class TableAnnotation:
-    """Table annotation
-
-    >>> TableAnnotation([[{'foo': 0.5}]])
-    TableAnnotation(entities=[[Annotation({'foo': 0.5})]], classes=None, properties=None)
-
-    """
-
-    class Annotation(Dict[str, float]):
-        def __repr__(self):
-            return self.__class__.__name__ + f"({dict(self)})"
-
-    entities: Optional[List[List[Annotation]]] = None
-    classes: Optional[List[Annotation]] = None
-    properties: Optional[List[List[Annotation]]] = None
-    keycol: Optional[int] = None
-
-    def __post_init__(self):
-        if self.entities is not None:
-            self.entities = [
-                [self.Annotation(anno) for anno in col] for col in self.entities
-            ]
-        if self.classes is not None:
-            self.classes = [self.Annotation(anno) for anno in self.classes]
-        if self.properties is not None:
-            self.properties = [
-                [self.Annotation(anno) for anno in col] for col in self.properties
-            ]

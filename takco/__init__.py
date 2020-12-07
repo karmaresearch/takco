@@ -14,8 +14,9 @@ import logging as log
 from .util import *
 from . import config
 from .storage import Storage, HDFSPath
+from .table import Table
 
-from . import pages, reshape, link, cluster, evaluate
+from . import extract, reshape, link, cluster, evaluate
 
 
 class Pipeline(list):
@@ -99,7 +100,7 @@ class TableSet:
     @classmethod
     def extract(
         cls,
-        source: typing.Union[pages.PageSource, HashBag] = None,
+        source: typing.Union[extract.PageSource, HashBag] = None,
         executor: HashBag = HashBag(),
     ):
         """Collect tables from HTML files
@@ -111,14 +112,13 @@ class TableSet:
         """
         if isinstance(source, HashBag):
             htmlpages = source
-        elif isinstance(source, pages.PageSource):
-            htmlpages = source.get(executor)
+        elif isinstance(source, extract.PageSource):
+            htmlpages = executor.new(source.sources).pipe(source.load)
         else:
             htmlpages = HashBag(source)
 
-        from .extract import extract_tables
 
-        return TableSet(htmlpages.pipe(extract_tables))
+        return TableSet(htmlpages.pipe(extract.extract_tables))
 
     def reshape(
         self: TableSet,
@@ -603,7 +603,7 @@ class TableSet:
     def run(
         cls,
         pipeline: Pipeline,
-        input_tables: typing.Union[pages.PageSource, HDFSPath, Path] = None,
+        input_tables: typing.Union[extract.PageSource, HDFSPath, Path] = None,
         workdir: typing.Union[HDFSPath, Path] = None,
         datadir: Path = None,
         resourcedir: Path = None,
@@ -697,7 +697,7 @@ class TableSet:
         if isinstance(input_tables, Path) or isinstance(input_tables, str):
             log.info(f"Getting input tabels from path: {input_tables}")
             streams = [("", TableSet.load(input_tables, executor=executor))]
-        elif isinstance(input_tables, pages.PageSource):
+        elif isinstance(input_tables, extract.PageSource):
             log.info(f"Getting input tabels from extraction: {input_tables}")
             pipeline.insert(0, {"step": "extract", "source": input_tables})
         elif isinstance(input_tables, HashBag):

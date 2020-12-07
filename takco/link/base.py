@@ -154,6 +154,9 @@ class Lookup(Asset, ABC):
                     ci_ri_ents.setdefault(str(ci), {}).setdefault(str(ri), {})[uri] = 1
         return ci_ri_ents
 
+    def flush(self):
+        pass
+
 
 class Database(Asset, ABC):
     """For querying a Knowledge Base."""
@@ -270,3 +273,6 @@ class Linker(Asset):
             entities.setdefault(str(ci), {})[str(ri)] = {r.uri: 1 for r in results}
 
         return {"entities": entities}
+
+    def flush(self):
+        pass

@@ -28,7 +28,7 @@ def encode_wikidata(query):
     return newquery
 
 
-class GraphDB(Database, rdflib.Graph):
+class GraphDB(Database):
     def __init__(self, *args, **kwargs):
         rdflib.Graph.__init__(self, *args, **kwargs)
 
@@ -74,15 +74,6 @@ class GraphDB(Database, rdflib.Graph):
 
     def __len__(self):
         return self.store.__len__()
-
-    def pages_about(self, triplepattern=None):
-        if hasattr(self.store, "pages_about"):
-            return self.store.pages_about(triplepattern)
-        else:
-            s_pages = {}
-            for (s, _, _) in self.triples(triplepattern):
-                s_pages.setdefault(s, []).append(str(s))
-            return s_pages
 
 
 class RDFSearcher(Searcher, GraphDB, NaryDB):

@@ -1,5 +1,11 @@
+import typing
+
 class LinkedString(str):
+    links: typing.Tuple[typing.Tuple[int, int, str], ...] = ()
+    
     def __new__(cls, value, links=None):
+        if isinstance(value, LinkedString):
+            value, links = value.text, value.links
         self = super().__new__(cls, value)
         if links is not None:
             strlen = len(self)
@@ -72,3 +78,10 @@ class LinkedString(str):
         elif isinstance(other, str):
             return self.__class__(other + str(self), links=shiftlinks)
         return self.__class__(str(other) + str(self), links=shiftlinks)
+
+    def join(self, seq):
+        iter_seq = iter(seq)
+        out = LinkedString(next(iter_seq, ''))
+        for i in iter_seq:
+            out = LinkedString(out) + self + LinkedString(i)
+        return out

@@ -174,10 +174,14 @@ class RegexFinder(PivotFinder):
     def split_header(self, headrow, colfrom, colto):
         for ci, cell in enumerate(headrow):
             if self.split_regex and (ci in range(colfrom, colto + 1)):
-                m = self.split_regex.match(cell.strip())
+                m = self.split_regex.match(cell)
                 if m:
-                    cell = m.groupdict().get("cell", cell)
-                    head = m.groupdict().get("head", "")
+                    head = ""
+                    if "head" in m.groupdict():
+                        head = cell[m.span("head")[0]:m.span("head")[1]]
+                    if "cell" in m.groupdict():
+                        cell = cell[m.span("cell")[0]:m.span("cell")[1]]
+                    
                     yield head, cell
                 else:
                     yield cell, cell
@@ -190,8 +194,8 @@ class NumSuffix(RegexFinder):
     name: str = 'NumSuffix'
     
     def __post_init__(self):
-        self.find_regex = re.compile(r".*(^|\s)\d+[\W\s]*$")
-        self.split_regex = re.compile(r"(?P<head>.*?)[\W\s]*(?P<cell>[\d\W]+?)[\W\s]*$")
+        self.find_regex = re.compile(r".*(^|\s)[\W\s]*\d[\W\d]*[\W\s]*$")
+        self.split_regex = re.compile(r"(?P<head>.*?)[\W\s]*(?P<cell>\d[\W\d]*?)[\W\s]*$")
 
 @dataclass
 class NumPrefix(RegexFinder):

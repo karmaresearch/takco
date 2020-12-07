@@ -67,8 +67,7 @@ def lookup_hyperlinks(tables: List[dict], lookup: Lookup, lookup_cells=False):
                     ents.setdefault(ci, {}).setdefault(ri, {}).update(es)
             yield table
 
-            if hasattr(lookup, "flush"):
-                lookup.flush()
+            lookup.flush()
 
 
 def link(
@@ -131,8 +130,7 @@ def link(
             table.update(links)
             yield table
 
-            if hasattr(linker, "flush"):
-                linker.flush()
+            linker.flush()
 
 
 def get_col_cell_ents(table):

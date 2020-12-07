@@ -2,6 +2,7 @@ import re
 import copy
 import logging as log
 
+from takco import Table
 
 class Extractor(object):
     """
@@ -358,8 +359,8 @@ def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None):
                     numDataRows = len(tableData)
                     numHeaderRows = len(tableHeaders)
                     log.debug(f"Extracted table {tableId} from {pgTitle}")
-                    yield dict(
-                        _id=f"{pgId}-{tableId}",
+                    yield Table(dict(
+                        _id=f"{pgId}#{tableId}",
                         pgId=pgId,
                         pgTitle=pgTitle,
                         tableId=tableId,
@@ -372,4 +373,4 @@ def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None):
                         tableData=tableData,
                         tableHeaders=tableHeaders,
                         originalHTML=str(table),
-                    )
+                    ))
