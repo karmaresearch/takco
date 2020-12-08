@@ -85,14 +85,14 @@ class WarcPages(PageSource):
         return self.fnames
 
     def load(self, sources=None):
-        from warcio.archiveiterator import ArchiveIterator
+        from warcio.archiveiterator import ArchiveIterable
 
         if sources is None:
             sources = self.sources
 
         for fname in sources:
             with open(fname, "rb") as stream:
-                for record in ArchiveIterator(stream):
+                for record in ArchiveIterable(stream):
                     if record.rec_type == "response":
                         url = record.rec_headers.get_header("WARC-Target-URI")
                         e = None

@@ -1,9 +1,11 @@
-from typing import List, Dict, Tuple, NamedTuple, Any, Iterator, Optional
+from typing import List, Dict, Tuple, NamedTuple, Any, Iterable, Optional
 import re
 import datetime
 from collections import Counter
 import logging as log
 from dataclasses import dataclass, field
+
+from takco import Table
 
 OffsetLinks = Dict[Tuple[int, int], str]
 Cell = Dict
@@ -16,6 +18,44 @@ __all__ = [
     "SpacyCompoundSplitter",
     "TemplateCompoundSplitter",
 ]
+
+def split_compound_columns(tables, splitter):
+    """Detect and split compound columns"""
+
+    log.info(f"Splitting compound columns using {splitter}")
+
+    with splitter:
+        for table in tables:
+            table = Table(table).to_dict()
+
+            newcols = []
+            headcols = list(zip(*table.get("tableHeaders", [])))
+            datacols = list(zip(*table.get("tableData", [])))
+
+            for ci, (hcol, dcol) in enumerate(zip(headcols, datacols)):
+                splits = list(splitter.find_splits(dcol))
+                if splits:
+                    log.debug(
+                        f"Found {len(splits)} splits in column {ci} of {table.get('_id')}: {list(zip(*splits))[:2]}"
+                    )
+                    for part, _, newcol in splits:
+                        newhcol = list(hcol)
+                        if newhcol:
+                            newhcol[-1] = dict(newhcol[-1])
+                            part = part or ""
+                            newhcol[-1]["text"] = (
+                                newhcol[-1].get("text", "") + " " + part
+                            )
+                        newcols.append((newhcol, newcol))
+                else:
+                    newcols.append((hcol, dcol))
+
+            if newcols:
+                headcols, datacols = zip(*newcols)
+                table["tableHeaders"] = list(zip(*headcols))
+                table["tableData"] = list(zip(*datacols))
+
+            yield Table(table)
 
 
 class CompoundSplit(NamedTuple):
@@ -54,30 +94,30 @@ class CompoundSplitter:
 
 
 class SuffixCompoundSplitter(CompoundSplitter):
-    def find_splits(self, column: List[Cell]) -> Iterator[CompoundSplit]:
+    def find_splits(self, column: List[Cell]) -> Iterable[CompoundSplit]:
         import os
 
-        column = [c.get("text", "") for c in column]
-        suffix = os.path.commonprefix([c[::-1] for c in column])[::-1]
+        coltext = [c.get("text", "") for c in column]
+        suffix = os.path.commonprefix([c[::-1] for c in coltext])[::-1]
         if suffix:
-            cover = sum(1 for c in column if c.endswith(suffix)) / len(column)
+            cover = sum(1 for c in coltext if c.endswith(suffix)) / len(coltext)
             if cover > 0.5:
-                newcol = [c.replace(suffix, "") for c in column]
+                newcol = [c.replace(suffix, "") for c in coltext]
                 if any(newcol):
                     newcol = [{"text": c} for c in newcol]
                     yield CompoundSplit(suffix, "string", newcol)
 
 
 class PrefixCompoundSplitter(CompoundSplitter):
-    def find_splits(self, column: List[Cell]) -> Iterator[CompoundSplit]:
+    def find_splits(self, column: List[Cell]) -> Iterable[CompoundSplit]:
         import os
 
-        column = [c.get("text", "") for c in column]
-        prefix = os.path.commonprefix([c for c in column])[::-1]
+        coltext = [c.get("text", "") for c in column]
+        prefix = os.path.commonprefix([c for c in coltext])[::-1]
         if prefix:
-            cover = sum(1 for c in column if c.startswith(prefix)) / len(column)
+            cover = sum(1 for c in coltext if c.startswith(prefix)) / len(coltext)
             if cover > 0.5:
-                newcol = [c.replace(prefix, "") for c in column]
+                newcol = [c.replace(prefix, "") for c in coltext]
                 if any(newcol):
                     newcol = [{"text": c} for c in newcol]
                     yield CompoundSplit(prefix, "string", newcol)
@@ -103,7 +143,7 @@ class TemplateCompoundSplitter(CompoundSplitter):
 
         return any(newcol) and min_size_ok and max_size_ok
 
-    def find_splits(self, column: List[Cell]) -> Iterator[CompoundSplit]:
+    def find_splits(self, column: List[Cell]) -> Iterable[CompoundSplit]:
         from templater import Templater
 
         column = [c.get("text", "") for c in column]
@@ -129,13 +169,12 @@ class TemplateCompoundSplitter(CompoundSplitter):
                             prefix = template._template[i].strip()
                             if prefix:
                                 if prefix.isnumeric():  # TODO: check numeric suffix
-                                    newcol = [prefix + c for c in newcol]
+                                    newcol = tuple([prefix + c for c in newcol])
                                     prefix = str(i)
                             else:
                                 prefix = str(i)
 
-                            newcol = [{"text": c} for c in newcol]
-                            yield CompoundSplit(prefix, "string", newcol)
+                            yield CompoundSplit(prefix, "string", [{"text": c} for c in newcol])
             except Exception as e:
                 log.debug(f"Failed to parse {cell} using template {template._template}")
 
@@ -286,7 +325,7 @@ class SpacyCompoundSplitter(CompoundSplitter):
             return cellset, patterns
         return cellset, ()
 
-    def find_splits(self, column: List[Cell]) -> Iterator[CompoundSplit]:
+    def find_splits(self, column: List[Cell]) -> Iterable[CompoundSplit]:
         cellset, patterns = self.candidate_splits(column)
         pattern_freq = Counter((part, types) for part, types, links in patterns)
         if pattern_freq:
@@ -305,10 +344,11 @@ class SpacyCompoundSplitter(CompoundSplitter):
                     pattern_regex = re.compile("(.+?)".join(reparts))
 
                     cell_pattern = dict(zip(cellset, patterns))
-                    newcols, restcol = [], []
+                    newcols: List[List[Dict]] = []
+                    restcol: List[Dict] = []
                     for cellobj in column:
                         nomatch = ""
-                        cell = cellobj.get("text")
+                        cell = str(cellobj.get("text"))
                         if cell in cell_pattern:
                             parts, types, links = cell_pattern[cell]
                             if (colparts, coltypes) == (parts, types):

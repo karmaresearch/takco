@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, Container, Iterator, NamedTuple, Optional
+from typing import List, Tuple, Dict, Collection, Iterable, NamedTuple, Optional
 import logging as log
 from collections import defaultdict, Counter
 
@@ -19,15 +19,15 @@ class NaryMatchResult(NamedTuple):
 
     columns: Tuple[int, int]  #: Pair of (head, tail) table columns
     triple: Triple  #: Statement triple
-    qualifiers: Container[QualifierMatchResult]  #: Statement qualifier matches
+    qualifiers: Collection[QualifierMatchResult]  #: Statement qualifier matches
 
 
 class NaryDB(Database):
     """For querying a KB with qualifiers."""
 
     def get_rowfacts(
-        self, celltexts: List[str], entsets: List[Container[str]]
-    ) -> Iterator[NaryMatchResult]:
+        self, celltexts: List[str], entsets: List[Collection[str]]
+    ) -> Iterable[NaryMatchResult]:
         return
 
     def integrate(self, rows, row_entsets):

@@ -163,10 +163,7 @@ class TableSet:
             if centralize_pivots:
                 log.debug(f"Finding unpivots centrally...")
                 headers = tables.fold(reshape.table_get_headerId, reshape.get_header)
-
-                pivots = headers.pipe(reshape.yield_pivots, heuristics=unpivot_heuristics)
-
-                headerId_pivot = {p["headerId"]: p for p in pivots}
+                headerId_pivot = dict(headers.pipe(reshape.yield_pivots, heuristics=unpivot_heuristics))
                 log.info(f"Found {len(headerId_pivot)} pivots")
 
             log.debug(f"Unpivoting...")

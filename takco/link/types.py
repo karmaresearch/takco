@@ -163,8 +163,7 @@ class SimpleTyper(Typer):
                 except Exception as e:
                     pass
 
-            s, l = surface.lower(), literal.lower()
-            score = bool(s == l)
+            score = bool(surface.lower() == literal.lower())
 
         elif surface and literal:
             # Strings may match approximately
@@ -222,7 +221,7 @@ class EntityTyper(SimpleTyper):
         types = super().coltype(cell_ents)
         if SimpleTyper.ENTITY in types:
             n = sum(1 for _, ents in cell_ents if ents)
-            counts = collections.Counter()
+            counts: Counter = collections.Counter()
             for c, es in cell_ents:
                 ts = [set(self.supertypes(e)) for e in es]
                 if ts:

@@ -1,6 +1,6 @@
 import sys, os, json, logging as log, collections, itertools
 
-from typing import List, Dict, Tuple, Iterator
+from typing import List, Dict, Tuple, Iterable
 
 
 class Profiler:
@@ -54,7 +54,7 @@ class PFDProfiler(Profiler):
 
 def perTuple_pFDs(
     rowdicts: List[Dict[int, str]], depsize: int
-) -> Iterator[Tuple[List[int], int, float]]:
+) -> Iterable[Tuple[List[int], int, float]]:
     """Finds probablistic functional dependencies.
 
     A probabilistic functional dependency :math:`X \\rightarrow_p a` indicates that two

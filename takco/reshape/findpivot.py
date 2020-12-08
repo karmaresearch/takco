@@ -1,9 +1,8 @@
 from typing import (
     List,
-    Container,
     Tuple,
     NamedTuple,
-    Iterator,
+    Iterable,
     Dict,
     Optional,
     Set,
@@ -13,82 +12,16 @@ from typing import (
 from collections import defaultdict, Counter
 import re
 import logging as log
+import contextlib
 from dataclasses import dataclass, field
 
-from .. import link
+from takco import Table, link
 
-def get_colspan_repeats(
-    rows: List[List[str]],
-) -> Tuple[List[List[int]], List[List[int]]]:
-    """Find cells that span multiple columns and cells that repeat
+def table_get_headerId(table: Table):
+    return Table(table).headerId
 
-    Args:
-        rows: A matrix of cells
-
-    Returns:
-        - A matrix of colspans
-        - A matrix of repeats (excluding colspans)
-    """
-    header_colspan, header_repeats = [], []
-    for row in rows:
-        colspan = [1 for _ in row]
-        repeats: Dict[Optional[str], int] = {}
-        c, span = None, 1
-        for ci, cell in enumerate(list(row) + [None]):  # type: ignore
-            cell = str(cell)
-            if cell == c:
-                span += 1
-            else:
-                for j in range(1, span + 1):
-                    colspan[ci - j] = span
-                span = 1
-                repeats[c] = repeats.get(c, 0) + 1
-            c = cell
-        header_colspan.append(colspan)
-        header_repeats.append([repeats.get(str(cell), 0) for cell in row])
-    return header_colspan, header_repeats
-
-
-def get_colspan_fromto(rows: List[List[str]]) -> List[List[Tuple[int, int]]]:
-    """Gets colspan (from,to) index of every cell"""
-    fromto = []
-    for row in rows:
-        fr, to = [], [] # type: ignore
-        _cell = None
-        for ci, cell in enumerate(row):
-            if fr and cell == _cell:
-                fr.append(fr[ci - 1])
-                to.append(ci)
-                for cj, t in enumerate(to):
-                    if t == ci - 1:
-                        to[cj] = ci
-            else:
-                fr.append(ci)
-                to.append(ci)
-            _cell = cell
-        fromto.append(list(zip(fr, to)))
-    return fromto
-
-
-def longest_seq(numbers: Collection[int]) -> List[int]:
-    """Find the longest sequence in a set of numbers"""
-    if not numbers:
-        return []
-    numbers = set(numbers)
-    i = min(numbers)
-    longest: List[int] = []
-    seq: List[int] = []
-    while numbers:
-        seq.append(i)
-        numbers -= set([i])
-        if i + 1 in numbers:
-            i += 1
-        else:
-            if len(seq) > len(longest):
-                longest, seq = seq, []
-            i = min(numbers) if numbers else None
-    return longest
-
+def get_header(table1, table2):
+    return Table(table1).head
 
 class Pivot(NamedTuple):
     """The sequence of cells in a header row that looks more like it should be a column"""
@@ -96,9 +29,11 @@ class Pivot(NamedTuple):
     level: int  #: Header row index
     colfrom: int  #: Leftmost column index
     colto: int  #: Rightmost column index
+    source: str #: Provenance
 
 @dataclass
 class PivotFinder:
+    name: str = 'PivotFinder'
     min_len: int = 1
 
     def build(self, tables):
@@ -115,96 +50,245 @@ class PivotFinder:
 
     def find_pivot_cells(
         self, headerrows: List[List[str]]
-    ) -> Iterator[Tuple[int, int]]:
+    ) -> Iterable[Tuple[int, int]]:
         """Yield positions of pivoted cells"""
         pass
-
-    def find_longest_pivots(self, headerrows: List[List[Dict]]) -> Iterator[Pivot]:
+    
+    @staticmethod
+    def longest_seq(numbers: Collection[int]) -> List[int]:
+        """Find the longest sequence in a set of numbers"""
+        if not numbers:
+            return []
+        numbers = set(numbers)
+        i = min(numbers)
+        longest: List[int] = []
+        seq: List[int] = []
+        while numbers:
+            seq.append(i)
+            numbers -= set([i])
+            if i + 1 in numbers:
+                i += 1
+            else:
+                if len(seq) > len(longest):
+                    longest, seq = seq, []
+                i = min(numbers) if numbers else None
+        return longest
+    
+    def find_longest_pivots(self, headerrows: List[List[str]]) -> Iterable[Pivot]:
         """Yield longest pivots"""
         row_cols = defaultdict(set)
         for ri, ci in self.find_pivot_cells(headerrows):
             row_cols[ri].add(ci)
 
         for level, cols in row_cols.items():
-            pivot_cols = longest_seq(cols)
+            pivot_cols = self.longest_seq(cols)
             colfrom, colto = pivot_cols[0], pivot_cols[-1]
             if colfrom <= colto and (colto-colfrom >= self.min_len-1):
-                yield Pivot(level, colfrom, colto)
+                yield Pivot(level, colfrom, colto, self.name)
 
-    def split_header(self, headrow: List[str], colfrom: int, colto: int):
+    def split_header(self, headrows: List[List[str]], level: int, colfrom: int, colto: int):
         """Split the header containing the pivot"""
-        return ()
-    
+        return headrows
+
+    def unpivot(self, head, body, pivot, var_name: str='_Variable', value_name: str='_Value'):
+        """Unpivot a table
+
+        Args:
+            head: Header
+            body: Table body
+            pivot: Pivot tuple
+            var_name: Name to use for the ‘variable’ column. Defaults to '_Variable'.
+            value_name: Name to use for the ‘value’ column.. Defaults to '_Value'.
+
+        Raises:
+            UnpivotException: Unable to unpivot
+
+        Returns:
+            Tuple of new head and body
+        """
+        import pandas as pd
+
+        # Split header
+        head = self.split_header(head, pivot.level, pivot.colfrom, pivot.colto)
+
+        # Make dataframe
+        df = pd.DataFrame(body, columns=pd.MultiIndex.from_arrays(head))
+        level = pivot.level
+        colrange = range(pivot.colfrom, pivot.colto + 1)
+
+        if level >= len(head):
+            raise UnpivotException(f"Unpivot level is too big: ({level}, {head})")
+
+        if (pivot.colfrom == 0) and (pivot.colto == len(head[0]) - 1):
+            raise UnpivotException(f"Pivot spans entire head: ({colrange}, {head})")
+
+        # Set dataframe index to id columns
+        nhead = df.columns.nlevels
+        id_cols = [df.columns[i] for i in range(len(df.columns)) if i not in colrange]
+        value_cols = [df.columns[i] for i in colrange]
+        df = df[value_cols].set_index(pd.MultiIndex.from_frame(df[id_cols]))
+        df.index.names = [hs[0].__class__(' ').join(set(hs)) for hs in df.index.names]
+        
+        if nhead > 1:
+            # For tables with multiple header rows, the right columns get their own headers
+            df = df.stack(level)
+            df.index.names = df.index.names[:-1] + [var_name]
+            df = df.reset_index()
+        else:
+            # For tables with a single header row, the right column needs to be given
+            df.columns = [c[0] for c in df.columns]
+            df = df.stack()
+            df.index.names = df.index.names[:-1] + [(var_name,)]
+            df = df.to_frame((value_name,)).reset_index()
+        
+        return df.columns.to_frame().T.values, df.values
+
+class UnpivotException(Exception):
+    pass
+
+def yield_pivots(headertexts: Iterable[Collection[Collection[str]]], heuristics: List[PivotFinder]):
+    """Detect headers that should be unpivoted using heuristics."""
+    import copy
+
+    with contextlib.ExitStack() as hstack:
+        heuristics = [hstack.enter_context(copy.deepcopy(h)) for h in heuristics]
+        named_heuristics = {h.name: h for h in heuristics}
+        for headertext in headertexts:
+            if headertext:
+                pivot = find_longest_pivot(headertext, heuristics)
+                if pivot is not None:
+                    try:
+                        dummy = [[str(ci) for ci in range(len(next(iter(headertext))))]]
+                        heuristic = named_heuristics[pivot.source]
+                        heuristic.unpivot(headertext, dummy, pivot)
+                        yield Table.get_headerId(headertext), pivot
+                    except Exception as e:
+                        log.debug(f"Failed to unpivot header {headertext} due to {e}")
+
+def try_unpivot(table, pivot, named_heuristics):
+    try:
+        pivotmeta = {
+            "headerId": table.headerId,
+            "level": pivot.level,
+            "colfrom": pivot.colfrom,
+            "colto": pivot.colto,
+            "heuristic": pivot.source
+        }
+        heuristic = named_heuristics[pivot.source]
+        head, body = heuristic.unpivot(table.head, table.body, pivot)
+        return Table(
+            head=head,
+            body=body,
+            provenance = {**table.provenance, 'pivot': pivotmeta}
+        )
+    except Exception as e:
+        log.debug(f"Cannot pivot table {table.get('_id')} due to {e}")
+
+
+def build_heuristics(
+    tables: Iterable[Table], heuristics: List[PivotFinder],
+):
+    for heuristic in heuristics:
+        yield heuristic.build(tables)
+
+
+def unpivot_tables(
+    tables: Iterable[Dict],
+    headerId_pivot: Optional[Dict[int, Pivot]],
+    heuristics: List[PivotFinder],
+):
+    """Unpivot tables."""
+    tablelist = [Table(t) for t in tables]
+
+    if headerId_pivot is None:
+        headertexts = [table.head for table in tablelist]
+        headerId_pivot = dict(yield_pivots(headertexts, heuristics=heuristics))
+    log.debug(f"Using {len(headerId_pivot)} detected pivots")
+
+    named_heuristics = {h.name: h for h in heuristics}
+    for table in tablelist:
+        pivot = headerId_pivot.get(table.headerId)
+        if pivot and table.head:
+            table = try_unpivot(table, pivot, named_heuristics)
+
+        if table is not None:
+            yield table
+
+
 def find_longest_pivot(headertext, heuristics):
-    pivot_size = Counter()
+    pivot_size: Counter = Counter()
     for h in heuristics:
-        for level, colfrom, colto in h.find_longest_pivots(headertext):
-            pivot_size[(level, colfrom, colto, h.name)] = colto - colfrom
+        for p in h.find_longest_pivots(headertext):
+            pivot_size[p] = p.colto - p.colfrom
 
     # Get longest pivot
-    for (level, colfrom, colto, hname), _ in pivot_size.most_common(1):
-        log.debug(f"Found pivot {(level, colfrom, colto)} using {hname}")
-        return (level, colfrom, colto, hname)
-        
+    for p, _ in pivot_size.most_common(1):
+        log.debug(f"Found pivot {p}")
+        return p
+
+
+
 
 @dataclass
 class RegexFinder(PivotFinder):
     """Find pivots based on a regex
+
+    >>> h = RegexFinder(pattern=r'(?P<var>.*?)\s*(?P<val>\d+)')
+    >>> list(h.find_pivot_cells([['a 4']]))
+    [(0, 0)]
+
+    >>> h.split_header([['a 4']], 0, 0, 0)
+    [('a',), ('4',)]
     
     Args:
-        find_regex: Unpivot cell if this regex matches
-        split_regex: Regex that returns groupdict with ``cell`` and ``head``
+        pattern: Unpivot cell if this regex matches. 
+            Optional: group for extracting value
     """
     name: str = 'RegexFinder'
-    find_regex: Optional[Pattern] = None
-    split_regex: Optional[Pattern] = None
+    pattern: Pattern = re.compile('.*')
 
     def __post_init__(self):
-        if self.find_regex:
-            self.find_regex = re.compile(str(self.find_regex))
-        if self.split_regex:
-            self.split_regex = re.compile(str(self.split_regex))
+        if isinstance(self.pattern, str):
+            self.pattern = re.compile(self.pattern)
 
     def find_pivot_cells(self, headerrows):
         for ri, hrow in enumerate(headerrows):
             for ci, cell in enumerate(hrow):
-                if cell and self.find_regex and self.find_regex.match(cell.strip()):
+                if cell and self.pattern.match(cell.strip()):
                     yield ri, ci
 
-    def split_header(self, headrow, colfrom, colto):
-        for ci, cell in enumerate(headrow):
-            if self.split_regex and (ci in range(colfrom, colto + 1)):
-                m = self.split_regex.match(cell)
+    def split_header(self, headrows, level, colfrom, colto):
+        splitrow = []
+        for ci, cell in enumerate(headrows[level]):
+            if ci in range(colfrom, colto + 1):
+                m = self.pattern.match(cell)
                 if m:
-                    head = ""
-                    if "head" in m.groupdict():
-                        head = cell[m.span("head")[0]:m.span("head")[1]]
-                    if "cell" in m.groupdict():
-                        cell = cell[m.span("cell")[0]:m.span("cell")[1]]
-                    
-                    yield head, cell
-                else:
-                    yield cell, cell
-            else:
-                yield cell, cell
+                    if m.groups() and set(['val','var']) == set(m.groupdict()):
+                        val_start, val_end = m.span('val')
+                        val = cell[val_start:val_end]
+                        var_start, var_end = m.span('var')
+                        var = cell[var_start:var_end]
+                        splitrow.append( (val, var) )
+                        continue
+            splitrow.append( (cell, cell) )
+        
+        splitrow1, splitrow2 = zip(*splitrow)
+        if splitrow1 != splitrow2:
+            return headrows[:0] + [splitrow1, splitrow2] + headrows[1:]
+        else:
+            return headrows
 
 @dataclass
 class NumSuffix(RegexFinder):
     """Find cells with a numeric suffix"""
     name: str = 'NumSuffix'
-    
-    def __post_init__(self):
-        self.find_regex = re.compile(r".*(^|\s)[\W\s]*\d[\W\d]*[\W\s]*$")
-        self.split_regex = re.compile(r"(?P<head>.*?)[\W\s]*(?P<cell>\d[\W\d]*?)[\W\s]*$")
+    pattern: Pattern = re.compile(r"(?P<var>.*)(?:^|\s)[\W\s]*(?P<val>\d[\W\d]*?)[\W\s]*$")
 
 @dataclass
 class NumPrefix(RegexFinder):
     """Find cells with a numeric prefix"""
     name: str = 'NumPrefix'
-    
-    def __post_init__(self):
-        self.find_regex = re.compile(r"[\W\s]*\d+($|\s)")
-        self.split_regex = re.compile(r"(?P<cell>[\d\W]+?)[\W\s]*(?P<head>.*?)[\W\s]*$")
+    pattern: Pattern = re.compile(r"[\W\s]*(?P<val>\d[\W\d]*)(?:$|\s)(?P<var>.*)")
 
 @dataclass
 class SeqPrefix(PivotFinder):
@@ -228,34 +312,92 @@ class SeqPrefix(PivotFinder):
                         if str(cell or "").startswith(p) and str(cell) != str(p):
                             yield ri, ci
 
-    def split_header(self, headrow, colfrom, colto):
+    def split_header(self, headrows, level, colfrom, colto):
         prefixes = []
-        for cell in headrow:
+        for cell in headrows[level]:
             p = (cell or "").strip().split()
             if p:
                 prefixes.append(p[0])
 
-        for p, pcount in Counter(prefixes).most_common(1):
-            for ci in range(colfrom, colto + 1):
-                cell = headrow[ci].strip()
-                if cell.startswith(p):
-                    yield cell[len(p) :].strip(), p
+        for p, _ in Counter(prefixes).most_common(1):
+            splitrow = []
+            for ci, cell in enumerate(headrows[level]):
+                if ci in range(colfrom, colto + 1):
+                    cell = cell.strip()
+                    if cell.startswith(p):
+                        splitrow.append( (cell[len(p) :].strip(), p) )
+                        continue
+                splitrow.append( (cell, cell) )
+            splitrow1, splitrow2 = zip(*splitrow)
+            if splitrow1 != splitrow2:
+                return headrows[:0] + [splitrow1, splitrow2] + headrows[1:]
+        
+        return headrows
 
 @dataclass
 class SpannedRepeat(PivotFinder):
     """Find cells that span repeating cells"""
     name: str = 'SpannedRepeat'
 
+    @staticmethod
+    def get_colspan_repeats(
+        rows: List[List[str]],
+    ) -> Tuple[List[List[int]], List[List[int]]]:
+        """Find cells that span multiple columns and cells that repeat
+
+        Args:
+            rows: A matrix of cells
+
+        Returns:
+            - A matrix of colspans
+            - A matrix of repeats (excluding colspans)
+        """
+        header_colspan, header_repeats = [], []
+        for row in rows:
+            colspan = [1 for _ in row]
+            repeats: Dict[Optional[str], int] = {}
+            c, span = None, 1
+            for ci, cell in enumerate(list(row) + [None]):  # type: ignore
+                cell = str(cell)
+                if cell == c:
+                    span += 1
+                else:
+                    for j in range(1, span + 1):
+                        colspan[ci - j] = span
+                    span = 1
+                    repeats[c] = repeats.get(c, 0) + 1
+                c = cell
+            header_colspan.append(colspan)
+            header_repeats.append([repeats.get(str(cell), 0) for cell in row])
+        return header_colspan, header_repeats
+
+    @staticmethod
+    def get_colspan_fromto(rows: List[List[str]]) -> List[List[Tuple[int, int]]]:
+        """Gets colspan (from,to) index of every cell"""
+        fromto = []
+        for row in rows:
+            fr, to = [], [] # type: ignore
+            _cell = None
+            for ci, cell in enumerate(row):
+                if fr and cell == _cell:
+                    fr.append(fr[ci - 1])
+                    to.append(ci)
+                    for cj, t in enumerate(to):
+                        if t == ci - 1:
+                            to[cj] = ci
+                else:
+                    fr.append(ci)
+                    to.append(ci)
+                _cell = cell
+            fromto.append(list(zip(fr, to)))
+        return fromto
+
     def find_pivot_cells(self, headerrows):
-        header_colspan, header_repeats = get_colspan_repeats(headerrows)
-        header_fromto = get_colspan_fromto(headerrows)
+        header_colspan, header_repeats = self.get_colspan_repeats(headerrows)
+        header_fromto = self.get_colspan_fromto(headerrows)
         for ri, row in enumerate(headerrows):
-            colspan, repeats, fromto = (
-                header_colspan[ri],
-                header_repeats[ri],
-                header_fromto[ri],
-            )
-            cols = []
+            colspan = header_colspan[ri]
+            fromto = header_fromto[ri]
             for ci, cell in enumerate(row):
                 f, t = fromto[ci]
                 if colspan[ci] > 1:

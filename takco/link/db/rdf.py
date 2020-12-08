@@ -1,8 +1,9 @@
 import rdflib
 import logging as log
 from rdflib import URIRef, Literal
-from typing import List, Dict, Tuple, Collection, Iterator
-
+from rdflib.store import Store as RDFStore
+from typing import List, Dict, Tuple, Collection, Iterable
+from dataclasses import dataclass
 import datetime
 import re
 
@@ -27,26 +28,24 @@ def encode_wikidata(query):
     newquery = "".join(chars)
     return newquery
 
-
+@dataclass
 class GraphDB(Database):
-    def __init__(self, *args, **kwargs):
-        rdflib.Graph.__init__(self, *args, **kwargs)
-
-    def __reduce__(self):
-        return (self.__class__, (self.store, self.identifier), self.__dict__)
+    store: RDFStore
+    labelProperties: Collection[str] = ()
+    typeProperties: Collection[str] = ()
 
     def __enter__(self):
         try:
-            self.open(None)
+            self.store.open(self.store.endpoint)
         except Exception as e:
             log.warn(f"Could not open graph due to {e}")
         return self
 
     def __exit__(self, *args):
-        self.close()
+        self.store.close()
 
     def triples(self, triplepattern, **kwargs):
-        return rdflib.Graph.triples(self, triplepattern, **kwargs)
+        return (t for t, _ in self.store.triples(triplepattern, **kwargs))
 
     def get_prop_values(self, e, p):
         return set(o for _, _, o in self.triples([URIRef(e), URIRef(p), None]))
@@ -104,7 +103,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
         statementURIprefix=None,
         **kwargs,
     ):
-
+        GraphDB.__init__(self, store=store)
         self.language = language
         self.labelProperties = [URIRef(p) for p in labelProperties] + [
             URIRef("http://www.w3.org/2004/02/skos/core#prefLabel"),
@@ -124,18 +123,6 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
             self.qualifierIDProperty = URIRef(qualifierIDProperty)
 
         self.statementURIprefix = statementURIprefix
-
-        GraphDB.__init__(self, store=store)
-
-    def __enter__(self):
-        try:
-            self.open(None)
-        except Exception as e:
-            log.warn(f"When opening {self}, {e}")
-        return self
-
-    # def __exit__(self, *args):
-    #     self.close()
 
     def search_entities(self, query_params, limit=1, add_about=False):
         if log.getLogger().level == log.INFO:
@@ -213,7 +200,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
 
     def get_rowfacts(
         self, celltexts: List[str], entsets: List[Collection[str]]
-    ) -> Iterator[NaryMatchResult]:
+    ) -> Iterable[NaryMatchResult]:
         """Get matched (n-ary) facts for a row
 
         Args:

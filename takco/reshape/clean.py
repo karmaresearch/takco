@@ -1,5 +1,9 @@
 from collections import Counter
 from itertools import combinations
+import logging as log
+import typing as typ
+
+from takco import Table
 
 EMPTY_CELL = {
     "cellID": -1,
@@ -10,6 +14,60 @@ EMPTY_CELL = {
     "isNumeric": False,
 }
 
+def restructure(tables: typ.Iterable[Table], prefix_header_rules=(), max_cols=100) -> typ.Iterable[Table]:
+    """Restructure tables.
+
+    Performs all sorts of heuristic cleaning operations, including:
+
+        - Remove empty columns (:meth:`takco.extract.clean.remove_empty_columns`)
+        - Deduplicate header rows (:meth:`takco.extract.clean.deduplicate_header_rows`)
+        - Remove empty header rows (:meth:`takco.extract.clean.remove_empty_header_rows`)
+        - Process rowspanning head cells (:meth:`takco.extract.clean.process_rowspanning_head_cells`)
+        - Restack horizontal schema repeats (:meth:`takco.extract.clean.restack_horizontal_schema_repeats`)
+        - Remove empty rows (:meth:`takco.extract.clean.remove_empty_rows`)
+        - Process rowspanning body cells (:meth:`takco.extract.clean.process_rowspanning_body_cells`)
+
+    """
+
+    for table in tables:
+        try:
+            if isinstance(table, Table):
+                table = table.to_dict()
+
+            if table.get('numCols', 0) >= max_cols:
+                continue
+
+            if any('tdHtmlString' in c for r in table.get('tableHeaders') for c in r):
+                hs = table.get('tableHeaders', [])
+                if all(c.get('tdHtmlString', '')[:3] == '<td' for r in hs for c in r):
+                    print('YES')
+                    table['tableData'] = hs + table.get('tableData', [])
+                    table['tableHeaders'] = []
+            
+            init_captions(table)
+
+            # Analyze headers & data together
+            deduplicate_header_rows(table)
+
+            # Analyze header
+            remove_empty_header_rows(table)
+            process_rowspanning_head_cells(table)
+            restack_horizontal_schema_repeats(table)
+            table["tableHeaders"] = [h for h in table["tableHeaders"] if h]
+
+            # Analyze body
+            remove_empty_rows(table)
+            process_rowspanning_body_cells(table)
+            heuristic_transpose(table)
+            remove_empty_columns(table)
+
+            apply_prefix_header_rules(table, prefix_header_rules)
+
+            if table["tableData"]:
+                yield Table(table)
+        except Exception as e:
+            # raise e
+            log.debug(e)
 
 def init_captions(table):
     table["tableCaptions"] = []
@@ -22,11 +80,8 @@ def init_captions(table):
 
 def remove_empty_columns(table):
     col_empty = {}
-    headcols = zip(*table["tableHeaders"])
-    bodycols = zip(*table["tableData"])
-    for i, (headcol, bodycol) in enumerate(zip(headcols, bodycols)):
-        emptycolcells = not any(c.get("text", "").strip() for c in bodycol)
-        col_empty[i] = emptycolcells
+    for i, bodycol in enumerate(zip(*table["tableData"])):
+        col_empty[i] = not any(c.get("text", "").strip() for c in bodycol)
     
     if any(col_empty.values()):
         table["tableHeaders"] = [

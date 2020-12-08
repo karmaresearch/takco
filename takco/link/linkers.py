@@ -1,4 +1,4 @@
-from typing import Container, List, Dict, Optional
+from typing import Collection, List, Dict, Optional
 import logging as log
 from dataclasses import dataclass, field
 
@@ -45,8 +45,8 @@ class First(Linker):
     def get_rowcol_searchresults_classes(
         self,
         rows: List[List[str]],
-        usecols: Container[int] = None,
-        skiprows: Container[int] = None,
+        usecols: Collection[int] = None,
+        skiprows: Collection[int] = None,
         entities: Dict = None,
         classes: Dict = None,
         **kwargs,
@@ -121,8 +121,8 @@ class First(Linker):
     def link(
         self,
         rows: List[List[str]],
-        usecols: Container[int] = None,
-        skiprows: Container[int] = None,
+        usecols: Collection[int] = None,
+        skiprows: Collection[int] = None,
         existing: Dict = None,
     ) -> Dict[str, Dict[str, Dict[str, float]]]:
 
@@ -239,8 +239,8 @@ class Salient(Linker):
     def link(
         self,
         rows: List[List[str]],
-        usecols: Container[int] = None,
-        skiprows: Container[int] = None,
+        usecols: Collection[int] = None,
+        skiprows: Collection[int] = None,
         existing: Dict = None,
     ) -> Dict[str, Dict[str, Dict[str, float]]]:
 

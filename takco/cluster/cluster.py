@@ -1,4 +1,4 @@
-from typing import List, Dict, Collection, Set, Tuple, Iterator, Any, Callable, Union
+from typing import List, Dict, Collection, Set, Tuple, Iterable, Any, Callable, Union
 from pathlib import Path
 import logging as log
 from collections import Counter
@@ -437,7 +437,7 @@ def cluster_partition_columns(
     agg_func: str,
     agg_threshold_col: float,
     clus: AgglomerativeClustering = None,
-) -> Iterator[Tuple[Dict[int, int], Dict[int, int], Dict[int, int], Dict[int, Any]]]:
+) -> Iterable[Tuple[Dict[int, int], Dict[int, int], Dict[int, int], Dict[int, Any]]]:
     """Cluster columns withing a partition
 
     Args:

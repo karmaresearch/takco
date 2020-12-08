@@ -2,15 +2,7 @@ import hashlib
 import logging as log
 import copy
 
-from ..table import Table
-
-
-def get_headerId(header):
-    # header is a tuple of tuples.
-    header = tuple(tuple(c for c in r) for r in header)
-    h = hashlib.sha224(str(header).encode()).hexdigest()
-    return int(h[:16], 16) // 2  # integer between 0 and SQLite MAX_VAL
-
+from takco import Table
 
 def tables_add_context_rows(tables, fields=()):
     """Add context to table depending on table dict fields"""
@@ -30,7 +22,7 @@ def tables_add_context_rows(tables, fields=()):
                 tuple([cell.get("text", "").lower() for cell in r])
                 for r in tableHeaders
             )
-            table["headerId"] = get_headerId(headerText)
+            table["headerId"] = Table.get_headerId(headerText)
 
             fieldtext = table.get(field, "")
             context_cells = [
@@ -67,4 +59,4 @@ def tables_add_context_rows(tables, fields=()):
                 for fci, te in table["properties"].items()
             }
 
-        yield Table(dict(table))
+        yield Table(table)

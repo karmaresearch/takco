@@ -1,13 +1,13 @@
 """
 This module extracts tables from html
 """
-from typing import List, Dict, Iterator
+from typing import List, Dict, Iterable
 
 from .htmltables import page_extract_tables
 from .pages import *
 
 
-def extract_tables(pages: Iterator[Page]) -> Iterator[Dict]:
+def extract_tables(pages: Iterable[Page]) -> Iterable[Dict]:
     """Extract tables from pages.
 
     Pages are dicts with an ``html`` field.

@@ -244,13 +244,21 @@ def cell_extract_wikilinks(node):
 
 
 def vertically_split_tables_on_subheaders(htmlrows):
-    subtable = []
+    subtable = [] # type: ignore
     prev_row_is_header = True
 
     for row in htmlrows:
         row_is_header = all(c.name == "th" for c in row)
+
+        # make subheader
+        if row_is_header and len(row) > 1 and len(set(row)) == 1:
+            for c in row:
+                c.name = 'td'
+            row_is_header = False
+
         if (not prev_row_is_header) and row_is_header:
-            yield subtable
+            if len(subtable) > 1:
+                yield subtable
             subtable = []
         subtable.append(row)
         prev_row_is_header = row_is_header

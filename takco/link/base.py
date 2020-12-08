@@ -8,7 +8,7 @@ from typing import (
     Collection,
     NamedTuple,
     Any,
-    Iterator,
+    Iterable,
 )
 import enum
 from abc import ABC, abstractmethod
@@ -87,13 +87,13 @@ class SearchResult(dict):
 class Typer(Asset, ABC):
     @abstractmethod
     def coltype(
-        self, cell_ents: Iterator[Tuple[str, Collection[URI]]],
+        self, cell_ents: Iterable[Tuple[str, Collection[URI]]],
     ) -> Dict[str, int]:
         """Find column type for cells and their entities"""
         pass
 
     @classmethod
-    def literal_match(cls, literal: Literal, surface: str) -> Iterator[LiteralMatchResult]:
+    def literal_match(cls, literal: Literal, surface: str) -> Iterable[LiteralMatchResult]:
         """Match a cell value to a KB literal"""
         score = float(bool(str(literal) == surface))
         if score:

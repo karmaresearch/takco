@@ -57,7 +57,7 @@ TABEL_PROBLEMS = [
     '[[|]]',
 ]
 def get_tabel_rows(matrix):
-    urltemplate = "http://{language}.wikipedia.org/wiki/{title}"
+    urltemplate = "http://{lang}.wikipedia.org/wiki/{page}"
     newmatrix = []
     for row in matrix:
         newrow = []
@@ -74,10 +74,15 @@ def get_tabel_rows(matrix):
                 start = link.get('offset', 0)
                 end = link.get('endOffset', len(text))
                 if link.get('linkType') in ['INTERNAL', 'INTERNAL_RED']:
-                    target.setdefault('language', 'en')
-                    url = urltemplate.format(**target)
-                    if target.get('id', 0) > 0:
-                        url += '?curid=' + str(target.get('id'))
+                    try:
+                        lang = target.get('language', 'en')
+                        page = target.setdefault('href', target.get('title', ''))
+                        page = page.replace(' ', '_')
+                        url = urltemplate.format(lang=lang, page=page)
+                        if target.get('id', 0) > 0:
+                            url += '?curid=' + str(target.get('id'))
+                    except:
+                        raise Exception(f"bad target {target}")
                     if start == 0 and end == 1:
                         end = len(text)  # HACK
                     links.append((start, end, url))
@@ -94,8 +99,10 @@ def to_tabel_rows(matrix):
                         {
                             'offset': start,
                             'endOffset': end,
+                            'linkType': 'INTERNAL',
                             'target': {
                                 'url': url,
+                                'title': url.split('/')[-1],
                             }
                         }
                         for start, end, url in getattr(c, "links", [])
@@ -120,34 +127,81 @@ def from_tabel(obj):
     return df
 
 class Table(dict):
+    """ A takco table object
+
+    >>> Table(head=[['foo','bar']], body=[['1','2']]).head
+    [['foo', 'bar']]
+
+    """
+
     head: typing.Collection[typing.Collection[str]]
     body: typing.Collection[typing.Collection[str]]
     provenance: typing.Dict[str, str]
+    annotations: typing.Dict[str, typing.Any]
+    headerId: int
 
-    def __init__(self, obj=None, head=(), body=(), provenance=()):
-        if obj is not None and not isinstance(obj, Table):
+    def __init__(self, obj=None, head=(), body=(), provenance=(), annotations=()):
+        if isinstance(obj, Table):
+            head, body = obj.head, obj.body
+            provenance = dict(obj.provenance)
+            annotations = dict(obj.annotations)
+            for key in ['tableCaption', 'sectionTitle', 'pgTitle', 'tableId', 'pgId']:
+                if key in obj:
+                    provenance[key] = obj.get(key)
+            for key in ['entities', 'properties', 'classes']:
+                if key in obj:
+                    annotations[key] = obj.get(key)
+        elif obj is not None:
             body = get_tabel_rows(obj.get('tableData', []))
             head = get_tabel_rows(obj.get('tableHeaders', []))
             provenance = {}
             for key in ['tableCaption', 'sectionTitle', 'pgTitle', 'tableId', 'pgId']:
-                provenance[key] = obj.get(key)
+                if key in obj:
+                    provenance[key] = obj.get(key)
+            annotations = {}
+            for key in ['entities', 'properties', 'classes']:
+                if key in obj:
+                    annotations[key] = obj.get(key)
         self.head, self.body = head, body
         self.provenance = dict(provenance)
+        self.annotations = dict(annotations)
+        
+        self.headerId = self.get_headerId(self.head)
+
+    @staticmethod
+    def get_headerId(header):
+        import hashlib
+        
+        # header is a tuple of tuples.
+        header = tuple(tuple(c.lower() for c in r) for r in header)
+        h = hashlib.sha224(str(header).encode()).hexdigest()
+        return int(h[:16], 16) // 2  # integer between 0 and SQLite MAX_VAL
 
     def to_dict(self):
         return {
-            "tableData": self["tableData"],
-            "tableHeaders": self["tableHeaders"],
-            **self.provenance
+            "tableData": self['tableData'],
+            "tableHeaders": self['tableHeaders'],
+            "headerId": self.headerId,
+            "numCols": len(next(iter(self.body))),
+            "numDataRows": len(self.body),
+            "numHeaderRows": len(self.head),
+            "numericColumns": [],
+            **self.provenance,
+            **self.annotations
         }
     
     def __repr__(self):
-        return self.to_dict().__repr__()
+        return self.df.head(1).__repr__()
+
+    def _repr_html_(self):
+        return self.df.takco._repr_html_()
+
+    def __bool__(self):
+        return bool(self.body)
 
     @property
     def df(self):
         return pd.DataFrame(self.body, columns=pd.MultiIndex.from_arrays(self.head))
-        
 
     def __getitem__(self, k):
         if k == "tableData":
@@ -156,40 +210,50 @@ class Table(dict):
             return to_tabel_rows(self.head)
         if k in self.provenance:
             return self.provenance[k]
+        if k == 'headerId':
+            return self.headerId
         return dict.__getitem__(self, k)
 
     def get(self, k, default=None):
         return self[k] if k in self else default
 
     def __contains__(self, k):
-        if k in ["tableData", "tableHeaders"] + list(self.provenance):
+        if k in ["tableData", "tableHeaders", "headerId"] + list(self.provenance):
             return True
-        return False
+        return k in self.keys()
 
-    def unpivot(self, level, colfrom, colto, var_name='variable', value_name='value'):
-        df = self.df
-        nhead = df.columns.nlevels
+    def append(self, other: 'Table'):
+        assert self.head == other.head
+        import copy
+
+        # Merge annotations
+        row_offset = len(self.body)
+        annotations = copy.deepcopy(self.annotations)
+        if "entities" in other.annotations:
+            for ci, ri_ents in other.annotations["entities"].items():
+                annotations.setdefault("entities", {}).setdefault(ci, {}).update(
+                    {str(int(ri) + row_offset): es for ri, es in ri_ents.items()}
+                )
+        for ci, classes in other.annotations.get("classes", {}).items():
+            annotations.setdefault("classes", {}).setdefault(ci, {}).update(classes)
+        for fromci, toci_props in other.annotations.get("properties", {}).items():
+            newprops = annotations.setdefault("properties", {}).setdefault(fromci, {})
+            for toci, props in toci_props:
+                newprops.setdefault(toci, {}).update(props)
         
-        colrange = range(colfrom, colto + 1)
-        id_cols = [df.columns[i] for i in range(len(df.columns)) if i not in colrange]
-        value_cols = [df.columns[i] for i in colrange]
-        df = df[value_cols].set_index(pd.MultiIndex.from_frame(df[id_cols]))
-        df.index.names = [LinkedString(' ').join(set(hs)) for hs in df.index.names]
-        
-        
-        if nhead > 1:
-            # For tables with multiple header rows, the right columns get their own headers
-            df = df.stack(level)
-            df.index.names = df.index.names[:-1] + [var_name]
-            df = df.reset_index()
+        # Make provenance
+        provenance = {}
+        if 'concat' in self.provenance:
+            provenance['concat'] = self.provenance['concat'] + [other.provenance]
         else:
-            # For tables with a single header row, the right column needs to be given
-            df.columns = [c[0] for c in df.columns]
-            df = df.stack()
-            df.index.names = df.index.names[:-1] + [(var_name,)]
-            df = df.to_frame((value_name,)).reset_index()
-        
-        head = df.columns.to_frame().T.values
-        body = df.values
-        return Table(head=head, body=body, provenance=self.provenance)
+            provenance['concat'] = [
+                self.provenance,
+                other.provenance
+            ]
 
+        return Table(
+            head = self.head,
+            body = self.body + other.body,
+            annotations = annotations,
+            provenance = provenance,
+        )
