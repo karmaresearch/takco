@@ -134,8 +134,8 @@ class Table(dict):
 
     """
     _id: str
-    head: typing.Collection[typing.Collection[str]]
-    body: typing.Collection[typing.Collection[str]]
+    head: typing.Tuple[typing.Tuple[str, ...], ...]
+    body: typing.Tuple[typing.Tuple[str, ...], ...]
     provenance: typing.Dict[str, str]
     annotations: typing.Dict[str, typing.Any]
     headerId: int
@@ -145,13 +145,12 @@ class Table(dict):
         "tableData": lambda self: to_tabel_rows(self.body),
         "tableHeaders": lambda self: to_tabel_rows(self.head),
         "headerId": lambda self: self.headerId,
-        "numCols": lambda self: len(next(iter(self.body))),
+        "numCols": lambda self: len(next(iter(self.body), () )),
         "numDataRows": lambda self: len(self.body),
         "numHeaderRows": lambda self: len(self.head),
         "numericColumns": lambda self: [],
     }
     _default_annotations = ['entities', 'properties', 'classes']
-    _default_provenance = ['tableCaption', 'sectionTitle', 'pgTitle', 'tableId', 'pgId']
 
     def __init__(self, obj=None, _id=None, head=(), body=(), provenance=(), annotations=()):
         if isinstance(obj, Table):
@@ -159,27 +158,31 @@ class Table(dict):
             head, body = obj.head, obj.body
             provenance = dict(obj.provenance)
             annotations = dict(obj.annotations)
-            for key in self._default_provenance:
-                if key in obj:
-                    provenance[key] = obj.get(key)
             for key in self._default_annotations:
                 if key in obj:
                     annotations[key] = obj.get(key)
+            
+            for key in list(obj.keys()):
+                if (key not in self._old_keys) and (key not in self._default_annotations):
+                    provenance[key] = obj.get(key)
         elif obj is not None:
+            _id = obj.get('_id')
             body = get_tabel_rows(obj.get('tableData', []))
             head = get_tabel_rows(obj.get('tableHeaders', []))
-            provenance = {}
-            for key in self._default_provenance:
-                if key in obj:
-                    provenance[key] = obj.get(key)
+            
             annotations = {}
             for key in self._default_annotations:
                 if key in obj:
                     annotations[key] = obj.get(key)
-            _id = obj.get('_id')
+            
+            provenance = {}
+            for key in list(obj.keys()):
+                if (key not in self._old_keys) and (key not in self._default_annotations):
+                    provenance[key] = obj.get(key)
         
-        self._id = _id or str(hash(tuple(map(tuple, head + body))))
-        self.head, self.body = head, body
+        self.head, self.body = tuple(map(tuple, head)), tuple(map(tuple, body))
+        self._id = _id or str(hash(self.head + self.body))
+        
         self.provenance = dict(provenance)
         self.annotations = dict(annotations)
         self.headerId = self.get_headerId(self.head)
@@ -189,7 +192,7 @@ class Table(dict):
         import hashlib
         
         # header is a tuple of tuples.
-        header = tuple(tuple(c.lower() for c in r) for r in header)
+        header = tuple(map(tuple, header))
         h = hashlib.sha224(str(header).encode()).hexdigest()
         return int(h[:16], 16) // 2  # integer between 0 and SQLite MAX_VAL
 

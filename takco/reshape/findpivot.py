@@ -35,6 +35,7 @@ class Pivot(NamedTuple):
 class PivotFinder:
     name: str = 'PivotFinder'
     min_len: int = 1
+    allow_gap: int = 0
 
     def build(self, tables):
         return self
@@ -55,7 +56,7 @@ class PivotFinder:
         pass
     
     @staticmethod
-    def longest_seq(numbers: Collection[int]) -> List[int]:
+    def longest_seq(numbers: Collection[int], allow_gap: int = 0) -> List[int]:
         """Find the longest sequence in a set of numbers"""
         if not numbers:
             return []
@@ -66,11 +67,11 @@ class PivotFinder:
         while numbers:
             seq.append(i)
             numbers -= set([i])
-            if i + 1 in numbers:
-                i += 1
-            else:
-                if len(seq) > len(longest):
-                    longest, seq = seq, []
+            j = next((j for j in range(1, 2 + allow_gap) if i + j in numbers), None)
+            if j is not None:
+                i += j
+            elif len(seq) > len(longest):
+                longest, seq = seq, []
                 i = min(numbers) if numbers else None
         return longest
     
@@ -81,7 +82,8 @@ class PivotFinder:
             row_cols[ri].add(ci)
 
         for level, cols in row_cols.items():
-            pivot_cols = self.longest_seq(cols)
+            pivot_cols = self.longest_seq(cols, allow_gap=self.allow_gap)
+
             colfrom, colto = pivot_cols[0], pivot_cols[-1]
             if colfrom <= colto and (colto-colfrom >= self.min_len-1):
                 yield Pivot(level, colfrom, colto, self.name)
@@ -127,7 +129,11 @@ class PivotFinder:
         id_cols = [df.columns[i] for i in range(len(df.columns)) if i not in colrange]
         value_cols = [df.columns[i] for i in colrange]
         df = df[value_cols].set_index(pd.MultiIndex.from_frame(df[id_cols]))
-        df.index.names = [hs[0].__class__(' ').join(set(hs)) for hs in df.index.names]
+
+        def merge_head_cells(hs):
+            cls = hs[0].__class__
+            return cls(' ').join(set(h for h in hs if h))
+        df.index.names = [merge_head_cells(hs) for hs in df.index.names]
         
         if nhead > 1:
             # For tables with multiple header rows, the right columns get their own headers
@@ -214,6 +220,25 @@ def unpivot_tables(
         if table is not None:
             yield table
 
+def get_colspan_fromto(rows: List[List[str]]) -> List[List[Tuple[int, int]]]:
+    """Gets colspan (from,to) index of every cell"""
+    fromto = []
+    for row in rows:
+        fr, to = [], [] # type: ignore
+        _cell = None
+        for ci, cell in enumerate(row):
+            if fr and cell == _cell:
+                fr.append(fr[ci - 1])
+                to.append(ci)
+                for cj, t in enumerate(to):
+                    if t == ci - 1:
+                        to[cj] = ci
+            else:
+                fr.append(ci)
+                to.append(ci)
+            _cell = cell
+        fromto.append(list(zip(fr, to)))
+    return fromto
 
 def find_longest_pivot(headertext, heuristics):
     pivot_size: Counter = Counter()
@@ -223,6 +248,15 @@ def find_longest_pivot(headertext, heuristics):
 
     # Get longest pivot
     for p, _ in pivot_size.most_common(1):
+        
+        # If spanned, lengthen pivot to spanning cell width
+        if p.colfrom != p.colto and p.level > 0 and len(headertext) > 1:
+            colspans = get_colspan_fromto(headertext)
+            spanning = set(colspans[0][ci] for ci in range(p.colfrom, p.colto+1))
+            if len(spanning) == 1:
+                colfrom, colto = list(spanning)[0]
+                p = Pivot(p.level, colfrom, colto, p.source)
+
         log.debug(f"Found pivot {p}")
         return p
 
@@ -274,7 +308,7 @@ class RegexFinder(PivotFinder):
         
         splitrow1, splitrow2 = zip(*splitrow)
         if splitrow1 != splitrow2:
-            return headrows[:0] + [splitrow1, splitrow2] + headrows[1:]
+            return tuple(headrows[:0]) + (splitrow1, splitrow2) + tuple(headrows[1:])
         else:
             return headrows
 
@@ -361,7 +395,7 @@ class SpannedRepeat(PivotFinder):
                 cell = str(cell)
                 if cell == c:
                     span += 1
-                else:
+                elif c:
                     for j in range(1, span + 1):
                         colspan[ci - j] = span
                     span = 1
@@ -371,30 +405,9 @@ class SpannedRepeat(PivotFinder):
             header_repeats.append([repeats.get(str(cell), 0) for cell in row])
         return header_colspan, header_repeats
 
-    @staticmethod
-    def get_colspan_fromto(rows: List[List[str]]) -> List[List[Tuple[int, int]]]:
-        """Gets colspan (from,to) index of every cell"""
-        fromto = []
-        for row in rows:
-            fr, to = [], [] # type: ignore
-            _cell = None
-            for ci, cell in enumerate(row):
-                if fr and cell == _cell:
-                    fr.append(fr[ci - 1])
-                    to.append(ci)
-                    for cj, t in enumerate(to):
-                        if t == ci - 1:
-                            to[cj] = ci
-                else:
-                    fr.append(ci)
-                    to.append(ci)
-                _cell = cell
-            fromto.append(list(zip(fr, to)))
-        return fromto
-
     def find_pivot_cells(self, headerrows):
         header_colspan, header_repeats = self.get_colspan_repeats(headerrows)
-        header_fromto = self.get_colspan_fromto(headerrows)
+        header_fromto = get_colspan_fromto(headerrows)
         for ri, row in enumerate(headerrows):
             colspan = header_colspan[ri]
             fromto = header_fromto[ri]
@@ -431,6 +444,7 @@ class AgentLikeHyperlink(PivotFinder):
     id_types: List[str] = field(default_factory=list)
     id_props: List[str] = field(default_factory=list)
     type_props: List[str] = field(default_factory=list)
+    lookup_cells: bool = False
 
     def __post_init__(self):
         assert self.lookup is not None and self.kb is not None
@@ -475,13 +489,14 @@ class AgentLikeHyperlink(PivotFinder):
     def find_pivot_cells(self, headerrows):
         
         assert self.lookup is not None and self.kb is not None
-        ents = self.lookup.lookup_cells(link.get_hrefs(headerrows, lookup_cells=True))
+        ents = self.lookup.lookup_cells(link.get_hrefs(headerrows, lookup_cells=self.lookup_cells))
 
         for ri, hrow in enumerate(headerrows):
             for ci, _ in enumerate(hrow):
                 for e in ents.get(str(ci), {}).get(str(ri), {}):
                     if not self.is_attribute(e):
                         yield ri, ci
+                        break
 
 
 @dataclass

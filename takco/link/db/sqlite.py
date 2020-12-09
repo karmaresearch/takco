@@ -13,6 +13,7 @@ import logging as log
 import sqlite3
 import time
 import re
+import urllib.parse as ul
 
 from ..base import Searcher, SearchResult, Lookup, Database
 
@@ -143,7 +144,7 @@ class SQLiteLookup(SQLiteCache, Lookup):
             m = re.match(self.extract, title)
             if m and m.groups():
                 title = m.groups()[0]
-        t = title.replace("_", " ").lower()
+        t = ul.unquote_plus(title.replace("_", " ").lower())
         """Gets the URI for a DBpedia entity based on wikipedia title."""
         try:
             for con in self.cons:

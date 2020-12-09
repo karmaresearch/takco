@@ -96,6 +96,7 @@ discard_headerless_tables = true
         'http://www.wikidata.org/prop/direct/P1687', # main property
         'http://www.wikidata.org/prop/direct/P279', # subclass of
     ]
+    allow_gap = 10
 
     [[step.unpivot_heuristics]]
     class = 'reshape.AttributeContext'

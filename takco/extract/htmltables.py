@@ -337,8 +337,8 @@ def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None, l
     if extract_links_pattern is not None:
         for a in soup.find_all('a'):
             href = a.attrs.get('href')
-            if href and extract_links_pattern.match(href) and a.text.strip():
-                surface_links[a.text] = href
+            if href and extract_links_pattern.match(href) and len(a.text.strip()) > 1:
+                surface_links[a.text.strip()] = href
         surface_pattern = re.compile("|".join(map(re.escape, surface_links.keys())))
         log.debug(f"Got {len(surface_links)} extra surface links")
 
