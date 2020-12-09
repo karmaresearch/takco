@@ -158,6 +158,67 @@ class Extractor(object):
         else:
             return ""
 
+    @classmethod
+    def cell_extract_wikilinks(cls, node):
+        if not node:
+            return
+
+        curOffset = 0
+        for a in node.find_all("a"):
+            parent_text = Extractor.get_cell_text(node)
+            surface = Extractor.get_cell_text(a)
+            offset = parent_text[curOffset:].index(surface) + curOffset
+            endOffset = offset + len(surface)
+            curOffset = endOffset
+
+            href = a.attrs.get("href")
+            if href:
+                target = {"href": href}
+                if href.startswith("#"):
+                    linkType = "PAGE"
+                elif href.startswith("http://www.wikipedia.org/") or not href.startswith(
+                    "http"
+                ):
+                    linkType = "INTERNAL"
+                    target["title"] = href.split("/")[-1]
+                elif href.startswith("http"):
+                    linkType = "EXTERNAL"
+                else:
+                    linkType = "UNKNOWN"
+
+                yield dict(
+                    offset=offset,
+                    endOffset=endOffset,
+                    surface=surface,
+                    linkType=linkType,
+                    target=target,
+                )
+    
+    @classmethod
+    def get_extra_links(cls, celltext, surface_pattern, surface_links):
+        for m in surface_pattern.finditer(celltext):
+            surface = m.group(0)
+            href = surface_links.get(surface)
+            target = {"href": href, "title": href.split("/")[-1]}
+            yield dict(
+                offset=m.start(),
+                endOffset=m.end(),
+                surface=surface,
+                linkType="INTERNAL",
+                target=target,
+            )
+    
+    @classmethod
+    def get_cell_dict(cls, cell, surface_pattern=None, surface_links=()):
+        text = cls.get_cell_text(cell)
+        links = list(cls.cell_extract_wikilinks(cell))
+        if not links and surface_pattern and surface_links:
+            links = list(cls.get_extra_links(text, surface_pattern, surface_links))
+        return {
+            "text": text,
+            "surfaceLinks": links,
+        }
+
 
 def clean_wikihtml(cell):
     if cell:
@@ -207,40 +268,7 @@ def indexify_header(df, level=1, cells=None):
     return df
 
 
-def cell_extract_wikilinks(node):
-    if not node:
-        return
 
-    curOffset = 0
-    for a in node.find_all("a"):
-        parent_text = Extractor.get_cell_text(node)
-        surface = Extractor.get_cell_text(a)
-        offset = parent_text[curOffset:].index(surface) + curOffset
-        endOffset = offset + len(surface)
-        curOffset = endOffset
-
-        href = a.attrs.get("href")
-        if href:
-            target = {"href": href}
-            if href.startswith("#"):
-                linkType = "PAGE"
-            elif href.startswith("http://www.wikipedia.org/") or not href.startswith(
-                "http"
-            ):
-                linkType = "INTERNAL"
-                target["title"] = href.split("/")[-1]
-            elif href.startswith("http"):
-                linkType = "EXTERNAL"
-            else:
-                linkType = "UNKNOWN"
-
-            yield dict(
-                offset=offset,
-                endOffset=endOffset,
-                surface=surface,
-                linkType=linkType,
-                target=target,
-            )
 
 
 def vertically_split_tables_on_subheaders(htmlrows):
@@ -282,7 +310,7 @@ def hack_annoying_layouts(all_htmlrows):
     return all_htmlrows
 
 
-def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None):
+def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None, link_pattern=None):
     """Extract tables from html in Baghavatula's json format
     
     Also vertically splits tables on rows that are all ``th`` elements (subheaders).
@@ -298,9 +326,22 @@ def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None):
     if not htmlpage:
         return
 
+    extract_links_pattern = re.compile(link_pattern) if link_pattern else None
+
     htmlpage = htmlpage.replace('<th>scope="row"</th>', "")  # Kiwix fix hack
 
     soup = BeautifulSoup(htmlpage, "html.parser")
+    
+    surface_links = {}
+    surface_pattern = None
+    if extract_links_pattern is not None:
+        for a in soup.find_all('a'):
+            href = a.attrs.get('href')
+            if href and extract_links_pattern.match(href) and a.text.strip():
+                surface_links[a.text] = href
+        surface_pattern = re.compile("|".join(map(re.escape, surface_links.keys())))
+        log.debug(f"Got {len(surface_links)} extra surface links")
+
     for page in soup.find_all("html"):
         if pgTitle is None:
             pgTitle = ""
@@ -352,16 +393,7 @@ def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None):
                         else (tableData, td)
                     )
                     row = [(row[i] if i < len(row) else e) for i in range(numCols)]
-
-                    h.append(
-                        [
-                            {
-                                "text": Extractor.get_cell_text(cell),
-                                "surfaceLinks": list(cell_extract_wikilinks(cell)),
-                            }
-                            for cell in row
-                        ]
-                    )
+                    h.append([Extractor.get_cell_dict(cell, surface_pattern, surface_links) for cell in row])
 
                 if tableData:
                     numDataRows = len(tableData)

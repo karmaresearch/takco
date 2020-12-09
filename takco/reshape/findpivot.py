@@ -141,7 +141,7 @@ class PivotFinder:
             df.index.names = df.index.names[:-1] + [(var_name,)]
             df = df.to_frame((value_name,)).reset_index()
         
-        return df.columns.to_frame().T.values, df.values
+        return df.columns.to_frame().T.values, df.fillna('').values
 
 class UnpivotException(Exception):
     pass
@@ -163,7 +163,7 @@ def yield_pivots(headertexts: Iterable[Collection[Collection[str]]], heuristics:
                         heuristic.unpivot(headertext, dummy, pivot)
                         yield Table.get_headerId(headertext), pivot
                     except Exception as e:
-                        log.debug(f"Failed to unpivot header {headertext} due to {e}")
+                        log.debug(f"Failed to unpivot header {headertext} with {pivot.source} due to {e}")
 
 def try_unpivot(table, pivot, named_heuristics):
     try:
@@ -400,7 +400,7 @@ class SpannedRepeat(PivotFinder):
             fromto = header_fromto[ri]
             for ci, cell in enumerate(row):
                 f, t = fromto[ci]
-                if colspan[ci] > 1:
+                if cell and (colspan[ci] > 1):
                     # This cell is spanning
                     for rj in range(len(headerrows)):
                         for cspan in range(f, t + 1):

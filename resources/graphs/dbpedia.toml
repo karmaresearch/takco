@@ -1,11 +1,8 @@
 [dbpedia_t2ksubset]
 class = 'link.RDFSearcher'
 labelProperties = ['http://dbpedia.org/ontology/title']
-store = {class = 'link.Trident', configuration = 'data/kb/dbpedia_t2ksubset/db/'}
-
-
-
-
+store_classname = 'takco.link.Trident'
+store_kwargs = {configuration = 'data/kb/dbpedia_t2ksubset/db/'}
 
 [dbpedia_t2ksubset_extralabels]
 class = 'link.SQLiteSearcher'
@@ -14,17 +11,15 @@ baseuri = 'http://dbpedia.org/resource/'
     [dbpedia_t2ksubset_extralabels.graph]
     class = 'link.RDFSearcher'
     labelProperties = ['http://dbpedia.org/ontology/title']
-    store = {class = 'link.Trident', configuration = 'data/kb/dbpedia_t2ksubset/db+extralabels/'}
+    store_classname = 'takco.link.Trident'
+    store_kwargs = {configuration = 'data/kb/dbpedia_t2ksubset/db+extralabels/'}
 
 [dbpedialookup_t2ksubset]
 class = 'link.SQLiteSearcher'
 files = 'data/dbpedia-lookup-sqlitedbs/*'
 baseuri = 'http://dbpedia.org/resource/'
 fallback = {class = 'link.DBpediaLookup'}
-    [dbpedialookup_t2ksubset.graph]
-    class = 'link.RDFSearcher'
-    labelProperties = ['http://dbpedia.org/ontology/title']
-    store = {class = 'link.Trident', configuration = 'data/kb/dbpedia_t2ksubset/db/'}
+graph = {resolve = 'dbpedia_t2ksubset'}
 
 
 

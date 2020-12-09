@@ -2,7 +2,7 @@ import rdflib
 import logging as log
 from rdflib import URIRef, Literal
 from rdflib.store import Store as RDFStore
-from typing import List, Dict, Tuple, Collection, Iterable
+from typing import Any, Optional, List, Dict, Tuple, Collection, Iterable
 from dataclasses import dataclass
 import datetime
 import re
@@ -19,7 +19,6 @@ from ..base import (
 from ..types import SimpleTyper
 from ..integrate import NaryDB, NaryMatchResult, QualifierMatchResult
 
-
 def encode_wikidata(query):
     import json
 
@@ -28,40 +27,37 @@ def encode_wikidata(query):
     newquery = "".join(chars)
     return newquery
 
-@dataclass
 class GraphDB(Database):
-    store: RDFStore
-    labelProperties: Collection[str] = ()
-    typeProperties: Collection[str] = ()
+    store_classname: str
+    store_kwargs: Dict[str, Any]
+    store: Optional[RDFStore] = None
+
+    def __init__(self, store_classname: str, store_kwargs: Dict[str, Any]):
+        assert store_classname and isinstance(store_kwargs, dict)
+        self.store_classname = store_classname
+        self.store_kwargs = store_kwargs
+        self.store = None
 
     def __enter__(self):
         try:
-            self.store.open(self.store.endpoint)
+            from importlib import import_module
+
+            modulename, classname = self.store_classname.rsplit('.', 1)
+            cls = getattr(import_module(modulename), classname)
+            self.store = cls(**self.store_kwargs)
         except Exception as e:
-            log.warn(f"Could not open graph due to {e}")
+            log.warn(f"Could not open RDF store due to {e}")
         return self
 
     def __exit__(self, *args):
-        self.store.close()
+        del self.store
 
-    def triples(self, triplepattern, **kwargs):
-        return (t for t, _ in self.store.triples(triplepattern, **kwargs))
-
-    def get_prop_values(self, e, p):
-        return set(o for _, _, o in self.triples([URIRef(e), URIRef(p), None]))
-
-    def about(self, uri, att_uris=None):
-        about = {}
-        if att_uris and hasattr(att_uris, "__iter__"):
-            for att in att_uris:
-                for _, p, o in self.triples([URIRef(uri), URIRef(att), None]):
-                    about.setdefault(p, []).append(o)
-        else:
-            for _, p, o in self.triples([URIRef(uri), None, None]):
-                about.setdefault(p, []).append(o)
-        return about
+    def triples(self, triplepattern):
+        assert self.store is not None
+        return (t for t, _ in self.store.triples(triplepattern, None))
 
     def count(self, triplepattern):
+        assert self.store is not None
         if hasattr(self.store, "count"):
             return self.store.count(triplepattern)
         elif hasattr(self.store, "hdt_document"):
@@ -72,7 +68,22 @@ class GraphDB(Database):
             return len(ts) if hasattr(ts, "__len__") else sum(1 for _ in ts)
 
     def __len__(self):
+        assert self.store is not None
         return self.store.__len__()
+
+    def get_prop_values(self, e, p):
+        return set(o for _, _, o in self.triples([URIRef(e), URIRef(p), None]))
+
+    def about(self, uri, att_uris=None):
+        about: Dict[str, List[str]] = {}
+        if att_uris and hasattr(att_uris, "__iter__"):
+            for att in att_uris:
+                for _, p, o in self.triples([URIRef(uri), URIRef(att), None]):
+                    about.setdefault(p, []).append(o)
+        else:
+            for _, p, o in self.triples([URIRef(uri), None, None]):
+                about.setdefault(p, []).append(o)
+        return about
 
 
 class RDFSearcher(Searcher, GraphDB, NaryDB):
@@ -91,7 +102,8 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
 
     def __init__(
         self,
-        store=None,
+        store_classname: str,
+        store_kwargs: Dict[str, Any],
         language="en",
         refsort=True,
         typer: Typer = SimpleTyper(),
@@ -103,7 +115,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
         statementURIprefix=None,
         **kwargs,
     ):
-        GraphDB.__init__(self, store=store)
+        GraphDB.__init__(self, store_classname, store_kwargs)
         self.language = language
         self.labelProperties = [URIRef(p) for p in labelProperties] + [
             URIRef("http://www.w3.org/2004/02/skos/core#prefLabel"),

@@ -47,26 +47,29 @@ discard_headerless_tables = true
     [[step.unpivot_heuristics]]
     name = 'year-prefix'
     class = 'reshape.RegexFinder'
-    find_regex = '[\W\s]*[0-9]{4}.*'
-    split_regex = '(?P<cell>[\d\W]{4})[\W\s]*(?P<head>.*?)[\W\s]*$'
+    pattern = '[\W\s]*(?P<val>[\d\W]{4})[\W\s]*(?P<var>.*?)[\W\s]*$'
 
     [[step.unpivot_heuristics]]
     name = 'year-suffix'
     class = 'reshape.RegexFinder'
-    find_regex = '.*([–0-9]{4}|present)+[\W\s]*$'
-    split_regex = '(?P<head>.*?)[\W\s]*(?P<cell>([–0-9]{4}|present)+)[\W\s]*$'
+    pattern = '(?P<var>.*?)[\W\s]*(?P<val>([–0-9]{4}|present)+)[\W\s]*$'
     
     [[step.unpivot_heuristics]]
     name = 'short-uppercase-acronyms'
     class = 'reshape.RegexFinder'
-    find_regex = '[A-Z]{3,4}$'
+    pattern = '(?P<var>[A-Z]{3,4})$'
     min_len = 3
 
     [[step.unpivot_heuristics]]
     name = 'time'
     class = 'reshape.RegexFinder'
-    find_regex = '.*\d{1,2}:\d{2} ?[AP]M.*'
-    split_regex = '(?P<head>.*?)[\W\s]*(?P<cell>\d{1,2}:\d{2}[AP]M).*'
+    pattern = '(?P<var>.*?)[\W\s]*(?P<val>\d{1,2}:\d{2}[AP]M).*'
+
+    [[step.unpivot_heuristics]]
+    name = 'sports-round'
+    class = 'reshape.RegexFinder'
+    pattern = '(?P<val>(\d+|OT|Total))$'
+    min_len = 2
 
     [[step.unpivot_heuristics]]
     class = 'reshape.SpannedRepeat'
@@ -91,6 +94,7 @@ discard_headerless_tables = true
     ]
     id_props = [
         'http://www.wikidata.org/prop/direct/P1687', # main property
+        'http://www.wikidata.org/prop/direct/P279', # subclass of
     ]
 
     [[step.unpivot_heuristics]]
@@ -106,12 +110,6 @@ discard_headerless_tables = true
     class = 'reshape.Rule'
     name = 'baseball'
     value_vars = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'R', 'H', 'E']
-
-    [[step.unpivot_heuristics]]
-    name = 'sports-round'
-    class = 'reshape.RegexFinder'
-    find_regex = '^[\W\s]*(\d+|OT|Total)[\W\s]*$'
-    split_regex = '(?P<cell>.*)$'
 
     [[step.unpivot_heuristics]]
     class = 'reshape.Rule'

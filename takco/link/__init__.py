@@ -3,14 +3,6 @@ from typing import List, Dict, Union, Optional
 import logging as log
 import string
 
-from .base import *
-from .db import *
-from .linkers import *
-from .integrate import *
-from .profile import *
-from .types import *
-
-
 from rdflib import Graph, URIRef
 
 try:
@@ -18,6 +10,15 @@ try:
 except:
     log.info(f"Library rdflib_hdt is not available")
 
+
+from .base import *
+from .db import *
+from .linkers import *
+from .integrate import *
+from .profile import *
+from .types import *
+
+from takco import Table
 
 def get_hrefs(datarows, lookup_cells=False):
     def cell_ok(c):
@@ -59,9 +60,11 @@ def lookup_hyperlinks(tables: List[dict], lookup: Lookup, lookup_cells=False):
     assert isinstance(lookup, Lookup)
     with lookup:
         for table in tables:
+            table = Table(table)
+
             log.debug(f"Looking up hyperlinks of {table.get('_id')} using {lookup}")
             hrefs = get_hrefs(table.get("tableData", []), lookup_cells=lookup_cells)
-            ents = table.setdefault("entities", {})
+            ents = table.annotations.setdefault("entities", {})
             for ci, ri_ents in lookup.lookup_cells(hrefs).items():
                 for ri, es in ri_ents.items():
                     ents.setdefault(ci, {}).setdefault(ri, {}).update(es)
@@ -83,7 +86,9 @@ def link(
     assert isinstance(linker, Linker)
     with linker:
         for table in tables:
-            rows = [[c.get("text", "") for c in row] for row in table["tableData"]]
+            table = Table(table)
+            rows = table.body
+
             if not rows:
                 log.debug(f"No rows in table {table.get('_id')}")
 
@@ -127,7 +132,7 @@ def link(
                 log.debug(f"Linking table {table.get('_id')}")
 
             links = linker.link(rows, usecols=table_usecols, existing=table)
-            table.update(links)
+            table.annotations.update(links)
             yield table
 
             linker.flush()
@@ -152,9 +157,10 @@ def coltypes(tables: List[dict], typer: Typer):
     assert isinstance(typer, Typer)
     with typer:
         for table in tables:
+            table = Table(table)
 
             # Find column types
-            ci_classes = table.setdefault("classes", {})
+            ci_classes = table.annotations.setdefault("classes", {})
             for ci, cell_ents in enumerate(get_col_cell_ents(table)):
                 cell_ents = list(dict(cell_ents).items())
 
@@ -177,17 +183,19 @@ def integrate(tables: List[dict], db: NaryDB, pfd_threshold=0.9):
     with db:
 
         for table in tables:
+            table = Table(table)
+
             log.debug(
                 "Integrating table %s (%d rows)",
                 table.get("_id"),
-                len(table.get("tableData", [])),
+                table["numDataRows"],
             )
 
             # Find key column
             profiler = PFDProfiler()
             ci_literal = {
                 int(ci): any(SimpleTyper().is_literal_type(t) for t in ts)
-                for ci, ts in table.get("classes", {}).items()
+                for ci, ts in table.annotations.get("classes", {}).items()
             }
             usecols = [ci for ci in range(table["numCols"]) if not ci_literal.get(ci)]
             rows = [[c.get("text") for c in row] for row in table.get("tableData", [])]
@@ -209,6 +217,6 @@ def integrate(tables: List[dict], db: NaryDB, pfd_threshold=0.9):
             for tocol, fromcolprop in tocol_fromcolprop.items():
                 for fromcol, prop in fromcolprop.items():
                     properties.setdefault(str(fromcol), {}).setdefault(str(tocol), prop)
-            table.update({"properties": properties})
+            table.annotations["properties"] = properties
 
             yield table

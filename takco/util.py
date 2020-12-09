@@ -336,7 +336,7 @@ def preview(tables, nrows=5, ntables=10, nchars=50, hide_correct_rows=False):
 
     content = ""
     for i, table in enumerate(tables):
-        table = copy.deepcopy(table)
+        table = Table(table).to_dict()
 
         ri_ann = {}
         hidden_rows = {}

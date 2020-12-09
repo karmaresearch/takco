@@ -31,8 +31,7 @@ def restructure(tables: typ.Iterable[Table], prefix_header_rules=(), max_cols=10
 
     for table in tables:
         try:
-            if isinstance(table, Table):
-                table = table.to_dict()
+            table = Table(table).to_dict()
 
             if table.get('numCols', 0) >= max_cols:
                 continue
@@ -40,7 +39,6 @@ def restructure(tables: typ.Iterable[Table], prefix_header_rules=(), max_cols=10
             if any('tdHtmlString' in c for r in table.get('tableHeaders') for c in r):
                 hs = table.get('tableHeaders', [])
                 if all(c.get('tdHtmlString', '')[:3] == '<td' for r in hs for c in r):
-                    print('YES')
                     table['tableData'] = hs + table.get('tableData', [])
                     table['tableHeaders'] = []
             

@@ -2,24 +2,21 @@
 class = 'link.RDFSearcher'
 encoding = 'wikidata'
 typeProperties = ['http://www.wikidata.org/prop/direct/P31']
-    [wikidata-trident.store]
-    class = 'link.Trident'
-    configuration = 'data/wikidata.tridentdb'
+store_classname = 'takco.link.Trident'
+store_kwargs = {configuration = 'data/wikidata.tridentdb'}
 
 [wikidata-live]
 class = 'link.RDFSearcher'
 typeProperties = ['http://www.wikidata.org/prop/direct/P31']
-    [wikidata-live.store]
-    class = 'link.SparqlStore'
-    configuration = 'https://query.wikidata.org/sparql'
+store_classname = 'takco.link.SparqlStore'
+store_kwargs = {configuration = 'https://query.wikidata.org/sparql'}
 
 [wikidata-hdt]
 class = 'link.RDFSearcher'
 encoding = 'wikidata'
 typeProperties = ['http://www.wikidata.org/prop/direct/P31']
-    [wikidata-hdt.store]
-    class = 'link.HDTStore'
-    path = '/var/scratch/bbkruit/wikidata20200309.hdt'
+store_classname = 'takco.link.HDTStore'
+store_kwargs = {path = '/var/scratch/bbkruit/wikidata20200309.hdt'}
     
 
 [wdid-sqlite]
