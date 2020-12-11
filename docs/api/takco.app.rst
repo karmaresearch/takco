@@ -14,4 +14,3 @@ Submodules
 
    takco.app.data
    takco.app.stats
-   takco.app.views

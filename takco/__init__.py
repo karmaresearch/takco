@@ -117,7 +117,6 @@ class TableSet:
         else:
             htmlpages = HashBag(source)
 
-
         return TableSet(htmlpages.pipe(extract.extract_tables))
 
     def reshape(
@@ -147,8 +146,10 @@ class TableSet:
             tables = tables.pipe(reshape.restructure, prefix_header_rules)
 
         if unpivot_heuristics is not None:
-            
-            log.info(f"Unpivoting with heuristics: {', '.join(u.name for u in unpivot_heuristics)}")
+
+            log.info(
+                f"Unpivoting with heuristics: {', '.join(u.name for u in unpivot_heuristics)}"
+            )
 
             tables = tables.persist()
             log.debug(f"Got {len(tables)} tables")
@@ -163,13 +164,15 @@ class TableSet:
             if centralize_pivots:
                 log.debug(f"Finding unpivots centrally...")
                 headers = tables.fold(reshape.table_get_headerId, reshape.get_header)
-                headerId_pivot = dict(headers.pipe(reshape.yield_pivots, heuristics=unpivot_heuristics))
+                headerId_pivot = dict(
+                    headers.pipe(reshape.yield_pivots, heuristics=unpivot_heuristics)
+                )
                 log.info(f"Found {len(headerId_pivot)} pivots")
 
             log.debug(f"Unpivoting...")
             tables = tables.pipe(
-                reshape.unpivot_tables, 
-                headerId_pivot=headerId_pivot, 
+                reshape.unpivot_tables,
+                headerId_pivot=headerId_pivot,
                 heuristics=unpivot_heuristics,
             )
 
@@ -183,7 +186,7 @@ class TableSet:
                     headers = t.get("tableHeaders", [])
                     if any(h.get("text") for hrow in headers for h in hrow):
                         yield t
-            
+
             log.debug(f"Discarding headerless tables...")
             tables = tables.pipe(filter_headerless)
 
@@ -569,15 +572,16 @@ class TableSet:
         """
         tables = list(TableSet(self).tables)
 
-        data = evaluate.report(tables,
-            keycol_only = keycol_only,
-            curve = curve,
-            any_annotated = any_annotated,
-            only_annotated = only_annotated,
+        data = evaluate.report(
+            tables,
+            keycol_only=keycol_only,
+            curve=curve,
+            any_annotated=any_annotated,
+            only_annotated=only_annotated,
         )
-        data['category'] = 'all'
+        data["category"] = "all"
         reports = [data]
-        
+
         if category_split:
             cat_tables = {}
             for t in tables:
@@ -585,15 +589,16 @@ class TableSet:
             for cat, ctables in cat_tables.items():
                 if cat:
                     log.info(f"Making report for {cat}...")
-                    data = evaluate.report(ctables,
-                        keycol_only = keycol_only,
-                        curve = curve,
-                        any_annotated = any_annotated,
-                        only_annotated = only_annotated,
+                    data = evaluate.report(
+                        ctables,
+                        keycol_only=keycol_only,
+                        curve=curve,
+                        any_annotated=any_annotated,
+                        only_annotated=only_annotated,
                     )
-                    data['category'] = cat
+                    data["category"] = cat
                     reports.append(data)
-            
+
         return TableSet(reports)
 
     @classmethod
@@ -680,8 +685,8 @@ class TableSet:
                 tableset.tables.persist()
                 for split, splitargs in enumerate(stepargs["split"]):
                     splitargs = dict(splitargs)
-                    if 'name' in splitargs:
-                        splitname = splitargs.pop('name')
+                    if "name" in splitargs:
+                        splitname = splitargs.pop("name")
                     else:
                         splitname = f"{si}-split-{split}"
                     splitpath = os.path.join(steppath, splitname)

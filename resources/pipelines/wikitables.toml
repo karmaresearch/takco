@@ -1,8 +1,5 @@
-name = 'TabEL'
-
-
 [[assets]]
-name  = 'tabel'
+name  = 'tabel-source'
 class = 'Annotation'
 download = [
     'http://websail-fe.cs.northwestern.edu/TabEL/tables.json.gz',
@@ -24,10 +21,11 @@ resolve = 'wikidata-trident'
 
 ## Pipeline ##
 
-[inputs]
-# path = '/bigstore/kruit/tabel/split-parts/*'
+[tabel]
 path = 'hdfs://bricks07:9000/user/kruit/tabel/*'
-# executor = {class = 'DaskHashBag', address = 'tcp://192.168.62.207:8786'}
+
+[wikidump]
+path = 'hdfs://bricks07:9000/user/kruit/wikidump-tables/*'
 
 [[step]]
 step = 'reshape'
@@ -47,12 +45,12 @@ discard_headerless_tables = true
     [[step.unpivot_heuristics]]
     name = 'year-prefix'
     class = 'reshape.RegexFinder'
-    pattern = '[\W\s]*(?P<val>[\d\W]{4})[\W\s]*(?P<var>.*?)[\W\s]*$'
+    pattern = '[\W\s]*(?P<val>(–|[0-9]{4}|present)+)[\W\s]*(?P<var>.*?)[\W\s]*$'
 
     [[step.unpivot_heuristics]]
     name = 'year-suffix'
     class = 'reshape.RegexFinder'
-    pattern = '(?P<var>.*?)[\W\s]*(?P<val>([–0-9]{4}|present)+)[\W\s]*$'
+    pattern = '(?P<var>.*?)[\W\s]*(?P<val>(–|[0-9]{4}|present)+)[\W\s]*$'
     
     [[step.unpivot_heuristics]]
     name = 'short-uppercase-acronyms'

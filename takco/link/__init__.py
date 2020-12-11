@@ -20,12 +20,13 @@ from .types import *
 
 from takco import Table
 
+
 def get_hrefs(datarows, lookup_cells=False):
     def cell_ok(c):
         if isinstance(c, dict):
             c = c.get("text", "")
         return bool(c and (not c.isnumeric()) and len(c) > 1)
-    
+
     hrefrows = []
     for row in datarows:
         hrefrow = []
@@ -37,13 +38,13 @@ def get_hrefs(datarows, lookup_cells=False):
                     h = target.get("href", target.get("title", "")).rsplit("/", 1)[-1]
                     hrefs.append(h)
                 if lookup_cells and cell_ok(c):
-                    hrefs.append( c.get("text").strip() )
+                    hrefs.append(c.get("text").strip())
             else:
                 if lookup_cells and cell_ok(c):
                     hrefs.append(str(c))
-                for _, _, v in getattr(c, 'links', []):
+                for _, _, v in getattr(c, "links", []):
                     hrefs.append(v)
-                    
+
             hrefrow.append(hrefs)
         hrefrows.append(hrefrow)
     return hrefrows

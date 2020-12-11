@@ -14,18 +14,21 @@ EMPTY_CELL = {
     "isNumeric": False,
 }
 
-def restructure(tables: typ.Iterable[Table], prefix_header_rules=(), max_cols=100) -> typ.Iterable[Table]:
+
+def restructure(
+    tables: typ.Iterable[Table], prefix_header_rules=(), max_cols=100
+) -> typ.Iterable[Table]:
     """Restructure tables.
 
     Performs all sorts of heuristic cleaning operations, including:
 
-        - Remove empty columns (:meth:`takco.extract.clean.remove_empty_columns`)
-        - Deduplicate header rows (:meth:`takco.extract.clean.deduplicate_header_rows`)
-        - Remove empty header rows (:meth:`takco.extract.clean.remove_empty_header_rows`)
-        - Process rowspanning head cells (:meth:`takco.extract.clean.process_rowspanning_head_cells`)
-        - Restack horizontal schema repeats (:meth:`takco.extract.clean.restack_horizontal_schema_repeats`)
-        - Remove empty rows (:meth:`takco.extract.clean.remove_empty_rows`)
-        - Process rowspanning body cells (:meth:`takco.extract.clean.process_rowspanning_body_cells`)
+        - Remove empty columns (:meth:`takco.reshape.clean.remove_empty_columns`)
+        - Deduplicate header rows (:meth:`takco.reshape.clean.deduplicate_header_rows`)
+        - Remove empty header rows (:meth:`takco.reshape.clean.remove_empty_header_rows`)
+        - Process rowspanning head cells (:meth:`takco.reshape.clean.process_rowspanning_head_cells`)
+        - Restack horizontal schema repeats (:meth:`takco.reshape.clean.restack_horizontal_schema_repeats`)
+        - Remove empty rows (:meth:`takco.reshape.clean.remove_empty_rows`)
+        - Process rowspanning body cells (:meth:`takco.reshape.clean.process_rowspanning_body_cells`)
 
     """
 
@@ -33,15 +36,15 @@ def restructure(tables: typ.Iterable[Table], prefix_header_rules=(), max_cols=10
         try:
             table = Table(table).to_dict()
 
-            if table.get('numCols', 0) >= max_cols:
+            if table.get("numCols", 0) >= max_cols:
                 continue
 
-            if any('tdHtmlString' in c for r in table.get('tableHeaders') for c in r):
-                hs = table.get('tableHeaders', [])
-                if all(c.get('tdHtmlString', '')[:3] == '<td' for r in hs for c in r):
-                    table['tableData'] = hs + table.get('tableData', [])
-                    table['tableHeaders'] = []
-            
+            if any("tdHtmlString" in c for r in table.get("tableHeaders") for c in r):
+                hs = table.get("tableHeaders", [])
+                if all(c.get("tdHtmlString", "")[:3] == "<td" for r in hs for c in r):
+                    table["tableData"] = hs + table.get("tableData", [])
+                    table["tableHeaders"] = []
+
             init_captions(table)
 
             # Analyze headers & data together
@@ -67,6 +70,7 @@ def restructure(tables: typ.Iterable[Table], prefix_header_rules=(), max_cols=10
             # raise e
             log.debug(e)
 
+
 def init_captions(table):
     table["tableCaptions"] = []
     if "tableCaption" in table and table["tableCaption"] != table["sectionTitle"]:
@@ -80,7 +84,7 @@ def remove_empty_columns(table):
     col_empty = {}
     for i, bodycol in enumerate(zip(*table["tableData"])):
         col_empty[i] = not any(c.get("text", "").strip() for c in bodycol)
-    
+
     if any(col_empty.values()):
         table["tableHeaders"] = [
             [cell for c, cell in enumerate(row) if not col_empty.get(c, False)]

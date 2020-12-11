@@ -32,6 +32,7 @@ RDFSUBCLASS = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 @dataclass
 class SimpleTyper(Typer):
     use_dateparser: str = "dateutil"
+    stringmatch: str = "jaccard"
     NUMBER = "http://www.w3.org/2001/XMLSchema#decimal"
     ENTITY = "http://www.w3.org/2002/07/owl#Thing"
     TEXT = "http://www.w3.org/2001/XMLSchema#string"
@@ -120,7 +121,7 @@ class SimpleTyper(Typer):
         return {}
 
     @classmethod
-    def literal_match(cls, literal: Literal, surface: str, stringmatch="jaccard"):
+    def literal_match(cls, literal: Literal, surface: str):
 
         dtype = literal.datatype if hasattr(literal, "datatype") else None
         literal, surface = str(literal).strip(), str(surface).strip()
@@ -167,11 +168,11 @@ class SimpleTyper(Typer):
 
         elif surface and literal:
             # Strings may match approximately
-            if stringmatch == "jaccard":
+            if self.stringmatch == "jaccard":
                 s, l = set(surface.lower().split()), set(literal.lower().split())
                 if s and l:
                     score = len(s & l) / len(s | l)
-            elif stringmatch == "levenshtein":
+            elif self.stringmatch == "levenshtein":
                 import Levenshtein
 
                 s, l = surface.lower(), literal.lower()

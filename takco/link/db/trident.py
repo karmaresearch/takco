@@ -67,8 +67,8 @@ class Trident(rdflib.store.Store):
             ns: Namespace dict
         """
         if not os.path.isdir(configuration):
-            raise Exception(f'Trident db path {configuration} does not exist!')
-        
+            raise Exception(f"Trident db path {configuration} does not exist!")
+
         self.configuration = configuration
         self._db = None
         self.ent_baseuri = ent_baseuri
@@ -80,8 +80,8 @@ class Trident(rdflib.store.Store):
         if not configuration:
             configuration = self.configuration
         if not os.path.isdir(configuration):
-            raise Exception(f'Trident db path {configuration} does not exist!')
-        
+            raise Exception(f"Trident db path {configuration} does not exist!")
+
         import trident
 
         self._db = trident.Db(configuration)

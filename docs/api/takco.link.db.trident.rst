@@ -1,7 +1,7 @@
-takco.reshape.headers module
+takco.link.db.trident module
 ============================
 
-.. automodule:: takco.reshape.headers
+.. automodule:: takco.link.db.trident
    :members:
    :undoc-members:
    :show-inheritance:

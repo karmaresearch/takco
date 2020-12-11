@@ -13,17 +13,18 @@ import re
 from .dataset import Dataset
 
 categories = {
- 'CTRL_NOISE2': 'CTRL_.+_NOISE2',
- 'TOUGH_NOISE1': 'TOUGH_.+_NOISE1',
- 'TOUGH_NOISE2': 'TOUGH_.+_NOISE2',
- 'CTRL_WIKI': 'CTRL_WIKI',
- 'CTRL_DBP': 'CTRL_DBP',
- 'TOUGH_T2D': 'TOUGH_T2D',
- 'TOUGH_MISC': 'TOUGH_.+_MISC',
- 'TOUGH_MISSP': 'TOUGH_.+_MISSP',
- 'TOUGH_SORTED': 'TOUGH_.+_SORTED',
- 'TOUGH_HOMO': 'TOUGH_.+_HOMO',
+    "CTRL_NOISE2": "CTRL_.+_NOISE2",
+    "TOUGH_NOISE1": "TOUGH_.+_NOISE1",
+    "TOUGH_NOISE2": "TOUGH_.+_NOISE2",
+    "CTRL_WIKI": "CTRL_WIKI",
+    "CTRL_DBP": "CTRL_DBP",
+    "TOUGH_T2D": "TOUGH_T2D",
+    "TOUGH_MISC": "TOUGH_.+_MISC",
+    "TOUGH_MISSP": "TOUGH_.+_MISSP",
+    "TOUGH_SORTED": "TOUGH_.+_SORTED",
+    "TOUGH_HOMO": "TOUGH_.+_HOMO",
 }
+
 
 class ToughTables(Dataset):
     def __init__(

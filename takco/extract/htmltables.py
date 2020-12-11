@@ -4,6 +4,7 @@ import logging as log
 
 from takco import Table
 
+
 class Extractor(object):
     """
     Extracts cells from tables with colspans and rowspans
@@ -176,9 +177,9 @@ class Extractor(object):
                 target = {"href": href}
                 if href.startswith("#"):
                     linkType = "PAGE"
-                elif href.startswith("http://www.wikipedia.org/") or not href.startswith(
-                    "http"
-                ):
+                elif href.startswith(
+                    "http://www.wikipedia.org/"
+                ) or not href.startswith("http"):
                     linkType = "INTERNAL"
                     target["title"] = href.split("/")[-1]
                 elif href.startswith("http"):
@@ -193,7 +194,7 @@ class Extractor(object):
                     linkType=linkType,
                     target=target,
                 )
-    
+
     @classmethod
     def get_extra_links(cls, celltext, surface_pattern, surface_links):
         for m in surface_pattern.finditer(celltext):
@@ -207,7 +208,7 @@ class Extractor(object):
                 linkType="INTERNAL",
                 target=target,
             )
-    
+
     @classmethod
     def get_cell_dict(cls, cell, surface_pattern=None, surface_links=()):
         text = cls.get_cell_text(cell)
@@ -268,11 +269,8 @@ def indexify_header(df, level=1, cells=None):
     return df
 
 
-
-
-
 def vertically_split_tables_on_subheaders(htmlrows):
-    subtable = [] # type: ignore
+    subtable = []  # type: ignore
     prev_row_is_header = True
 
     for row in htmlrows:
@@ -281,7 +279,7 @@ def vertically_split_tables_on_subheaders(htmlrows):
         # make subheader
         if row_is_header and len(row) > 1 and len(set(row)) == 1:
             for c in row:
-                c.name = 'td'
+                c.name = "td"
             row_is_header = False
 
         if (not prev_row_is_header) and row_is_header:
@@ -310,7 +308,9 @@ def hack_annoying_layouts(all_htmlrows):
     return all_htmlrows
 
 
-def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None, link_pattern=None):
+def page_extract_tables(
+    htmlpage: str, aboutURI=None, pgTitle=None, pgId=None, link_pattern=None
+):
     """Extract tables from html in Baghavatula's json format
     
     Also vertically splits tables on rows that are all ``th`` elements (subheaders).
@@ -331,12 +331,12 @@ def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None, l
     htmlpage = htmlpage.replace('<th>scope="row"</th>', "")  # Kiwix fix hack
 
     soup = BeautifulSoup(htmlpage, "html.parser")
-    
+
     surface_links = {}
     surface_pattern = None
     if extract_links_pattern is not None:
-        for a in soup.find_all('a'):
-            href = a.attrs.get('href')
+        for a in soup.find_all("a"):
+            href = a.attrs.get("href")
             if href and extract_links_pattern.match(href) and len(a.text.strip()) > 1:
                 surface_links[a.text.strip()] = href
         surface_pattern = re.compile("|".join(map(re.escape, surface_links.keys())))
@@ -393,24 +393,33 @@ def page_extract_tables(htmlpage: str, aboutURI=None, pgTitle=None, pgId=None, l
                         else (tableData, td)
                     )
                     row = [(row[i] if i < len(row) else e) for i in range(numCols)]
-                    h.append([Extractor.get_cell_dict(cell, surface_pattern, surface_links) for cell in row])
+                    h.append(
+                        [
+                            Extractor.get_cell_dict(
+                                cell, surface_pattern, surface_links
+                            )
+                            for cell in row
+                        ]
+                    )
 
                 if tableData:
                     numDataRows = len(tableData)
                     numHeaderRows = len(tableHeaders)
                     log.debug(f"Extracted table {tableId} from {pgTitle}")
-                    yield Table(dict(
-                        _id=f"{pgId}#{tableId}",
-                        pgId=pgId,
-                        pgTitle=pgTitle,
-                        tableId=tableId,
-                        aboutURI=aboutURI,
-                        sectionTitle=sectionTitle,
-                        tableCaption=tableCaption,
-                        numCols=numCols,
-                        numDataRows=numDataRows,
-                        numHeaderRows=numHeaderRows,
-                        tableData=tableData,
-                        tableHeaders=tableHeaders,
-                        originalHTML=str(table),
-                    ))
+                    yield Table(
+                        dict(
+                            _id=f"{pgId}#{tableId}",
+                            pgId=pgId,
+                            pgTitle=pgTitle,
+                            tableId=tableId,
+                            aboutURI=aboutURI,
+                            sectionTitle=sectionTitle,
+                            tableCaption=tableCaption,
+                            numCols=numCols,
+                            numDataRows=numDataRows,
+                            numHeaderRows=numHeaderRows,
+                            tableData=tableData,
+                            tableHeaders=tableHeaders,
+                            originalHTML=str(table),
+                        )
+                    )

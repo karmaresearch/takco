@@ -9,7 +9,6 @@ def get_cell_noveltyhashes(triples, kb):
 
     log.warn(kb)
 
-
     task_novelty_hashes = defaultdict(lambda: defaultdict(set))
     for t in triples:
         novelty_hashes = task_novelty_hashes[t.get("kind")]
@@ -30,7 +29,7 @@ def get_cell_noveltyhashes(triples, kb):
         if t.get("pred"):
             novelty_hashes["pred"].add(triplehash)
 
-        os = kb.get_prop_values(s,p)
+        os = kb.get_prop_values(s, p)
         if not os:
             novelty_hashes["attnovel"].add(triplehash)
         else:
@@ -39,9 +38,7 @@ def get_cell_noveltyhashes(triples, kb):
                 if val:
                     # TODO: datatype match?
                     literal_match = lambda: any(
-                        m
-                        for o in os
-                        for m in kb.typer.literal_match(o, val, kb.stringmatch)
+                        m for o in os for m in kb.typer.literal_match(o, val)
                     )
                     label_match = lambda: any(
                         m for o in os for m in kb.label_match(o, val)
@@ -93,7 +90,7 @@ def count_noveltyhashes(task_novelty_hashes):
                 pass
 
     return [
-        {'task':task, 'novelty': novelty, **counts}
+        {"task": task, "novelty": novelty, **counts}
         for task, nov_counts in task_novelty_counts.items()
         for novelty, counts in nov_counts.items()
     ]

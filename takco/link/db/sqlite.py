@@ -140,12 +140,13 @@ class SQLiteLookup(SQLiteCache, Lookup):
             self._write_cache()
 
     def lookup_title(self, title: str) -> typing.Optional[str]:
+        """Gets the URI for a DBpedia entity based on wikipedia title."""
         if self.extract:
             m = re.match(self.extract, title)
             if m and m.groups():
                 title = m.groups()[0]
         t = ul.unquote_plus(title.replace("_", " ").lower())
-        """Gets the URI for a DBpedia entity based on wikipedia title."""
+
         try:
             for con in self.cons:
                 q = "select uri from Lookup where title=:t"
@@ -167,6 +168,8 @@ class SQLiteLookup(SQLiteCache, Lookup):
                 return uri
         except Exception as e:
             log.error(e)
+
+        return None
 
 
 class SQLiteDB(SQLiteCache, Database):

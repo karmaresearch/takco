@@ -6,10 +6,12 @@ from abc import ABC, abstractmethod
 
 from .. import link
 
+
 class Page(typing.NamedTuple):
-    url: str #: 
-    html: str #:
-    about: typing.Optional[str] #:  
+    url: str  #:
+    html: str  #:
+    about: typing.Optional[str]  #:
+
 
 class PageSource(ABC):
 
@@ -18,6 +20,7 @@ class PageSource(ABC):
     @abstractmethod
     def load(self, sources: typing.Collection[typing.Any]) -> typing.Iterable[Page]:
         pass
+
 
 class WikiPages(PageSource):
     """
@@ -57,9 +60,7 @@ class WikiPages(PageSource):
                     result.encoding = self.encoding
             if result.status_code == 200:
                 yield Page(
-                    url = url,
-                    about = e,
-                    html = result.text,
+                    url=url, about=e, html=result.text,
                 )
 
 
@@ -101,9 +102,7 @@ class WarcPages(PageSource):
 
                         text = record.content_stream().read().decode()
                         yield Page(
-                            url = url,
-                            about = e,
-                            html = text,
+                            url=url, about=e, html=text,
                         )
 
 
@@ -157,15 +156,13 @@ class LinePages(PageSource):
                         about = self.lookup.lookup_title(title)
 
                     yield Page(
-                        url = url,
-                        about = about,
-                        html = json.loads(html),
+                        url=url, about=about, html=json.loads(html),
                     )
 
                 except Exception as e:
                     log.error(e)
 
-                if (self.lookup is not None):
+                if self.lookup is not None:
                     self.lookup.flush()
 
         if self.lookup is not None:

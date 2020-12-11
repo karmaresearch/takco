@@ -7,7 +7,7 @@ import typing
 
 
 class Dataset:
-    tables: typing.Sequence[typing.Dict[str,typing.Any]] = ()
+    tables: typing.Sequence[typing.Dict[str, typing.Any]] = ()
 
     def params(self, resourcedir: Path = None, datadir: Path = None, **params):
         params = dict(params)
@@ -87,7 +87,7 @@ class Dataset:
                     task: table.pop(task, {})
                     for task in ["entities", "classes", "properties"]
                 },
-                **table
+                **table,
             }
 
     def get_annotated_tables(self):

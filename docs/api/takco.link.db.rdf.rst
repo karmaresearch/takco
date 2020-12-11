@@ -1,7 +1,7 @@
-takco.link.pickle module
+takco.link.db.rdf module
 ========================
 
-.. automodule:: takco.link.pickle
+.. automodule:: takco.link.db.rdf
    :members:
    :undoc-members:
    :show-inheritance:

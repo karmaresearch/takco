@@ -1,7 +1,7 @@
-takco.link.trident module
+takco.linkedstring module
 =========================
 
-.. automodule:: takco.link.trident
+.. automodule:: takco.linkedstring
    :members:
    :undoc-members:
    :show-inheritance:

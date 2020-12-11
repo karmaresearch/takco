@@ -1,7 +1,7 @@
-takco.link.rdf module
+takco.pipeline module
 =====================
 
-.. automodule:: takco.link.rdf
+.. automodule:: takco.pipeline
    :members:
    :undoc-members:
    :show-inheritance:

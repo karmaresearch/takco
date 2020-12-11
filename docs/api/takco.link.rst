@@ -6,6 +6,14 @@ takco.link package
    :undoc-members:
    :show-inheritance:
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   takco.link.db
+
 Submodules
 ----------
 
@@ -13,13 +21,7 @@ Submodules
    :maxdepth: 4
 
    takco.link.base
-   takco.link.elasticsearch
-   takco.link.external
    takco.link.integrate
    takco.link.linkers
-   takco.link.pickle
    takco.link.profile
-   takco.link.rdf
-   takco.link.sqlite
-   takco.link.trident
    takco.link.types

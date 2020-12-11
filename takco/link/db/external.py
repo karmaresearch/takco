@@ -43,6 +43,7 @@ try:
 except Exception as e:
     log.warn(e)
 
+
 class MediaWikiAPI(Searcher, Lookup):
     """A `MediaWiki API <https://www.mediawiki.org/wiki/API:Main_page>`_ endpoint.
     By default, uses the `Wikidata API <https://www.wikidata.org/w/api.php>`_.

@@ -26,7 +26,8 @@ Submodules
    :maxdepth: 4
 
    takco.config
-   takco.pages
+   takco.linkedstring
+   takco.pipeline
    takco.storage
    takco.table
    takco.util

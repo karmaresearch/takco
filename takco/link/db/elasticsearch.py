@@ -142,7 +142,6 @@ class ElasticSearcher(Searcher):
     prop_uri: typing.Dict[str, typing.Dict] = field(default_factory=dict)
     prop_baseuri: typing.Dict = field(default_factory=dict)
     typer: Typer = SimpleTyper()
-    stringmatch: str = "jaccard"
     NUM = re.compile("^[\d\W]+$")
 
     def __enter__(self):
@@ -181,13 +180,15 @@ class ElasticSearcher(Searcher):
             query_chunk = tuple(itertools.islice(it, 10 ** 3))  # chunk per 1000
             if not query_chunk:
                 break
-        
+
             log.debug(f"Submitting ES multiquery of size {len(query_chunk)}")
 
             bodies = []
             for query, params in query_chunk:
                 context, classes = params.get("context", []), params.get("classes", [])
-                context = [{"value": c} for c in (context or []) if not self.NUM.match(c)]
+                context = [
+                    {"value": c} for c in (context or []) if not self.NUM.match(c)
+                ]
                 classes = [{"value": c.split("/")[-1]} for c in (classes or [])]
 
                 body = self.make_query_body(
@@ -218,9 +219,7 @@ class ElasticSearcher(Searcher):
                             vals = ec.get("value", [])
                             for v in vals if isinstance(vals, list) else [vals]:
                                 for c, csource in context.items():
-                                    for m in self.typer.literal_match(
-                                        v, c, self.stringmatch
-                                    ):
+                                    for m in self.typer.literal_match(v, c):
                                         pms = context_matches.setdefault(csource, {})
                                         pms.setdefault(prop, []).append(m)
 
@@ -253,8 +252,12 @@ class ElasticSearcher(Searcher):
         recreate: bool = True,
         thread_count: int = 8,
         baseuris: typing.Sequence[str] = (),
-        uri_prefLabel: typing.Sequence[str] = ("http://www.w3.org/2004/02/skos/core#prefLabel",),
-        uri_altLabel: typing.Sequence[str] = ("http://www.w3.org/2004/02/skos/core#altLabel",),
+        uri_prefLabel: typing.Sequence[str] = (
+            "http://www.w3.org/2004/02/skos/core#prefLabel",
+        ),
+        uri_altLabel: typing.Sequence[str] = (
+            "http://www.w3.org/2004/02/skos/core#altLabel",
+        ),
         uri_type: str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
         lang: str = "en",
         extract_surface: bool = False,
@@ -291,8 +294,7 @@ class ElasticSearcher(Searcher):
                     id, surf = line.split("\t", 1)
                     id = debase(ul.unquote_plus(id))
                     id_surfaceformscores[id] = {
-                        normalize_surface(k):v
-                        for k,v in json.loads(surf).items()
+                        normalize_surface(k): v for k, v in json.loads(surf).items()
                     }
                 except Exception as e:
                     print(e, file=sys.stderr)
@@ -330,7 +332,7 @@ class ElasticSearcher(Searcher):
                         return {"str": val[1:-1]}
                 elif node[0] == '"' and node[-1] == '"':
                     return {"str": node[1:-1]}
-                elif ':' in node:
+                elif ":" in node:
                     return {"id": node}
 
         def parse_ttl(fname):

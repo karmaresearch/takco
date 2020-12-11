@@ -15,4 +15,3 @@ Submodules
    takco.reshape.clean
    takco.reshape.compound
    takco.reshape.findpivot
-   takco.reshape.headers

@@ -22,9 +22,10 @@ Node = Union[URI, Literal]
 class Asset(AbstractContextManager):
     def __enter__(self):
         return self
-    
+
     def __exit__(self, *args):
         return
+
 
 class Annotation(dict):
     """A table annotation object. """
@@ -93,7 +94,9 @@ class Typer(Asset, ABC):
         pass
 
     @classmethod
-    def literal_match(cls, literal: Literal, surface: str) -> Iterable[LiteralMatchResult]:
+    def literal_match(
+        cls, literal: Literal, surface: str
+    ) -> Iterable[LiteralMatchResult]:
         """Match a cell value to a KB literal"""
         score = float(bool(str(literal) == surface))
         if score:
@@ -130,7 +133,7 @@ class Searcher(Asset, ABC):
 
 class Lookup(Asset, ABC):
     @abstractmethod
-    def lookup_title(self, title: str, **kwargs) -> Optional[str]:
+    def lookup_title(self, title: str) -> Optional[str]:
         """Lookup (Wikipedia) page title in KB, return URI
 
         Args:
@@ -138,8 +141,8 @@ class Lookup(Asset, ABC):
         """
         pass
 
-    def lookup_cells(self, hrefs, **kwargs):
-        href_rowcols: Dict[str, Set[Tuple[int,int]]] = {}
+    def lookup_cells(self, hrefs):
+        href_rowcols: Dict[str, Set[Tuple[int, int]]] = {}
         for ri, row in enumerate(hrefs):
             for ci, hs in enumerate(row):
                 for href in hs:
@@ -148,7 +151,7 @@ class Lookup(Asset, ABC):
 
         ci_ri_ents: Dict[str, Dict[str, Dict[str, float]]] = {}
         for href, rowcols in href_rowcols.items():
-            uri = self.lookup_title(href, **kwargs)
+            uri = self.lookup_title(href)
             if uri:
                 for ri, ci in rowcols:
                     ci_ri_ents.setdefault(str(ci), {}).setdefault(str(ri), {})[uri] = 1
@@ -172,7 +175,6 @@ class Database(Asset, ABC):
             e: Entity URI to query
         """
         pass
-
 
 
 class Linker(Asset):
@@ -202,7 +204,7 @@ class Linker(Asset):
 
         if contextual:
             rowcol_searchresults = {}
-            query_rowcols = []
+            query_rowcols_list = []
             for ri, row in enumerate(rows):
                 if (not skiprows) or (ri not in skiprows):
                     for ci, cell in enumerate(row):
@@ -217,20 +219,20 @@ class Linker(Asset):
                             existing = existing_entities.get(ci, {}).get(ri, {})
                             if not existing:
                                 if not (len(cell) < 2 or cell.isnumeric()):
-                                    query_rowcols.append((query, (ri, ci)))
+                                    query_rowcols_list.append((query, (ri, ci)))
                             else:
                                 rowcol_searchresults[(ri, ci)] = [
                                     SearchResult(e, score=score)
                                     for e, score in existing.items()
                                 ]
-            if query_rowcols:
-                queries, _ = zip(*query_rowcols)
+            if query_rowcols_list:
+                queries, _ = zip(*query_rowcols_list)
                 allresults = self.searcher.search_entities(queries, **kwargs)
                 for (query, rowcol), results in zip(query_rowcols, allresults):
                     rowcol_searchresults[rowcol] = results
         else:
             rowcol_searchresults = {}
-            query_rowcols = {}
+            query_rowcols_dict = {}
             for ri, row in enumerate(rows):
                 if (not skiprows) or (ri not in skiprows):
                     for ci, cell in enumerate(row):
@@ -240,16 +242,18 @@ class Linker(Asset):
                             existing = existing_entities.get(ci, {}).get(ri, {})
                             if not existing:
                                 if not (len(cell) < 2 or cell.isnumeric()):
-                                    query_rowcols.setdefault(query, set()).add((ri, ci))
+                                    query_rowcols_dict.setdefault(query, set()).add(
+                                        (ri, ci)
+                                    )
                             else:
                                 rowcol_searchresults[(ri, ci)] = [
                                     SearchResult(e, score=score)
                                     for e, score in existing.items()
                                 ]
-            queries = [(q, {"classes": cs}) for q, cs in query_rowcols]
+            queries = [(q, {"classes": cs}) for q, cs in query_rowcols_dict]
             allresults = self.searcher.search_entities(queries, **kwargs)
             for ((query, clss), rowcols), results in zip(
-                query_rowcols.items(), allresults
+                query_rowcols_dict.items(), allresults
             ):
                 for rowcol in rowcols:
                     rowcol_searchresults[rowcol] = results

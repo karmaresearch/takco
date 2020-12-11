@@ -73,6 +73,7 @@ def table_triples(tables, include_type=True):
 
         yield table
 
+
 def report(
     tables,
     keycol_only: bool = False,
@@ -116,15 +117,10 @@ def report(
     for task in task_flatten:
         gold, pred = all_gold.get(task, {}), all_pred.get(task, {})
         if pred:
-            log.info(
-                f"Collected {len(gold)} gold and {len(pred)} pred for task {task}"
-            )
+            log.info(f"Collected {len(gold)} gold and {len(pred)} pred for task {task}")
 
             task_scores = score.classification(
-                gold,
-                pred,
-                any_annotated=any_annotated,
-                only_annotated=only_annotated,
+                gold, pred, any_annotated=any_annotated, only_annotated=only_annotated,
             )
             task_scores["predictions"] = len(pred)
             scores[task] = task_scores
@@ -139,9 +135,9 @@ def report(
         noveltyscores = []
         for kb, kind_novelty_hashes in kb_kind_novelty_hashes.items():
             for counts in novelty.count_noveltyhashes(kind_novelty_hashes):
-                noveltyscores.append({'kb': kb, **counts})
+                noveltyscores.append({"kb": kb, **counts})
         data["novelty"] = noveltyscores
-    
+
     return data
 
 

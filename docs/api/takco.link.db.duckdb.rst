@@ -1,7 +1,7 @@
-takco.extract.fetahu module
+takco.link.db.duckdb module
 ===========================
 
-.. automodule:: takco.extract.fetahu
+.. automodule:: takco.link.db.duckdb
    :members:
    :undoc-members:
    :show-inheritance:

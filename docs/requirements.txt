@@ -6,3 +6,5 @@ sphinx_rtd_theme
 flask
 rdflib
 toml
+pandoc
+pandas

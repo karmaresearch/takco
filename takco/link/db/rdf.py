@@ -19,6 +19,7 @@ from ..base import (
 from ..types import SimpleTyper
 from ..integrate import NaryDB, NaryMatchResult, QualifierMatchResult
 
+
 def encode_wikidata(query):
     import json
 
@@ -27,22 +28,33 @@ def encode_wikidata(query):
     newquery = "".join(chars)
     return newquery
 
+
 class GraphDB(Database):
     store_classname: str
     store_kwargs: Dict[str, Any]
     store: Optional[RDFStore] = None
+    labelProperties: Collection[str] = ()
+    typeProperties: Collection[str] = ()
 
-    def __init__(self, store_classname: str, store_kwargs: Dict[str, Any]):
+    def __init__(
+        self,
+        store_classname: str,
+        store_kwargs: Dict[str, Any],
+        labelProperties=(),
+        typeProperties=(),
+    ):
         assert store_classname and isinstance(store_kwargs, dict)
         self.store_classname = store_classname
         self.store_kwargs = store_kwargs
         self.store = None
+        self.labelProperties = labelProperties
+        self.typeProperties = typeProperties
 
     def __enter__(self):
         try:
             from importlib import import_module
 
-            modulename, classname = self.store_classname.rsplit('.', 1)
+            modulename, classname = self.store_classname.rsplit(".", 1)
             cls = getattr(import_module(modulename), classname)
             self.store = cls(**self.store_kwargs)
         except Exception as e:
@@ -107,7 +119,6 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
         language="en",
         refsort=True,
         typer: Typer = SimpleTyper(),
-        stringmatch="jaccard",
         encoding=None,
         labelProperties=[],
         typeProperties=[],
@@ -128,7 +139,6 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
         self.encoding = encoding
         self.refsort = refsort
         self.typer = typer
-        self.stringmatch = stringmatch
 
         self.qualifierIDProperty = None
         if qualifierIDProperty:
@@ -161,7 +171,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
 
             if not result_uris:
                 ls = [Literal(query, lang=lang).n3() for lang in [None, self.language]]
-                ls = " or ".join(ls)
+                ls = " or ".join(map(str, ls))
                 log.debug(f"No {self.__class__.__name__} results for {query} ({ls})")
             else:
                 log.debug(
@@ -192,10 +202,10 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
             s = uri
             for lp in self.labelProperties:
                 for _, _, o in self.triples([s, lp, None]):
-                    for match in self.typer.literal_match(o, surface, self.stringmatch):
+                    for match in self.typer.literal_match(o, surface):
                         yield match
         else:
-            for match in self.typer.literal_match(uri, surface, self.stringmatch):
+            for match in self.typer.literal_match(uri, surface):
                 yield match
 
     def _yield_qualified_statements_about(self, e):
@@ -229,7 +239,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
                     # Find simple matches
                     match = False
                     for s, p, o in self.triples([e1, None, e2]):
-                        yield NaryMatchResult((ci1, ci2), (e1, p, e2), [])
+                        yield NaryMatchResult((ci1, ci2), Triple(e1, p, e2), [])
                         match = True
                     if not match:
                         continue
@@ -248,16 +258,18 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
                                 if hasattr(o, "datatype"):
                                     for ci, txt in enumerate(celltexts):
                                         for lm in self.typer.literal_match(o, txt):
-                                            qm = QualifierMatchResult(ci, (q, p, o), lm)
+                                            qm = QualifierMatchResult(
+                                                ci, Triple(q, p, o), lm
+                                            )
                                             qmatches.append(qm)
                                 else:
                                     for ci, es in enumerate(entsets):
                                         if o in es:
                                             qm = QualifierMatchResult(
-                                                ci, (q, p, o), None
+                                                ci, Triple(q, p, o), None
                                             )
                                             qmatches.append(qm)
 
                             yield NaryMatchResult(
-                                (ci1, ci2), (e1, mainprop, e2), qmatches
+                                (ci1, ci2), Triple(e1, mainprop, e2), qmatches
                             )

@@ -12,5 +12,5 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
-   takco.extract.database
    takco.extract.htmltables
+   takco.extract.pages

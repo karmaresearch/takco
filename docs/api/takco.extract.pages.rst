@@ -1,7 +1,7 @@
-takco.link.external module
+takco.extract.pages module
 ==========================
 
-.. automodule:: takco.link.external
+.. automodule:: takco.extract.pages
    :members:
    :undoc-members:
    :show-inheritance:

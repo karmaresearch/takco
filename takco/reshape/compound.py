@@ -19,6 +19,7 @@ __all__ = [
     "TemplateCompoundSplitter",
 ]
 
+
 def split_compound_columns(tables, splitter):
     """Detect and split compound columns"""
 
@@ -174,7 +175,9 @@ class TemplateCompoundSplitter(CompoundSplitter):
                             else:
                                 prefix = str(i)
 
-                            yield CompoundSplit(prefix, "string", [{"text": c} for c in newcol])
+                            yield CompoundSplit(
+                                prefix, "string", [{"text": c} for c in newcol]
+                            )
             except Exception as e:
                 log.debug(f"Failed to parse {cell} using template {template._template}")
 

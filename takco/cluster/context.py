@@ -4,6 +4,7 @@ import copy
 
 from takco import Table
 
+
 def tables_add_context_rows(tables, fields=()):
     """Add context to table depending on table dict fields"""
     for table in tables:

@@ -30,7 +30,7 @@ class PickleLookup(Lookup):
                     return self.baseuri + str(uri)
             else:
                 if self.fallback:
-                    uri = sself.fallback.lookup_title(title)
+                    uri = self.fallback.lookup_title(title)
                     log.debug(f"Fallback Wikititle for {title}: {uri}")
                     if str(uri) == "-1":
                         uri = None

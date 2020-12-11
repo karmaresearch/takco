@@ -1,7 +1,7 @@
-takco.extract.database module
+takco.link.db.external module
 =============================
 
-.. automodule:: takco.extract.database
+.. automodule:: takco.link.db.external
    :members:
    :undoc-members:
    :show-inheritance:
