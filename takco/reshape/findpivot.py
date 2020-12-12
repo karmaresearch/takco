@@ -194,6 +194,7 @@ def try_unpivot(table, pivot, named_heuristics):
             "colfrom": pivot.colfrom,
             "colto": pivot.colto,
             "heuristic": pivot.source,
+            "headers": pivot.headers,
         }
         heuristic = named_heuristics[pivot.source]
         head, body = heuristic.unpivot(table.head, table.body, pivot)

@@ -1,7 +1,7 @@
 from collections import Counter
 from itertools import combinations
 import logging as log
-import typing as typ
+import typing
 
 from takco import Table
 
@@ -16,8 +16,8 @@ EMPTY_CELL = {
 
 
 def restructure(
-    tables: typ.Iterable[Table], prefix_header_rules=(), max_cols=100
-) -> typ.Iterable[Table]:
+    tables: typing.Iterable[Table], prefix_header_rules=(), max_cols=100
+) -> typing.Iterable[Table]:
     """Restructure tables.
 
     Performs all sorts of heuristic cleaning operations, including:
@@ -67,8 +67,7 @@ def restructure(
             if table["tableData"]:
                 yield Table(table)
         except Exception as e:
-            # raise e
-            log.debug(e)
+            log.error(e)
 
 
 def init_captions(table):

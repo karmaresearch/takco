@@ -143,7 +143,17 @@ class TableSet:
 
         if restructure:
             log.info(f"Restructuring with rules: {prefix_header_rules}")
-            tables = tables.pipe(reshape.restructure, prefix_header_rules)
+            tables = tables.pipe(reshape.restructure, prefix_header_rules=prefix_header_rules)
+        
+        if discard_headerless_tables:
+
+            def filter_headerless(ts):
+                for t in ts:
+                    if any(h for hrow in Table(t).head for h in hrow):
+                        yield t
+
+            log.debug(f"Discarding headerless tables...")
+            tables = tables.pipe(filter_headerless)
 
         if unpivot_heuristics is not None:
 
@@ -179,17 +189,6 @@ class TableSet:
         if compound_splitter is not None:
             tables = tables.pipe(reshape.split_compound_columns, compound_splitter)
 
-        if discard_headerless_tables:
-
-            def filter_headerless(ts):
-                for t in ts:
-                    headers = t.get("tableHeaders", [])
-                    if any(h.get("text") for hrow in headers for h in hrow):
-                        yield t
-
-            log.debug(f"Discarding headerless tables...")
-            tables = tables.pipe(filter_headerless)
-
         return TableSet(tables)
 
     def filter(self: TableSet, filters: typing.List[str]):
@@ -199,6 +198,7 @@ class TableSet:
 
         def filt(tables, filters):
             for table in tables:
+                table = Table(table)
                 if not any(not c(table) for c in filters):
                     yield table
 
@@ -276,6 +276,7 @@ class TableSet:
 
         if addcontext:
             tables = tables.pipe(cluster.tables_add_context_rows, fields=addcontext)
+
 
         if headerunions:
             if headerunions_attributes:

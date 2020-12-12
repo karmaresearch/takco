@@ -1,5 +1,4 @@
-[[assets]]
-name  = 'tabel-source'
+[tabel-source]
 class = 'Annotation'
 download = [
     'http://websail-fe.cs.northwestern.edu/TabEL/tables.json.gz',
@@ -7,15 +6,20 @@ download = [
 path = 'data/TabEL'
 fname = 'tables.json.gz'
 
-[[assets]]
-name = 'lookup'
-resolve = 'wdid-sqlite'
+[lookup-sqlite]
+class = 'link.SQLiteLookup'
+sqlite_kwargs = {timeout = 60.0}
 sqlitedb = 'data/wdid_wpname.sqlitedb'
+baseuri = 'http://www.wikidata.org/entity/Q'
 extract = 'http://[^\.]+.wikipedia.org/wiki/([^?]+)'
-# fallback = {class = 'link.MediaWikiAPI'}
 
-[[assets]]
-name = 'linker'
+[lookup]
+class = 'link.DawgLookup'
+path = 'data/wdid_wpname.dawg'
+prefix = 'http://www.wikidata.org/entity/Q'
+extract = 'http://[^\.]+.wikipedia.org/wiki/([^?]+)'
+
+[linker]
 resolve = 'wikidata-trident'
 
 

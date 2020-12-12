@@ -10,7 +10,11 @@ import urllib.parse as ul
 import logging as log
 
 import pandas as pd
-import duckdb
+
+try:
+    import duckdb
+except:
+    log.error("Could not import duckdb")
 
 
 def read_tsv(fname, names, **kwargs):

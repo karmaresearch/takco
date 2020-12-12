@@ -20,6 +20,10 @@ def robust_json_loads_lines(lines):
             log.warn(e)
     return docs
 
+def json_dump(table):
+    if isinstance(table, Table):
+        table = table.to_dict()
+    return json.dumps(table)
 
 class HashBag:
     """A flexible wrapper for computation streams."""
@@ -108,7 +112,7 @@ class HashBag:
                 fw = open(f, "w")
             for r in it:
                 if r:
-                    print(json.dumps(r), file=fw)
+                    print(json_dump(r), file=fw)
                     fw.flush()
                     yield r
             fw.close()
@@ -279,14 +283,12 @@ try:
             import pandas as pd
 
             def combine(df):
-                return functools.reduce(binop, df.to_dict(orient="records"))
+                return functools.reduce(binop, df.table)
 
-            # Allow ints to be nullable
-            head = self.bag.take(1)
-            meta = {d: "object" for d in dict(pd.DataFrame(list(head)).dtypes)}
-            df = self.bag.to_dataframe(meta=meta)
+            df = self.bag.map(lambda t: {'table':t} ).to_dataframe(meta={'table': 'object'})
+            keymeta = pd.Series([key(t) for t in df.table.head(1)])
+            index = df.table.apply(key, meta = keymeta)
 
-            index = df.map_partitions(lambda df: df.apply(key, axis=1))
             groups = df.assign(index=index).set_index("index").groupby("index")
             return self.new(groups.apply(combine).to_bag())
 
@@ -309,7 +311,7 @@ try:
                 HashBag.dump(self.bag.compute(), f)
                 return self
             else:
-                self.bag.map(json.dumps).to_textfiles(f, last_endline=True)
+                self.bag.map(json_dump).to_textfiles(f, last_endline=True)
                 return self.load(f)
 
 
