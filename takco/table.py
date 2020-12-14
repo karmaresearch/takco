@@ -150,7 +150,7 @@ class Table(dict):
     _id: str
     head: typing.Tuple[typing.Tuple[str, ...], ...]
     body: typing.Tuple[typing.Tuple[str, ...], ...]
-    provenance: typing.Dict[str, str]
+    provenance: typing.Dict[str, typing.Any]
     annotations: typing.Dict[str, typing.Any]
     headerId: int
 

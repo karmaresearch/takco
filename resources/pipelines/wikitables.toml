@@ -70,7 +70,7 @@ discard_headerless_tables = true
     [[step.unpivot_heuristics]]
     name = 'sports-round'
     class = 'reshape.RegexFinder'
-    pattern = '(?P<val>(\d+|OT|Total))$'
+    pattern = '(?P<val>(\d+|OT|Total|Final))$'
     min_len = 2
 
     [[step.unpivot_heuristics]]
@@ -88,6 +88,8 @@ discard_headerless_tables = true
         'http://www.wikidata.org/entity/Q1790144', # unit of time
         'http://www.wikidata.org/entity/Q82047057', # UCUM derived unit
         'http://www.wikidata.org/entity/Q1924249', # measured quantity
+        'http://www.wikidata.org/entity/Q107715', # physical quantity
+        'http://www.wikidata.org/entity/Q28733284', # scalar magnitude
         'http://www.wikidata.org/entity/Q1949963', # statistic
         'http://www.wikidata.org/entity/Q22298551', # meteorological index
         'http://www.wikidata.org/entity/Q22298492', # hazard scale
@@ -97,6 +99,7 @@ discard_headerless_tables = true
     id_props = [
         'http://www.wikidata.org/prop/direct/P1687', # main property
         'http://www.wikidata.org/prop/direct/P279', # subclass of
+        'http://www.wikidata.org/prop/direct/P8111', # recommended unit of measurement
     ]
     allow_gap = 10
 
@@ -135,12 +138,12 @@ headerunions = true
 
 [[step]]
 step = 'filter'
-filters = ['table["numDataRows"] > 10', 'table.get("numTables", 1) > 1']
+filters = ['table["numDataRows"] > 10', 'len(table.provenance.get("concat", [])) > 1']
 
 [[step]]
 step = 'link'
 lookup_cells = true
-lookup = {resolve = 'wdid-sqlite'}
+lookup = {resolve = 'lookup'}
 
     
 [[step]]
@@ -164,11 +167,6 @@ agg_threshold_col = 0.1
 keep_partition_meta = ['_id', 'tableHeaders', 'tableData', 'entities', 'classes']
 mergeheaders_topn = 1
 max_cluster_size = 250
-
-    [[step.filters]]
-    name  = 'section'
-    class = 'cluster.matchers.CellJaccMatcher'
-    source='sectionTitle'
 
     [[step.filters]]
     name  = 'headjacc' # use headjacc as both matcher and filter
@@ -208,7 +206,7 @@ max_cluster_size = 250
 [[step]]
 step = 'link'
 lookup_cells = true
-lookup = {resolve = 'wdid-sqlite'}
+lookup = {resolve = 'lookup'}
 
 [[step]]
 step = 'coltypes'

@@ -11,6 +11,7 @@ OffsetLinks = Dict[Tuple[int, int], str]
 Cell = Dict
 
 __all__ = [
+    "split_compound_columns",
     "CompoundSplit",
     "CompoundSplitter",
     "SuffixCompoundSplitter",

@@ -25,6 +25,7 @@ class Pipeline(list):
 
 class TableSet:
     """A set of tables that can be clustered and linked."""
+    tables: HashBag
 
     def __init__(self, tables):
         if isinstance(tables, TableSet):
@@ -350,26 +351,23 @@ class TableSet:
                 # Get blocked column match scores
                 ntables = len(tableid_colids)
                 chunksize = cluster.get_table_chunk_size(ntables)
-                log.info(f"Comparing {ntables} tables in chunks of size {chunksize}")
+                log.info(f"Comparing {ntables} tables in chunks of max {chunksize}")
 
-                # chunksize = round(10**4 / (len(tableid_colids) ** .5)) + 1
-                tablesim = pd.concat(
-                    tables.pipe(
-                        cluster.get_tablesims,
-                        tableid_colids=tableid_colids,
-                        matchers=matchers,
-                        filters=filters,
-                        agg_func=agg_func,
-                        agg_threshold=agg_threshold,
-                        align_columns=align_columns,
-                        align_width_norm=align_width_norm,
-                        align_use_total_width=align_use_total_width,
-                    )
+                simdfs = tables.pipe(
+                    cluster.get_tablesims,
+                    tableid_colids=tableid_colids,
+                    matchers=matchers,
+                    filters=filters,
+                    agg_func=agg_func,
+                    agg_threshold=agg_threshold,
+                    align_columns=align_columns,
+                    align_width_norm=align_width_norm,
+                    align_use_total_width=align_use_total_width,
                 )
                 # assure all tables are clustered using identity matrix
                 itups = ((ti, ti) for ti in tableid_colids)
                 ii = pd.MultiIndex.from_tuples(itups, names=["ti1", "ti2"])
-                tablesim = pd.concat([tablesim, pd.Series(1, index=ii)])
+                tablesim = pd.concat(list(simdfs) + [pd.Series(1, index=ii)])
                 reduction = (len(tableid_colids) ** 2) / len(tablesim)
                 log.info(
                     f"Got {len(tablesim)} table similarities; {reduction:.0f}x reduction"
@@ -413,7 +411,9 @@ class TableSet:
 
             if workdir:
                 for pi, colsim in pi_colsim.items():
-                    Storage(workdir, "colsim").save_df(colsim, f"pi={pi}")
+                    if len(colsim):
+                        colsim.columns = [str(c) for c in colsim.columns]
+                        Storage(workdir, "colsim").save_df(colsim, f"pi={pi}")
 
             log.info(f"Merging clustered tables...")
             tables = tables.pipe(

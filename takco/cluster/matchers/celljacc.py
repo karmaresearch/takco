@@ -57,7 +57,7 @@ class CellJaccMatcher(Matcher):
         for row in rows:
             for ci, cell in zip(ci_range, row):
                 txt = frozenset(self.tokenize(cell))
-                if txt:
+                if txt and not all(c.startswith("_") for c in txt):
                     yield ci, txt
 
     def add(self, table):
@@ -108,20 +108,13 @@ class CellJaccMatcher(Matcher):
         """Match columns on token jaccard."""
         pairs = cluster.progress(tableid_colids_pairs, f"Looking up {self.name}")
         for (ti1, _), (ti2, _) in pairs:
-            cells1 = self.table_cells.get(ti1, {})
-            cells2 = self.table_cells.get(ti2, {})
+            cell_columns1 = self.table_cells.get(ti1, {})
+            cell_columns2 = self.table_cells.get(ti2, {})
 
-            for cell1, cis1 in cells1.items():
-                for cell2, cis2 in cells2.items():
-
-                    special1 = all(c.startswith("_") for c in cell1)
-                    special2 = all(c.startswith("_") for c in cell2)
-                    if special1 or special2:
-                        # for special cells, ignore jaccard value
-                        cell_jacc = float("nan")
-                    else:
-                        u = len(cell1 | cell2)
-                        cell_jacc = len(cell1 & cell2) / u if u else 0
+            for cell1, cis1 in cell_columns1.items():
+                for cell2, cis2 in cell_columns2.items():
+                    u = len(cell1 | cell2)
+                    cell_jacc = len(cell1 & cell2) / u if u else 0
 
                     for ci1 in cis1:
                         for ci2 in cis2:

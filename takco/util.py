@@ -293,14 +293,14 @@ try:
             return self.new(groups.apply(combine).to_bag())
 
         def offset(self, get_attr, set_attr, default=0):
-            df = self.bag.to_dataframe(columns=[get_attr])
-            log.info(f"Dask offset {get_attr} {set_attr} {default}")
-            if default:
-                df[get_attr] = default
+
+            d = self.bag.map(lambda t: {'table':t, get_attr: t.get(get_attr, default)})
+            df = d.to_dataframe(meta={'table': 'object', get_attr: 'int'})
             vs = df[get_attr].cumsum() - df[get_attr]
 
             def setval(x, v):
-                return {set_attr: v, **x}
+                x[set_attr] = v
+                return x
 
             return self.new(self.bag.map(setval, vs.to_bag()))
 

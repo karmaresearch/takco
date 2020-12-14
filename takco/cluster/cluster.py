@@ -16,6 +16,7 @@ try:
     from pandas import DataFrame, Series
     import pandas as pd
     import numpy as np
+    import tqdm
     from sklearn.cluster import AgglomerativeClustering
 except:
     import typing
@@ -53,12 +54,7 @@ class Timer(dict):
 
 def progress(it, desc=None):
     if log.getLogger().level <= log.INFO:
-        try:
-            import tqdm
-
-            return tqdm.tqdm(it, desc=desc)
-        except:
-            pass
+        return tqdm.tqdm(it, desc=desc)
     return it
 
 
@@ -404,19 +400,24 @@ def yield_blocked_matches(
     if filters:
         filtered_tableid_colids_pairs = {}
         for filt in filters:
+            log.debug(f"Filtering with {filt.name}")
             with timer.track(f"filter_{filt.name}"):
                 for chunk in pair_chunks(tableid_colids_pairs.values()):
                     for (ti1, ti2, _, _), score in filt.match(chunk):
                         if score > 0:
                             pair = tableid_colids_pairs[(ti1, ti2)]
                             filtered_tableid_colids_pairs[(ti1, ti2)] = pair
-
-        filt_block_size = Counter(ti1 for ti1, _ in filtered_tableid_colids_pairs)
-        total, mean, std = pd.Series(filt_block_size).agg(["sum", "mean", "std"])
-        reduction = worstcase / total
-        log.debug(
-            f"Filtered blocks to {total:.0f} pairs; {mean:.0f} ± {std:.0f} per table; {reduction:.0f}x reduction"
-        )
+        
+        if filtered_tableid_colids_pairs:
+            filt_block_size = Counter(ti1 for ti1, _ in filtered_tableid_colids_pairs)
+            total, mean, std = pd.Series(filt_block_size).agg(["sum", "mean", "std"])
+            reduction = worstcase / total
+            log.debug(
+                f"Filtered blocks to {total:.0f} pairs; {mean:.0f} ± {std:.0f} per table; {reduction:.0f}x reduction"
+            )
+        else:
+            log.debug(f"Filtered out all blocks!")
+            return ()
     else:
         filtered_tableid_colids_pairs = tableid_colids_pairs
 

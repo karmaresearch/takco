@@ -520,10 +520,9 @@ class AgentLikeHyperlink(PivotFinder):
 
         for ri, hrow in enumerate(headers):
             for ci, _ in enumerate(hrow):
-                for e in ents.get(str(ci), {}).get(str(ri), {}):
-                    if not self.is_attribute(e):
-                        yield ri, ci
-                        break
+                es = ents.get(str(ci), {}).get(str(ri), {})
+                if es and all(not self.is_attribute(e) for e in es):
+                    yield ri, ci
 
 
 @dataclass
