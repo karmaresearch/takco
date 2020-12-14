@@ -424,8 +424,7 @@ class SQLiteSearcher(SQLiteCache, Searcher):
 
         b = baseuri or ""
         l = f"@{langmatch}" if langmatch else ""
-        LINE = f'<{b}(?P<s>[^>]*)> <(?P<p>[^>]*)> "(?P<v>.*)"{l} .$'
-        LINE = re.compile(LINE)
+        LINE = re.compile(f'<{b}(?P<s>[^>]*)> <(?P<p>[^>]*)> "(?P<v>.*)"{l} .$')
 
         log.debug(f"Creating a db for {triplefile} in {outdir}")
         fname = Path(outdir) / Path(Path(triplefile).name.split(".")[0] + ".sqlitedb")
@@ -434,7 +433,7 @@ class SQLiteSearcher(SQLiteCache, Searcher):
             cur.executescript(SQLiteSearcher._INITDB)
             con.commit()
 
-            tuples = []
+            tuples: typing.List = []
             for li, line in enumerate(triplefile.open()):
                 if tuples and not (li % chunk):
                     cur.executemany("INSERT INTO label VALUES (?,?,?)", tuples)
@@ -450,7 +449,7 @@ class SQLiteSearcher(SQLiteCache, Searcher):
                             val = val.encode().decode("unicode-escape").lower()
                             tuples.append((s, val, score))
                         else:
-                            log.debug(f"Bad triple: {(s, p, o)}")
+                            log.debug(f"Bad triple: {(s, p, val)}")
                 except Exception as e:
                     log.debug(f"Bad line: {line}")
 

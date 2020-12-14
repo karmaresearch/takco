@@ -213,6 +213,7 @@ class LSHMatcher(Matcher):
             log.info(f"Shutdown redis with code {r.returncode}")
 
     def block(self, ti: int, cis: typing.Collection[int]):
+        assert self.lshindex is not None
         for ci in cis:
             if ci in self.ci_tidi:
                 ti, di = self.ci_tidi[ci]

@@ -12,7 +12,7 @@ import itertools
 import math
 import decimal
 import enum
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Collection, Optional
 from pathlib import Path
 from dataclasses import dataclass, field
 
@@ -94,12 +94,9 @@ class SimpleTyper(Typer):
     def is_literal_type(self, typ):
         return str(typ).startswith("http://www.w3.org/2001/XMLSchema#")
 
-    def coltype(
-        self, cell_ents: List[Tuple[CellValue, List[URI]]],
-    ) -> Dict[Typer, int]:
-
+    def coltype(self, cell_ents):
         n = len(cell_ents)
-        counts = collections.Counter()
+        counts: collections.Counter = collections.Counter()
         for c, l in cell_ents:
             # This is a simple cell typing hierarchy
             # The first pattern to match gives the cell a type
@@ -126,7 +123,7 @@ class SimpleTyper(Typer):
         dtype = literal.datatype if hasattr(literal, "datatype") else None
         literal, surface = str(literal).strip(), str(surface).strip()
 
-        score = 0
+        score = 0.0
         if dtype:
             # Typed literals should match well
 
@@ -193,11 +190,12 @@ class EntityTyper(SimpleTyper):
 
     """
 
-    db: Database = None
+    db: Optional[Database] = None
     type_prop: str = RDFTYPE
     supertype_prop: str = RDFSUBCLASS
     cover_threshold: float = 0.5
-    topn: int = None
+    topn: int = 1
+    ignore_types: Collection[str] = ()
 
     def __post_init__(self):
         if self.db is None:

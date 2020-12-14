@@ -73,7 +73,7 @@ class First(Linker):
         if self.majority_class:
 
             # Keep track of the most frequent attribute of a class predicate
-            ci_cls_ents = {}
+            ci_cls_ents: Dict = {}
             for (_, ci), results in rowcol_searchresults.items():
                 for result in results[:1]:
                     for cls in result.get(self.majority_class, []):
@@ -142,7 +142,7 @@ class First(Linker):
             classes=classes,
         )
 
-        col_propertycol_count = {}
+        col_propertycol_count: Dict = {}
         for (ri, ci), results in rowcol_searchresults.items():
             results = results[: self.limit]
 
@@ -221,7 +221,7 @@ class Salient(Linker):
         self.expand = expand
         if graph is None:
             self.graph = searcher
-        else:
+        elif isinstance(graph, GraphDB):
             self.graph = graph
         self.max_backlink = max_backlink
 

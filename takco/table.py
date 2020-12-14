@@ -143,7 +143,7 @@ class Table(dict):
     """ A takco table object
 
     >>> Table(head=[['foo','bar']], body=[['1','2']]).head
-    [['foo', 'bar']]
+    (('foo', 'bar'),)
 
     """
 

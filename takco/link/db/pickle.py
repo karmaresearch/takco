@@ -20,7 +20,7 @@ class PickleLookup(Lookup):
         self.index = pickle.load(open(self.file, "rb"))
         self.fallback = fallback
 
-    def lookup_title(self, title: str) -> str:
+    def lookup_title(self, title):
         """Gets the URI for a DBpedia entity based on wikipedia title."""
         title = title.replace(" ", "_").lower()
         try:
@@ -40,13 +40,14 @@ class PickleLookup(Lookup):
                     return uri
         except Exception as e:
             log.error(e)
+        return None
 
     def write(self, file: Path):
         with open(self.file, "wb") as fw:
             pickle.dump(self.index, fw)
 
     @classmethod
-    def create():
+    def create(cls):
         pass
 
 

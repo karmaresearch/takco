@@ -606,6 +606,7 @@ def merge_partition_tables(
                     val = val[:10]
                 partColAlign[field] = val
             else:
+                assert callable(field)
                 partColAlign.update(copy.deepcopy(field(table)))
 
     if mergetable.get("type") != "partition":

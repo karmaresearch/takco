@@ -210,7 +210,7 @@ class ElasticSearcher(Searcher):
                     score = hit.get("_score", 0)
                     about = self._about(hit.get("_source", {}))
 
-                    context_matches = {}
+                    context_matches: typing.Dict = {}
                     if ("context" in about) and isinstance(context, dict):
                         for ec in about["context"]:
                             prop = ec.get("prop")
@@ -343,8 +343,8 @@ class ElasticSearcher(Searcher):
                     statements = []
                     surface_score = {}
                     for claim in set(claims.rstrip().rstrip(".").rstrip().split(" ; ")):
-                        p, o = claim.split(None, 1)
-                        p, o = parse_n3(p)["id"], parse_n3(o)
+                        p_n3, o_n3 = claim.split(None, 1)
+                        p, o = parse_n3(p_n3)["id"], parse_n3(o_n3)
                         if " " in p:
                             continue
                         if any(o.values()):
@@ -386,7 +386,7 @@ class ElasticSearcher(Searcher):
                     surface_score[normalize_surface(id)] = 1
 
                 types = set()
-                prop_context = {}
+                prop_context: typing.Dict = {}
                 filtered_statements = []
                 for st in statements:
                     if ignore_uri(st.get("id", "")):

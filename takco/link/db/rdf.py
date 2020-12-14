@@ -238,7 +238,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
 
                     # Find simple matches
                     match = False
-                    for s, p, o in self.triples([e1, None, e2]):
+                    for _, p, o in self.triples([e1, None, e2]):
                         yield NaryMatchResult((ci1, ci2), Triple(e1, p, e2), [])
                         match = True
                     if not match:
@@ -270,6 +270,7 @@ class RDFSearcher(Searcher, GraphDB, NaryDB):
                                             )
                                             qmatches.append(qm)
 
-                            yield NaryMatchResult(
-                                (ci1, ci2), Triple(e1, mainprop, e2), qmatches
-                            )
+                            if isinstance(mainprop, str):
+                                yield NaryMatchResult(
+                                    (ci1, ci2), Triple(e1, mainprop, e2), qmatches
+                                )

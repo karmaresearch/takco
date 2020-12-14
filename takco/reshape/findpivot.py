@@ -286,7 +286,7 @@ class RegexFinder(PivotFinder):
     [(0, 0)]
 
     >>> h.split_header([['a 4']], 0, 0, 0)
-    [('a',), ('4',)]
+    (('4',), ('a',))
     
     Args:
         pattern: Unpivot cell if this regex matches. 
