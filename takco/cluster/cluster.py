@@ -538,7 +538,7 @@ def set_partition_columns(
         tables: Tables
         ti_pi: Mapping of table IDs to partition IDs
         pi_ncols: Number of columns per partition
-        ci_pci: Mapping of column IDs to (local) partition column IDs
+        ci_pci: Mapping of (global) column IDs to (local) partition column IDs
 
     Yields:
         Updated tables
@@ -547,20 +547,24 @@ def set_partition_columns(
         table = Table(table)
         if table["tableIndex"] in ti_pi:
             pi = ti_pi[table["tableIndex"]]
-            table["partitionIndex"] = pi
-            table["_id"] = "part-" + str(table["partitionIndex"])
-            sq = all(len(row) == table["numCols"] for row in table["tableData"])
-            # assert sq # TODO: why does this fail sometimes?
+            
+            table._id = "part-" + str(pi)
+            table.provenance["partitionIndex"] = pi
+
+            # table should be square # TODO: why does this fail sometimes?
+            # sq = all(len(row) == table["numCols"] for row in table["tableData"])
+            # assert sq 
+
             ci_range = range(
                 table["columnIndexOffset"],
                 table["columnIndexOffset"] + table["numCols"],
             )
 
             # TODO: add similarity scores
-            pci_c = {ci_pci[ci]: c for c, ci in enumerate(ci_range) if ci in ci_pci}
+            pci_lci = {ci_pci[ci]: lci for lci, ci in enumerate(ci_range) if ci in ci_pci}
             # partColAlign is a mapping from partition cols to local cols
-            table["partColAlign"] = {
-                pci: pci_c.get(pci, None) for pci in range(pi_ncols[pi])
+            table.provenance["partColAlign"] = {
+                pci: pci_lci.get(pci, None) for pci in range(pi_ncols[pi])
             }
         if table.get("_id"):
             yield table
@@ -569,7 +573,6 @@ def set_partition_columns(
 def merge_partition_tables(
     mergetable: Table,
     table: Table,
-    mergeheaders_topn: int = None,
     keep_partition_meta: Collection[Union[str, Callable[[Dict], Dict]]] = [
         "tableHeaders"
     ],
@@ -580,120 +583,69 @@ def merge_partition_tables(
         mergetable: Big table
         table: Small table
         keep_partition_meta: Which fields to keep in ``partColAlign`` tables
-        mergeheaders_topn: Number of top headers to keep when merging
 
     Returns:
         Merged table
     """
     import copy
 
-    if "partitionIndex" not in table:
+    if "partitionIndex" not in table.provenance:
         return table
 
-    empty_cell = {"text": ""}
-    pi = table["partitionIndex"]
+    mergetable = Table(mergetable)
+    table = Table(table)
 
-    if not isinstance(mergetable, Table):
-        mergetable = Table(mergetable)
-    if not isinstance(table, Table):
-        table = Table(table)
-
-    def keep(partColAlign, table):
+    def get_provenance(table):
+        # partColAlign is a mapping from partition cols to local cols
+        pci_lci = table.provenance["partColAlign"]
+        prov = {
+            "tableIndex": table["tableIndex"],
+            "partcol_local": pci_lci,
+            "partcol_global": {
+                pci: table["columnIndexOffset"] + ci
+                for pci, ci in pci_lci.items()
+                if ci is not None
+            },
+            **table.provenance
+        }
         for field in keep_partition_meta:
             if type(field) == str:
                 val = copy.deepcopy(table.get(field))
                 if isinstance(val, list):
                     val = val[:10]
-                partColAlign[field] = val
+                prov[field] = val
             else:
                 assert callable(field)
-                partColAlign.update(copy.deepcopy(field(table)))
+                prov.update(copy.deepcopy(field(table)))
+        return prov
 
-    if mergetable.get("type") != "partition":
+    def get_aligned_rows(rows, alignment, empty_cell):
+        for row in rows:
+            yield [
+                row[c] if (c != None and c < len(row)) else empty_cell
+                for _, c in sorted(alignment.items())
+            ]
+
+    if not mergetable.provenance.get("merge"):
         # Create new mergetable
 
         # partColAlign is a mapping from partition cols to local cols
-        tableData = list(
-            align_columns(
-                mergetable["tableData"], mergetable["partColAlign"], empty_cell
-            )
-        )
-        tableHeaders = list(
-            align_columns(
-                mergetable["tableHeaders"], mergetable["partColAlign"], empty_cell
-            )
-        )
-        tableHeaders = get_top_headers(tableHeaders, topn=mergeheaders_topn)
-        headerText = tuple(
-            tuple([cell.get("text", "").lower() for cell in r]) for r in tableHeaders
+        pci_lci = mergetable.provenance["partColAlign"]
+
+        mergetable = Table(
+            head = get_aligned_rows(mergetable.head, pci_lci, ''),
+            body = get_aligned_rows(mergetable.body, pci_lci, ''),
+            provenance = {'merge': [get_provenance(mergetable)]},
+            annotations = {} # TODO
         )
 
-        partColAlign = {
-            "tableIndex": mergetable["tableIndex"],
-            "partcol_local": mergetable["partColAlign"],
-            "partcol_global": {
-                pci: mergetable["columnIndexOffset"] + c
-                for pci, c in mergetable["partColAlign"].items()
-                if c is not None
-            },
-        }
-        keep(partColAlign, mergetable)
-
-        mergetable = {
-            "_id": mergetable["_id"],
-            "pgId": pi,
-            "tbNr": 0,
-            "type": "partition",
-            "pgTitle": f"Partition {pi}",
-            "sectionTitle": "",
-            "headerId": get_headerId(headerText),
-            "numCols": len(tableData[0]),
-            "numDataRows": len(tableData),
-            "numHeaderRows": len(tableHeaders),
-            "numericColumns": [],
-            "numTables": mergetable.get("numTables", 1),
-            "tableHeaders": tableHeaders,
-            "tableData": tableData,
-            "pivots": mergetable.get("pivots", [mergetable.get("pivot")]),
-            "partColAligns": [partColAlign],
-        }
-
-    tableHeaders = list(
-        align_columns(table["tableHeaders"], table["partColAlign"], empty_cell)
-    )
-    tableHeaders = get_top_headers(
-        tableHeaders, merge_headers=mergetable["tableHeaders"], topn=mergeheaders_topn
-    )
-    headerText = tuple(
-        tuple([cell.get("text", "").lower() for cell in r]) for r in tableHeaders
-    )
-
-    tableData = mergetable["tableData"]
-    for row in align_columns(table["tableData"], table["partColAlign"], empty_cell):
-        tableData.append(row)
-
-    partColAlign = {
-        "tableIndex": table["tableIndex"],
-        "partcol_local": table["partColAlign"],
-        "partcol_global": {
-            pci: table["columnIndexOffset"] + c
-            for pci, c in table["partColAlign"].items()
-            if c is not None
-        },
-    }
-    keep(partColAlign, table)
-
+    merge_provs = mergetable.provenance.get('merge', [])
+    local_prov = get_provenance(table)
     return Table(
-        {
-            **mergetable,
-            "tableHeaders": tableHeaders,
-            "tableData": tableData,
-            "headerId": get_headerId(headerText),
-            "numDataRows": len(mergetable["tableData"]),
-            "numTables": mergetable["numTables"] + table.get("numTables", 1),
-            "pivots": mergetable["pivots"] + table.get("pivots", [table.get("pivot")]),
-            "partColAligns": mergetable["partColAligns"] + [partColAlign],
-        }
+        head = mergetable.head + tuple(get_aligned_rows(mergetable.head, pci_lci, '')),
+        body = mergetable.head + tuple(get_aligned_rows(mergetable.body, pci_lci, '')),
+        provenance = {'merge': merge_provs + [local_prov]},
+        annotations = {} # TODO
     )
 
 
@@ -737,38 +689,12 @@ def cluster_columns(
     return dict(zip(d.index, partcols))
 
 
-def align_columns(rows, alignment, empty_cell):
-    for row in rows:
-        yield [
-            row[c] if (c != None and c < len(row)) else empty_cell
-            for _, c in sorted(alignment.items())
-        ]
-
-
-def get_top_headers(tableHeaders, merge_headers=None, topn=None):
-    if merge_headers is None:
-        merge_headers = [[{}] * len(tableHeaders[0])] if tableHeaders else []
-    top = []
-    if any(tableHeaders) and any(merge_headers):
-        for merge, hcol in zip(merge_headers[0], zip(*tableHeaders)):
-            c = Counter(
-                cell.get("text", "").strip()
-                for cell in hcol
-                if cell.get("text", "").strip()
-            )
-            if merge:
-                c += Counter(merge.get("freq", {}))
-
-            txt = ""
-            if c:
-                txts, _ = zip(*c.most_common())
-                txts_nohidden = [t for t in txts if t and t[0] != "_"]
-                txt = "\t".join(t for t in (txts_nohidden or txts)[:topn])
-            top.append({"text": txt, "freq": c})
-
-        return [top]
-    else:
-        if any(tableHeaders):
-            return tableHeaders
-        else:
-            return merge_headers
+def merge_headers(tables: Collection[Table]):
+    for table in tables:
+        header = []
+        for ci, col in enumerate(zip(*table.head)):
+            counts = Counter(filter(bool, col))
+            for cell, _ in list(counts.most_common(1)) or [(f"col{ci}", 0)]:
+                header.append(cell)
+        table.head = (tuple(header),)
+        return table

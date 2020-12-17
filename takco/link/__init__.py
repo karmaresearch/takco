@@ -59,19 +59,19 @@ def lookup_hyperlinks(tables: List[dict], lookup: Lookup, lookup_cells=False):
             object
     """
     assert isinstance(lookup, Lookup)
-    with lookup:
+    with lookup as look:
         for table in tables:
             table = Table(table)
 
-            log.debug(f"Looking up hyperlinks of {table.get('_id')} using {lookup}")
+            log.debug(f"Looking up hyperlinks of {table.get('_id')} using {look}")
             hrefs = get_hrefs(table.get("tableData", []), lookup_cells=lookup_cells)
             ents = table.annotations.setdefault("entities", {})
-            for ci, ri_ents in lookup.lookup_cells(hrefs).items():
+            for ci, ri_ents in look.lookup_cells(hrefs).items():
                 for ri, es in ri_ents.items():
                     ents.setdefault(ci, {}).setdefault(ri, {}).update(es)
             yield table
 
-            lookup.flush()
+            look.flush()
 
 
 def link(

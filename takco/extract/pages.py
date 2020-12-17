@@ -22,7 +22,7 @@ class PageSource(ABC):
         pass
 
 
-class WikiPages(PageSource):
+class Download(PageSource):
     """
     Download Wikipedia articles
 
@@ -151,7 +151,7 @@ class LinePages(PageSource):
                         if m:
                             title = m.group(1)
 
-                    about = title
+                    about: typing.Optional[str] = title
                     if self.lookup is not None:
                         about = self.lookup.lookup_title(title)
 

@@ -28,18 +28,25 @@ class DawgLookup(Lookup):
     path: Path
     prefix: str
     extract: typing.Optional[typing.Pattern] = None
+    lookup: typing.Optional[dawg.IntDAWG] = None
 
     def __post_init__(self):
         if isinstance(self.extract, str):
             self.extract = re.compile(self.extract)
 
     def __enter__(self):
-        self.lookup = dawg.IntDAWG()
-        self.lookup.load(self.path)
-        return self
+        import copy
+        new = copy.deepcopy(self)
+        new.lookup = dawg.IntDAWG()
+        new.lookup.load(new.path)
+        return new
 
     def __exit__(self, *args):
-        del self.lookup
+        try:
+            delattr(self, 'lookup')
+        except AttributeError:
+            pass
+
 
     def lookup_title(self, title: str) -> typing.Optional[str]:
         assert self.lookup

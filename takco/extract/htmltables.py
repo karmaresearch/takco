@@ -1,9 +1,14 @@
 import re
 import copy
 import logging as log
+import typing
 
 from takco import Table
 
+try:
+    from bs4 import BeautifulSoup, Tag
+except:
+    log.error(f"Could not import BeautifulSoup")
 
 class Extractor(object):
     """
@@ -18,8 +23,6 @@ class Extractor(object):
     def __init__(self, input, id_=None, **kwargs):
         # TODO: should divide this class into two subclasses
         # to deal with string and bs4.Tag separately
-
-        from bs4 import BeautifulSoup, Tag
 
         # validate the input
         if not isinstance(input, str) and not isinstance(input, Tag):
@@ -108,12 +111,6 @@ class Extractor(object):
     def return_list(self):
         return [[(cell or self._empty) for cell in row] for row in self._output]
 
-    def write_to_csv(self, path=".", filename="output.csv"):
-        with open(os.path.join(path, filename), "w") as csv_file:
-            table_writer = csv.writer(csv_file)
-            for row in self._output:
-                table_writer.writerow(row)
-        return
 
     def _check_validity(self, i, j, height, width):
         """
@@ -385,7 +382,8 @@ def page_extract_tables(
                 td = BeautifulSoup("<td></td>", "html.parser")
                 th = BeautifulSoup("<th></th>", "html.parser")
 
-                tableHeaders, tableData = [], []
+                tableHeaders = []
+                tableData = []
                 for row in htmlrows:
                     h, e = (
                         (tableHeaders, th)

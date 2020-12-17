@@ -242,7 +242,6 @@ class TableSet:
         edge_exp: float = 1,
         agg_threshold_col: float = None,
         keep_partition_meta: typing.List[str] = ["tableHeaders"],
-        mergeheaders_topn: int = None,
         max_cluster_size: int = None,
     ):
         """Cluster tables
@@ -266,7 +265,6 @@ class TableSet:
             edge_exp : Exponent of edge weight for Louvain modularity
             agg_threshold_col: Matcher aggregation threshold (default: agg_threshold)
             keep_partition_meta: Attributes to keep for partition table analysis
-            mergeheaders_topn: Number of top headers to keep when merging
         """
         tables = TableSet(self).tables
         agg_threshold_col = agg_threshold_col or agg_threshold
@@ -424,9 +422,8 @@ class TableSet:
                     a,
                     b,
                     keep_partition_meta=keep_partition_meta,
-                    mergeheaders_topn=mergeheaders_topn,
                 ),
-            )
+            ).pipe(cluster.merge_headers)
 
         return TableSet(tables)
 
