@@ -348,9 +348,6 @@ def page_extract_tables(
         if pgId is None:
             pgId = 0
 
-        if aboutURI:
-            pgId = aboutURI
-
         tableId = 0
         for table in page.find_all("table", ["wikitable"]):
 

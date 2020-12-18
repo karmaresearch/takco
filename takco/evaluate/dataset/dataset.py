@@ -5,6 +5,7 @@ import logging as log
 import gzip
 import typing
 
+from takco import Table
 
 class Dataset:
     tables: typing.Sequence[typing.Dict[str, typing.Any]] = ()
@@ -59,18 +60,6 @@ class Dataset:
                         with zipfile.ZipFile(fpath, "r") as zip_ref:
                             zip_ref.extractall(dpath)
 
-        for k, v in params.items():
-            if (type(v) == str) and v.endswith("csv"):
-                import csv
-
-                vpath = Path(resourcedir) / Path(v)
-                if vpath.exists():
-                    log.info(f"Loading data from {vpath}")
-                    params[k] = list(csv.reader(vpath.open()))
-                else:
-                    log.warning(f"Could not load data from {vpath}")
-                    params[k] = {}
-
         return params
 
     def get_unannotated_tables(self):
@@ -78,7 +67,7 @@ class Dataset:
             table = dict(table)
             rows = [[{"text": c} for c in row] for row in table.pop("rows", [])]
             headers = [[{"text": c} for c in row] for row in table.pop("headers", [])]
-            yield {
+            yield Table(obj={
                 "_id": table.pop("name", ""),
                 "tableData": rows,
                 "tableHeaders": headers,
@@ -88,64 +77,12 @@ class Dataset:
                     for task in ["entities", "classes", "properties"]
                 },
                 **table,
-            }
+            })
 
     def get_annotated_tables(self):
-        return {table["name"]: table for table in self.tables}
+        return Table({table["name"]: table for table in self.tables})
 
     def get_annotated_tables_as_predictions(self):
         for table in self.get_unannotated_tables():
-            yield {**table, **table.get("gold", {})}
-
-
-class Annotation(Dataset):
-    def __init__(self, fname: str = None, name=None, **kwargs):
-        assert fname
-        self.fpath = Path(fname)
-        self.name = name or ""
-
-    @property
-    def tables(self):
-        files = []
-
-        if self.fpath.is_dir():
-            files = self.fpath.glob("*")
-        elif self.fpath.is_file():
-            files = [self.fpath]
-        else:
-            log.error(f"Cannot load {self.fpath}")
-
-        for file in files:
-            gzipped = file.name.endswith("gz")
-            with (gzip.open(file) if gzipped else file.open()) as f:
-                for line in f:
-                    table = json.loads(line)
-                    table["name"] = table["_id"]
-                    table["rows"] = [
-                        [c.get("text", "") for c in row] for row in table["tableData"]
-                    ]
-                    if "tableHeaders" in table:
-                        table["headers"] = [
-                            [c.get("text", "") for c in row]
-                            for row in table["tableHeaders"]
-                        ]
-                    table["numheaderrows"] = len(table["tableHeaders"])
-                    table["keycol"] = 0
-                    table.setdefault(
-                        "entities",
-                        {
-                            str(ci): {
-                                str(ri): {
-                                    uri: 1
-                                    for l in c.get("surfaceLinks", [])
-                                    for uri in [l.get("target", {}).get("href")]
-                                    if uri
-                                }
-                                for ri, c in enumerate(col)
-                            }
-                            for ci, col in enumerate(zip(*table["tableData"]))
-                        },
-                    )
-                    table.setdefault("classes", {})
-                    table.setdefault("properties", {})
-                    yield table
+            table.annotations = table.get("gold", {})
+            yield table

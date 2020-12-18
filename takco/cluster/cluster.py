@@ -643,7 +643,7 @@ def merge_partition_tables(
     local_prov = get_provenance(table)
     return Table(
         head = mergetable.head + tuple(get_aligned_rows(mergetable.head, pci_lci, '')),
-        body = mergetable.head + tuple(get_aligned_rows(mergetable.body, pci_lci, '')),
+        body = mergetable.body + tuple(get_aligned_rows(mergetable.body, pci_lci, '')),
         provenance = {'merge': merge_provs + [local_prov]},
         annotations = {} # TODO
     )
@@ -697,4 +697,4 @@ def merge_headers(tables: Collection[Table]):
             for cell, _ in list(counts.most_common(1)) or [(f"col{ci}", 0)]:
                 header.append(cell)
         table.head = (tuple(header),)
-        return table
+        yield table

@@ -9,6 +9,7 @@ from pathlib import Path
 import logging as log
 import csv
 import re
+from typing import List
 
 from .dataset import Dataset
 
@@ -85,7 +86,7 @@ if __name__ == "__main__":
 
         # The CEA dataset has 3 or 4 columns
         cw = csv.writer(sys.stdout)
-        rows = []
+        rows: List[str] = []
         n_total, n_annotated = 0, 0
         for line in tqdm.tqdm(targetfile.open()):
             n_total += 1
@@ -94,8 +95,7 @@ if __name__ == "__main__":
                 row += [""]
             table, ri, ci, uri = row
             ents = preds.get(table + ".csv", {}).get(ci, {}).get(str(int(ri) - 1), {})
-            for e, _ in Counter(ents).most_common(1):
-                uri = e
+            for uri, _ in Counter(ents).most_common(1): # type: ignore
                 if uri:
                     cw.writerow([table, ri, ci, uri])
                     n_annotated += 1
@@ -114,14 +114,13 @@ if __name__ == "__main__":
 
         # The CEA dataset has 3 columns
         cw = csv.writer(sys.stdout)
-        rows = []
+        rows: List[str] = []
         n_total, n_annotated = 0, 0
         for line in tqdm.tqdm(targetfile.open()):
             n_total += 1
             table, ci = line.strip().split(",")
             classes = preds.get(table + ".csv", {}).get(ci, {})
-            for e, _ in Counter(classes).most_common(1):
-                uri = e
+            for uri, _ in Counter(classes).most_common(1): # type: ignore
                 if uri:
                     cw.writerow([table, ci, uri])
                     n_annotated += 1
@@ -140,14 +139,13 @@ if __name__ == "__main__":
 
         # The CEA dataset has 3 columns
         cw = csv.writer(sys.stdout)
-        rows = []
+        rows: List[str] = []
         n_total, n_annotated = 0, 0
         for line in tqdm.tqdm(targetfile.open()):
             n_total += 1
             table, fromci, toci = line.strip().split(",")
             props = preds.get(table + ".csv", {}).get(fromci, {}).get(toci, {})
-            for e, _ in Counter(props).most_common(1):
-                uri = e
+            for uri, _ in Counter(props).most_common(1): # type: ignore
                 if uri:
                     cw.writerow([table, fromci, toci, uri])
                     n_annotated += 1

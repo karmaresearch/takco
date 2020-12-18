@@ -35,11 +35,9 @@ class DawgLookup(Lookup):
             self.extract = re.compile(self.extract)
 
     def __enter__(self):
-        import copy
-        new = copy.deepcopy(self)
-        new.lookup = dawg.IntDAWG()
-        new.lookup.load(new.path)
-        return new
+        self.lookup = dawg.IntDAWG()
+        self.lookup.load(self.path)
+        return self
 
     def __exit__(self, *args):
         try:

@@ -3,13 +3,13 @@ import time
 from rdflib import URIRef, Literal
 from collections import defaultdict
 import urllib
-
+from typing import Dict, Set, Union
 
 def get_cell_noveltyhashes(triples, kb):
 
     log.warn(kb)
 
-    task_novelty_hashes = defaultdict(lambda: defaultdict(set))
+    task_novelty_hashes: Dict[str, Dict[str, Set[int]]] = defaultdict(lambda: defaultdict(set))
     for t in triples:
         novelty_hashes = task_novelty_hashes[t.get("kind")]
 
@@ -53,14 +53,14 @@ def get_cell_noveltyhashes(triples, kb):
                 novelty_hashes["existing"].add(triplehash)
 
     for k, nhs in task_novelty_hashes.items():
-        task_novelty_hashes[k] = {n: list(hs) for n, hs in nhs.items()}
+        task_novelty_hashes[k] = {n: set(hs) for n, hs in nhs.items()}
 
     return task_novelty_hashes
 
 
 def count_noveltyhashes(task_novelty_hashes):
 
-    task_novelty_counts = {}
+    task_novelty_counts: Dict[str, Dict[str, Dict[str, Union[float, int]]]] = {}
 
     # Count intersections of correct with others
     for task, nhs in task_novelty_hashes.items():
@@ -68,11 +68,11 @@ def count_noveltyhashes(task_novelty_hashes):
         for n, hs in nhs.items():
             hs = set(hs)
             if n not in ["gold", "pred"]:
-                g, p = set(nhs.get("gold", [])), set(nhs.get("pred", []))
+                gs, ps = set(nhs.get("gold", [])), set(nhs.get("pred", []))
                 counts[n] = {
-                    "tp": len(hs & g & p),
-                    "fn": len(hs & g - p),
-                    "fp": len(hs & p - g),
+                    "tp": len(hs & gs & ps),
+                    "fn": len(hs & gs - ps),
+                    "fp": len(hs & ps - gs),
                 }
 
         for n in counts:

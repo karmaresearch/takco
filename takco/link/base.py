@@ -2,6 +2,7 @@ from typing import (
     Union,
     List,
     Dict,
+    Mapping,
     Set,
     Tuple,
     Optional,
@@ -59,8 +60,8 @@ class SearchResult(dict):
     def __init__(
         self,
         uri: URI,
-        about: Dict[URI, List[URI]] = None,
-        context_matches: Dict[int, Dict[URI, Collection[LiteralMatchResult]]] = None,
+        about: Mapping[URI, List[URI]] = None,
+        context_matches: Mapping[int, Mapping[URI, Collection[LiteralMatchResult]]] = None,
         score: int = 1,
     ):
         """An entity search result with optional score"""
@@ -89,7 +90,7 @@ class Typer(Asset, ABC):
     @abstractmethod
     def coltype(
         self, cell_ents: Iterable[Tuple[str, Collection[URI]]],
-    ) -> Dict[str, int]:
+    ) -> Mapping[str, int]:
         """Find column type for cells and their entities"""
         pass
 
@@ -168,7 +169,7 @@ class Database(Asset, ABC):
         return self.about(e).get(prop, [])
 
     @abstractmethod
-    def about(self, e: URI, att_uris=None) -> Dict[URI, List[Node]]:
+    def about(self, e: URI, att_uris=None) -> Mapping[URI, List[Node]]:
         """Look up facts about an entity
 
         Args:
@@ -197,13 +198,14 @@ class Linker(Asset):
         existing_entities=None,
         col_classes=None,
         **kwargs,
-    ) -> Dict[Tuple[int, int], Collection[SearchResult]]:
+    ) -> Mapping[Tuple[int, int], Collection[SearchResult]]:
 
         existing_entities = existing_entities or {}
         col_classes = col_classes or {}
 
+        # TODO: clean this up
         if contextual:
-            rowcol_searchresults = {}
+            rowcol_searchresults: Dict[Tuple[int, int], Collection[SearchResult]] = {}
             query_rowcols_list = []
             for ri, row in enumerate(rows):
                 if (not skiprows) or (ri not in skiprows):
@@ -228,11 +230,11 @@ class Linker(Asset):
             if query_rowcols_list:
                 queries, _ = zip(*query_rowcols_list)
                 allresults = self.searcher.search_entities(queries, **kwargs)
-                for (query, rowcol), results in zip(query_rowcols, allresults):
+                for (query, rowcol), results in zip(query_rowcols_list, allresults):
                     rowcol_searchresults[rowcol] = results
         else:
             rowcol_searchresults = {}
-            query_rowcols_dict = {}
+            query_rowcols_dict: Dict[Tuple[str, Tuple], Set[Tuple[int, int]]] = {}
             for ri, row in enumerate(rows):
                 if (not skiprows) or (ri not in skiprows):
                     for ci, cell in enumerate(row):
@@ -252,9 +254,7 @@ class Linker(Asset):
                                 ]
             queries = [(q, {"classes": cs}) for q, cs in query_rowcols_dict]
             allresults = self.searcher.search_entities(queries, **kwargs)
-            for ((query, clss), rowcols), results in zip(
-                query_rowcols_dict.items(), allresults
-            ):
+            for (_, rowcols), results in zip(query_rowcols_dict.items(), allresults):
                 for rowcol in rowcols:
                     rowcol_searchresults[rowcol] = results
 
@@ -272,9 +272,9 @@ class Linker(Asset):
             existing_entities=existing_entities,
         )
 
-        entities = {}
+        entities: Dict[str, Dict[str, Dict[str, float]]] = {}
         for (ri, ci), results in rowcol_searchresults.items():
-            entities.setdefault(str(ci), {})[str(ri)] = {r.uri: 1 for r in results}
+            entities.setdefault(str(ci), {})[str(ri)] = {r.uri: 1.0 for r in results}
 
         return {"entities": entities}
 

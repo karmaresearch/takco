@@ -18,6 +18,7 @@ from ..base import (
     SearchResult,
     Typer,
     Lookup,
+    Triple,
 )
 from .rdf import GraphDB, URIRef, Literal
 from ..types import SimpleTyper
@@ -349,7 +350,7 @@ class ElasticSearcher(Searcher):
                             continue
                         if any(o.values()):
                             if p in uri_prefLabel and ("str" in o):
-                                surface_score[normalize_surface(o["str"])] = 1
+                                surface_score[normalize_surface(o["str"])] = 1.0
                             elif p in uri_altLabel and ("str" in o):
                                 surface_score[normalize_surface(o["str"])] = 0.5
                             else:
@@ -368,7 +369,7 @@ class ElasticSearcher(Searcher):
                     label = doc.get("labels", {}).get(lang, {}).get("value")
                     surface_score = {}
                     if label:
-                        surface_score[normalize_surface(label)] = 1
+                        surface_score[normalize_surface(label)] = 1.0
                     for alias in doc.get("aliases", {}).get(lang, []):
                         if alias.get("value"):
                             surface_score[normalize_surface(alias["value"])] = 0.5
@@ -482,10 +483,10 @@ class ElasticSearcher(Searcher):
         return requests.post(f"http://{host}:{port}/_scripts/query", json=body).text
 
     @classmethod
-    def init_index(cls, es_index: str, es_kwargs: typing.Dict = ()):
+    def init_index(cls, es_index: str, es_kwargs: typing.Dict = None):
         import sys
 
-        es_kwargs = dict(es_kwargs)
+        es_kwargs = dict(es_kwargs or {})
         es = Elasticsearch(timeout=1000, **es_kwargs)
         es.indices.delete(index=es_index, ignore=[400, 404])
         print("Creating index...", file=sys.stderr)
@@ -493,7 +494,7 @@ class ElasticSearcher(Searcher):
         print(cls.store_template(es_kwargs=es_kwargs))
 
 
-class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
+class ElasticDB(ElasticSearcher, NaryDB, Lookup):
     INIT = {
         "mappings": {
             "properties": {
@@ -507,9 +508,8 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
 
     def __init__(self, typer: Typer = SimpleTyper(), cache=False, *args, **kwargs):
         self.typer = typer
-        self.cache = {} if cache else ()
+        self.cache: typing.Optional[typing.Dict] = {} if cache else None
         ElasticSearcher.__init__(self, *args, **kwargs)
-        GraphDB.__init__(self)
 
     def _hit_triples(self, hit):
         s = self._tonode(hit.get("_source", {}).get("id"), self.baseuri)
@@ -582,7 +582,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
 
     def triples(self, triplepattern, **kwargs):
         triplepattern = tuple(triplepattern)
-        if triplepattern in self.cache:
+        if self.cache is not None and triplepattern in self.cache:
             return self.cache[triplepattern]
         s, p, o = triplepattern
         body = self._triple_body(triplepattern)
@@ -600,7 +600,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
                 if s_ok and p_ok and o_ok:
                     triple = s_, p_, o_
                     yield triple
-                    if self.cache is not ():
+                    if self.cache is not None:
                         self.cache.setdefault(triplepattern, set()).add(triple)
 
     def count(self, triplepattern):
@@ -656,7 +656,7 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
                                     for ci, es in enumerate(entsets):
                                         if o in es:
                                             qm = QualifierMatchResult(
-                                                ci, (None, p, o), None
+                                                ci, Triple(id, p, o), None
                                             )
                                             qmatches.append(qm)
                                 else:
@@ -673,12 +673,12 @@ class ElasticDB(ElasticSearcher, GraphDB, NaryDB, Lookup):
                                         for ci, txt in enumerate(celltexts):
                                             for lm in self.typer.literal_match(o, txt):
                                                 qm = QualifierMatchResult(
-                                                    ci, (None, p, o), lm
+                                                    ci, Triple(id, p, o), lm
                                                 )
                                                 qmatches.append(qm)
 
                             yield NaryMatchResult(
-                                (ci1, ci2), (e1, mainprop, e2), qmatches
+                                (ci1, ci2), Triple(e1, mainprop, e2), qmatches
                             )
 
     @staticmethod
