@@ -5,6 +5,13 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+from pathlib import Path
+import logging as log
+import csv
+import json
+import html
+import urllib
+import typing
 
 TYPE_URI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
@@ -167,8 +174,6 @@ if __name__ == "__main__":
 
     log.getLogger().setLevel(log.DEBUG)
 
-    def tables(path: Path, version: int = 2):
-        print(json.dumps(T2D(path, version=version).tables))
 
     def dbpedia_subset(fname: Path):
         """Convert Dbpedia subset tables to triples.
@@ -205,5 +210,5 @@ if __name__ == "__main__":
                 print(name, surface, score, sep="\t")
 
     defopt.run(
-        [tables, dbpedia_subset, extra_surface, all_surface], strict_kwonly=False
+        [dbpedia_subset, extra_surface, all_surface], strict_kwonly=False
     )

@@ -36,7 +36,7 @@ class TakcoAccessor:
             self._df.applymap(self.try_html).values,
             columns=pd.MultiIndex.from_arrays(head.values.T),
         ).style.set_table_styles(
-            [{"selector": f".col_heading.level0", "props": [("display", "none")]}]
+            [{"selector": f"thead tr:first-child", "props": [("display", "none")]}]
         )
 
     def highlight_cells(self, body=(), head=(), color=None, props=()):

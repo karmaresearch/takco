@@ -14,9 +14,8 @@ from ..base import (
     Triple,
     Node,
     LiteralMatchResult,
-    Typer,
 )
-from ..types import SimpleTyper
+from ..types import Typer, SimpleTyper
 from ..integrate import NaryDB, NaryMatchResult, QualifierMatchResult
 
 

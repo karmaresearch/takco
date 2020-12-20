@@ -62,7 +62,7 @@ class SearchResult(dict):
         uri: URI,
         about: Mapping[URI, List[URI]] = None,
         context_matches: Mapping[int, Mapping[URI, Collection[LiteralMatchResult]]] = None,
-        score: int = 1,
+        score: float = 1.0,
     ):
         """An entity search result with optional score"""
         self.uri = uri
@@ -84,29 +84,6 @@ class SearchResult(dict):
 
     def __repr__(self):
         return f"SearchResult('{self.uri}', {dict(self)}, {self.context_matches}, score={self.score})"
-
-
-class Typer(Asset, ABC):
-    @abstractmethod
-    def coltype(
-        self, cell_ents: Iterable[Tuple[str, Collection[URI]]],
-    ) -> Mapping[str, int]:
-        """Find column type for cells and their entities"""
-        pass
-
-    @classmethod
-    def literal_match(
-        cls, literal: Literal, surface: str
-    ) -> Iterable[LiteralMatchResult]:
-        """Match a cell value to a KB literal"""
-        score = float(bool(str(literal) == surface))
-        if score:
-            yield LiteralMatchResult(score, literal, None)
-
-    @abstractmethod
-    def is_literal_type(self) -> bool:
-        """Return whether this is a literal type"""
-        pass
 
 
 class Searcher(Asset, ABC):

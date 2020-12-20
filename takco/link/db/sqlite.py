@@ -154,7 +154,7 @@ class SQLiteLookup(SQLiteCache, Lookup):
                     if str(uri) == "-1":
                         continue
                     if not uri:
-                        return
+                        return None
                     return self.baseuri + str(uri)
 
             if self.fallback is not None:
@@ -442,8 +442,8 @@ class SQLiteSearcher(SQLiteCache, Searcher):
                 try:
                     m = LINE.match(line.strip())
                     if m:
-                        m = m.groupdict()
-                        s, p, val = m["s"], m["p"], m["v"]
+                        g = m.groupdict()
+                        s, p, val = g["s"], g["p"], g["v"]
                         score = scoredict.get(p, 0)
                         if score and s:
                             val = val.encode().decode("unicode-escape").lower()

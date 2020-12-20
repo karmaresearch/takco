@@ -1,7 +1,7 @@
 """
 This module is executable. Run ``python -m takco.link.types -h`` for help.
 """
-__all__ = ["SimpleTyper", "EntityTyper", "EntityBloom"]
+__all__ = ["Typer", "SimpleTyper", "EntityTyper", "EntityBloom"]
 
 import logging as log
 import time
@@ -12,13 +12,14 @@ import itertools
 import math
 import decimal
 import enum
-from typing import Dict, List, Tuple, Collection, Optional
+from typing import Dict, List, Tuple, Collection, Optional, Mapping, Iterable
 from pathlib import Path
 from dataclasses import dataclass, field
+from abc import ABC, abstractmethod
 
 from rdflib import URIRef, Literal
 
-from .base import Typer, LiteralMatchResult, Database
+from .base import Asset, LiteralMatchResult, Database
 
 URI = str
 CellValue = str
@@ -28,6 +29,27 @@ YEAR_PATTERN = re.compile("^(\d{4})(?:[-–—]\d{2,4})?$")
 RDFTYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFSUBCLASS = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 
+
+class Typer(Asset, ABC):
+    @abstractmethod
+    def coltype(
+        self, cell_ents: Iterable[Tuple[str, Collection[URI]]],
+    ) -> Mapping[str, int]:
+        """Find column type for cells and their entities"""
+        pass
+
+    def literal_match(
+        cls, literal: Literal, surface: str
+    ) -> Iterable[LiteralMatchResult]:
+        """Match a cell value to a KB literal"""
+        score = float(bool(str(literal) == surface))
+        if score:
+            yield LiteralMatchResult(score, literal, None)
+
+    @abstractmethod
+    def is_literal_type(self) -> bool:
+        """Return whether this is a literal type"""
+        pass
 
 @dataclass
 class SimpleTyper(Typer):
@@ -117,8 +139,7 @@ class SimpleTyper(Typer):
                 return {t: counts[t] / n}
         return {}
 
-    @classmethod
-    def literal_match(cls, literal: Literal, surface: str):
+    def literal_match(self, literal: Literal, surface: str):
 
         dtype = literal.datatype if hasattr(literal, "datatype") else None
         literal, surface = str(literal).strip(), str(surface).strip()
@@ -127,7 +148,7 @@ class SimpleTyper(Typer):
         if dtype:
             # Typed literals should match well
 
-            if str(dtype) == str(cls.DATETIME):
+            if str(dtype) == str(self.DATETIME):
                 try:
                     l = datetime.datetime.fromisoformat(literal).timestamp()
 
@@ -139,7 +160,7 @@ class SimpleTyper(Typer):
                         try:
                             s = datetime.datetime.fromisoformat(surface).timestamp()
                         except:
-                            s = cls._dateparse(surface).timestamp()
+                            s = self._dateparse(surface).timestamp()
                     if s:
                         score = max(0, 1 - (abs(s - l) / (60 * 60 * 24 * 365)))
 
@@ -166,16 +187,16 @@ class SimpleTyper(Typer):
         elif surface and literal:
             # Strings may match approximately
             if self.stringmatch == "jaccard":
-                s, l = set(surface.lower().split()), set(literal.lower().split())
-                if s and l:
-                    score = len(s & l) / len(s | l)
+                stok, ltok = set(surface.lower().split()), set(literal.lower().split())
+                if stok and ltok:
+                    score = len(stok & ltok) / len(stok | ltok)
             elif self.stringmatch == "levenshtein":
                 import Levenshtein
 
-                s, l = surface.lower(), literal.lower()
-                if s and l:
-                    m = min(len(s), len(l))
-                    score = max(0, (m - Levenshtein.distance(s, l)) / m)
+                slow, llow = surface.lower(), literal.lower()
+                if slow and llow:
+                    m = min(len(slow), len(llow))
+                    score = max(0, (m - Levenshtein.distance(slow, llow)) / m)
 
         if score:
             yield LiteralMatchResult(score, literal, dtype)
@@ -220,7 +241,7 @@ class EntityTyper(SimpleTyper):
         types = super().coltype(cell_ents)
         if SimpleTyper.ENTITY in types:
             n = sum(1 for _, ents in cell_ents if ents)
-            counts: Counter = collections.Counter()
+            counts: Dict = collections.Counter()
             for c, es in cell_ents:
                 ts = [set(self.supertypes(e)) for e in es]
                 if ts:
@@ -241,7 +262,7 @@ class EntityTyper(SimpleTyper):
 class EntityBloom(SimpleTyper):
     """Find entity columns using bloom filter"""
 
-    bloomfile: Path = None
+    bloomfile: Optional[Path] = None
     threshold: float = 0.5
 
     def __post_init__(self):

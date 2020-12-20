@@ -165,7 +165,7 @@ class MediaWikiAPI(Searcher, Lookup):
                     claims = v.get("claims")
                     if mainsnak:
                         claims = list(self._mainsnaks(claims))
-                    p_vclaims = {}
+                    p_vclaims: typing.Dict = {}
                     for claim in claims:
                         p = self.prop_baseuri + claim.pop("property")
                         claim = self.snak2rdf(claim)
@@ -180,7 +180,7 @@ class MediaWikiAPI(Searcher, Lookup):
         limit: int = 1,
         add_about: bool = False,
         mainsnak: bool = True,
-    ) -> typing.List[SearchResult]:
+    ):
         """Searches for entities using labels and aliases.
 
         .. role:: pre
@@ -193,9 +193,10 @@ class MediaWikiAPI(Searcher, Lookup):
         .. _wbsearchentities: https://www.wikidata.org/w/api.php?action=help&modules=wbsearchentities
 
         """
+        resultsets: typing.List[typing.List[SearchResult]] = []
         for search, _ in query_contexts:
             if not search:
-                yield []
+                resultsets.append( [] )
                 continue
             results = self._query(
                 action="wbsearchentities",
@@ -213,10 +214,12 @@ class MediaWikiAPI(Searcher, Lookup):
                         s.update(ent_claims.get(s["id"], {}))
                         s[RDF_type] = s.get(self.typeuri, [])
 
-                yield [SearchResult(r.pop("concepturi"), r) for r in results]
+                rs = [SearchResult(r.pop("concepturi"), r) for r in results]
+                resultsets.append( rs )
             else:
                 log.debug(f"No {self.__class__.__name__} results for {search}")
-                yield []
+                resultsets.append( [] )
+        return resultsets
 
 
 class DBpediaLookup(Searcher, Lookup):
@@ -247,15 +250,16 @@ class DBpediaLookup(Searcher, Lookup):
 
     def search_entities(
         self, query_contexts, limit: int = 1, **kwargs,
-    ) -> typing.List[SearchResult]:
+    ):
         """Searches for entities using the Keyword Search API.
         The Keyword Search API can be used to find related DBpedia resources for a
         given string. The string may consist of a single or multiple words.
 
         """
+        resultsets: typing.List[typing.List[SearchResult]] = []
         for search, _ in query_contexts:
             if not search:
-                yield []
+                resultsets.append( [] )
                 continue
             results = self._query(
                 QueryString=search,
@@ -271,9 +275,10 @@ class DBpediaLookup(Searcher, Lookup):
                             refcount = int((r.get("refCount") or ["0"])[0])
                         score = 1 - (1 / (1 + refcount))
                         sr.append(SearchResult(uri, r, score=score))
-                yield sr
+                resultsets.append( sr )
             else:
-                yield []
+                resultsets.append( [] )
+        return resultsets
 
 
 if __name__ == "__main__":

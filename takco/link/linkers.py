@@ -1,4 +1,4 @@
-from typing import Collection, List, Dict, Optional
+from typing import Collection, List, Dict, Optional, Any
 import logging as log
 from dataclasses import dataclass, field
 
@@ -124,7 +124,7 @@ class First(Linker):
         usecols: Collection[int] = None,
         skiprows: Collection[int] = None,
         existing: Dict = None,
-    ) -> Dict[str, Dict[str, Dict[str, float]]]:
+    ) -> Dict[str, Any]:
 
         entities = (existing or {}).get("entities", {})
         entities = {
@@ -219,10 +219,12 @@ class Salient(Linker):
         self.contextual = contextual
 
         self.expand = expand
-        if graph is None:
+        if graph is None and isinstance(searcher, GraphDB):
             self.graph = searcher
         elif isinstance(graph, GraphDB):
             self.graph = graph
+        else:
+            raise Exception(f"Must provide GraphDB searcher or separate graph!")
         self.max_backlink = max_backlink
 
     def __enter__(self):
@@ -242,7 +244,7 @@ class Salient(Linker):
         usecols: Collection[int] = None,
         skiprows: Collection[int] = None,
         existing: Dict = None,
-    ) -> Dict[str, Dict[str, Dict[str, float]]]:
+    ) -> Dict[str, Any]:
 
         existing_entities = (existing or {}).get("entities", {})
         rowcol_searchresults = self.get_rowcol_searchresults(
@@ -256,7 +258,7 @@ class Salient(Linker):
         )
         # TODO: lookup facts about existing entities
 
-        ci_ri_searchresults = {}
+        ci_ri_searchresults: Dict = {}
         for (ri, ci), results in rowcol_searchresults.items():
             results = sorted(results, key=len)[::-1][: self.limit]
             ci_ri_searchresults.setdefault(ci, {})[ri] = results
@@ -264,7 +266,7 @@ class Salient(Linker):
         from collections import Counter, defaultdict
 
         # Most salient property per column pair
-        fromci_toci_props = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+        fromci_toci_props = defaultdict(lambda: defaultdict(lambda: defaultdict(dict))) # type: ignore
         for toci, tocol in enumerate(zip(*rows)):
 
             ri_toresults = ci_ri_searchresults.get(toci, {})
@@ -272,7 +274,7 @@ class Salient(Linker):
                 if fromci == toci:
                     continue
 
-                prop_count = Counter()
+                prop_count: Dict = Counter()
                 for ri, celltext in enumerate(tocol):
                     for fr in fromri_searchresults.get(ri, {}):
                         # Loop over 'from' attributes
@@ -388,7 +390,7 @@ class Salient(Linker):
             ent_result = {r.uri: r for rs in ri_searchresults.values() for r in rs}
             ntotal = len(ent_result)
 
-            cls_count = Counter()
+            cls_count: Dict = Counter()
             for uri, r in ent_result.items():
                 for t in self.graph.typeProperties:
                     for cls in r.get(t, []):

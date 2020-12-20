@@ -42,7 +42,7 @@ try:
 
 except ImportError:
 
-    def classification(gold, pred):
+    def classification(gold, pred, any_annotated=False, only_annotated=False):
         raise Exception("Scikit-learn or pandas could not be loaded")
 
 

@@ -16,12 +16,11 @@ from dataclasses import dataclass, field
 from ..base import (
     Searcher,
     SearchResult,
-    Typer,
     Lookup,
     Triple,
 )
 from .rdf import GraphDB, URIRef, Literal
-from ..types import SimpleTyper
+from ..types import Typer, SimpleTyper
 from ..integrate import NaryDB, NaryMatchResult, QualifierMatchResult
 
 try:
