@@ -1,7 +1,7 @@
-defopt==6.0
-toml==0.10.1
+bs4==0.0.1
+datasketch==1.5.3
+defopt==6.0.2
+faiss-cpu==1.7.0
+python-igraph==0.8.3
 rdflib==5.0.0
-bs4
-python-igraph
-faiss-cpu
-datasketch
+toml==0.10.2
