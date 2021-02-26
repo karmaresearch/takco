@@ -78,6 +78,11 @@ class SetVerbosity(argparse.Action):
             log.getLogger().addHandler(log.FileHandler(logfile))
         log.info(f"Set log level to {log.getLogger().getEffectiveLevel()}")
 
+def runapp():
+    from .app import app as flask_app
+    import os
+    os.environ['FLASK_ENV'] = "development"
+    flask_app.run()
 
 def main():
 
@@ -92,6 +97,7 @@ def main():
         TableSet.coltypes,
         TableSet.score,
         TableSet.triples,
+        runapp,
     )
 
     def getclasses(mod):
@@ -153,6 +159,8 @@ def main():
                 )
 
     args = parser.parse_args(sys.argv[1:])
+    if not hasattr(args, '_func'):
+        parser.error('too few arguments')
 
     # Output result as json (or newline-delimited json if generator)
     result = defopt._call_function(parser, args._func, args)

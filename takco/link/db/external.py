@@ -248,9 +248,9 @@ class DBpediaLookup(Searcher, Lookup):
         redir = get_redirects(f"http://dbpedia.org/page/{title}")
         return str(redir).replace("/page/", "/resource/")
 
-    def search_entities(
+    def search_entities( # type: ignore
         self, query_contexts, limit: int = 1, **kwargs,
-    ):
+    ): 
         """Searches for entities using the Keyword Search API.
         The Keyword Search API can be used to find related DBpedia resources for a
         given string. The string may consist of a single or multiple words.
@@ -267,7 +267,7 @@ class DBpediaLookup(Searcher, Lookup):
                 #   language=self.language,
             )
             if results:
-                sr = []
+                sr: typing.List[SearchResult] = []
                 for r in results.get("docs", []):
                     for uri in r.get("resource", []):
                         if "type" in r:

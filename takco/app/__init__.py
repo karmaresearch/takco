@@ -3,15 +3,18 @@ from flask import Flask, escape, request, render_template, g, redirect
 from pathlib import Path
 import logging as log
 
-from ..evaluate import dataset as eval_dataset
+# from ..evaluate import dataset as eval_dataset
 from .data import load_kb
 from .stats import (
     get_kbgold,
     get_kbinfo,
 )
 
-# Run Flask: env PYTHONPATH=src/ FLASK_ENV=development FLASK_APP=app/app.py DATADIR=data/ flask run --port=5555
-app = Flask(__name__, static_folder="_static")
+# Run Flask: env PYTHONPATH=takco FLASK_ENV=development FLASK_APP=app DATADIR=data/ flask run --port=5555
+app = Flask(__name__, static_folder="_static", static_url_path='')
+from flask_cors import CORS, cross_origin
+cors = CORS(app)
+app.config['CORS_HEADERS'] = 'Content-Type'
 app.jinja_env.filters["any"] = any
 app.jinja_env.filters["all"] = all
 app.jinja_env.filters["lookup"] = lambda ks, d: [d.get(k) for k in ks]
@@ -33,7 +36,7 @@ if os.environ.get("LOGLEVEL"):
 
 def get_datasets():
     if "datasets" not in g:
-        datadir = Path(config["datadir"])
+        datadir = Path(config["DATADIR"])
 
         log.info("Re-loading datasets...")
         resourcedir = config.get("resourcedir")
@@ -81,9 +84,14 @@ def setcookies():
             resp.set_cookie(name, val)
     return resp
 
-
 @app.route("/")
 def home():
+    return render_template(
+        "home.html",
+    )
+
+@app.route("/overview")
+def overview():
     datasets = get_datasets()
     stats = {}
     for datasetname, tables in datasets.items():
@@ -112,7 +120,7 @@ def home():
         )
 
     return render_template(
-        "home.html",
+        "overview.html",
         tablenames={name: sorted(tables) for name, tables in datasets.items()},
         stats=stats,
         **get_kbs(),
@@ -200,3 +208,19 @@ def dataset():
     return render_template(
         "dataset.html", dataset=dataset, tables=tables, novelty=novelty, **get_kbs(),
     )
+
+@app.route("/reshape", methods=["POST"])
+@cross_origin()
+def reshape():
+    import takco
+    payload = request.get_json(force=True) 
+
+    table_html = payload.get('outerHTML')
+    table_html = "<html>{table_html}</html>"
+    pages = [takco.extract.Page('', table_html, None)]
+    app.logger.info("Trying to extract...")
+    for t in takco.extract.extract_tables(pages):
+        app.logger.info(t)
+
+
+    return json.dumps(payload)

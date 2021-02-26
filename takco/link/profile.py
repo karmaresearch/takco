@@ -4,6 +4,7 @@ from collections import Counter
 
 from typing import List, Dict, Mapping, Tuple, Iterable
 
+from .tane import Tane
 
 class Profiler:
     def get_keycol(self, rows: List[List[str]], classes: Dict[int, str]):

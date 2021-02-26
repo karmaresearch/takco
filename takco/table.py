@@ -20,8 +20,8 @@ class TakcoAccessor:
         return obj._repr_html_() if hasattr(obj, "_repr_html_") else obj
 
     @property
-    def header(self):
-        return tuple(map(tuple, self._df.columns.to_frame().values.T))
+    def head(self):
+        return tuple(zip(*list(self._df.columns)))
 
     @classmethod
     def from_header(cls, head):
@@ -60,7 +60,7 @@ class TakcoAccessor:
         return self.style.render()
 
     def _repr_html_(self):
-        return self.to_html()
+        return self._df.head().takco.to_html()
 
 
 TABEL_PROBLEMS = [
@@ -69,37 +69,40 @@ TABEL_PROBLEMS = [
 ]
 
 
-def get_tabel_rows(matrix):
+def get_tabel_rows(matrix, linked=True):
     urltemplate = "http://{lang}.wikipedia.org/wiki/{page}"
     newmatrix = []
     for row in matrix:
         newrow = []
         for cell in row:
-            text = cell.get("text", "")
+            text = cell.get("text", "") or ""
             for p in TABEL_PROBLEMS:
                 text = text.replace(p, "")
 
-            links = []
-            for link in cell.get("surfaceLinks", []):
-                target = link.get("target")
-                if not target:
-                    continue
-                start = link.get("offset", 0)
-                end = link.get("endOffset", len(text))
-                if link.get("linkType") in ["INTERNAL", "INTERNAL_RED"]:
-                    try:
-                        lang = target.get("language", "en")
-                        page = target.setdefault("href", target.get("title", ""))
-                        page = page.replace(" ", "_")
-                        url = urltemplate.format(lang=lang, page=page)
-                        if target.get("id", 0) > 0:
-                            url += "?curid=" + str(target.get("id"))
-                    except:
-                        raise Exception(f"bad target {target}")
-                    if start == 0 and end == 1:
-                        end = len(text)  # HACK
-                    links.append((start, end, url))
-            newrow.append(LinkedString(text, links))
+            if linked:
+                links = []
+                for link in cell.get("surfaceLinks", []):
+                    target = link.get("target")
+                    if not target:
+                        continue
+                    start = link.get("offset", 0)
+                    end = link.get("endOffset", len(text))
+                    if link.get("linkType") in ["INTERNAL", "INTERNAL_RED"]:
+                        try:
+                            lang = target.get("language", "en")
+                            page = target.setdefault("href", target.get("title", ""))
+                            page = page.replace(" ", "_")
+                            url = urltemplate.format(lang=lang, page=page)
+                            if target.get("id", 0) > 0:
+                                url += "?curid=" + str(target.get("id"))
+                        except:
+                            raise Exception(f"bad target {target}")
+                        if start == 0 and end == 1:
+                            end = len(text)  # HACK
+                        links.append((start, end, url))
+                newrow.append(LinkedString(text, links))
+            else:
+                newrow.append(text)
         newmatrix.append(newrow)
     return newmatrix
 
@@ -125,9 +128,9 @@ def to_tabel_rows(matrix):
     ]
 
 
-def from_tabel(obj):
-    body = get_tabel_rows(obj.get("tableData", []))
-    head = get_tabel_rows(obj.get("tableHeaders", []))
+def from_tabel(obj, linked=True):
+    body = get_tabel_rows(obj.get("tableData", []), linked=linked)
+    head = get_tabel_rows(obj.get("tableHeaders", []), linked=linked)
     try:
         df = pd.DataFrame(body, columns=head or None)
     except:
@@ -167,7 +170,8 @@ class Table(dict):
     _default_annotations = ["entities", "properties", "classes"]
 
     def __init__(
-        self, obj=None, _id=None, head=(), body=(), provenance=(), annotations=()
+        self, obj=None, _id=None, head=(), body=(), provenance=(), annotations=(),
+        linked=True
     ):
         if isinstance(obj, Table):
             _id = obj._id
@@ -185,8 +189,8 @@ class Table(dict):
                     provenance[key] = obj.get(key)
         elif obj is not None:
             _id = obj.get("_id")
-            body = get_tabel_rows(obj.get("tableData", []))
-            head = get_tabel_rows(obj.get("tableHeaders", []))
+            body = get_tabel_rows(obj.get("tableData", []), linked=linked)
+            head = get_tabel_rows(obj.get("tableHeaders", []), linked=linked)
 
             annotations = {}
             for key in self._default_annotations:
@@ -231,6 +235,9 @@ class Table(dict):
 
     def __bool__(self):
         return bool(self.body)
+    
+    def __len__(self):
+        return len(self.body)
 
     @property
     def df(self):
@@ -253,6 +260,42 @@ class Table(dict):
         if k in list(self._old_keys) + list(self.provenance) + list(self.annotations):
             return True
         return k in self.keys()
+
+    @classmethod
+    def concat(cls, tables):
+        import copy
+
+        row_offset = 0
+        head = None
+        body = ()
+        annotations = {}
+        provenance = {'concat': []}
+        for table in tables:
+            head = table.head
+            body += table.body
+            provenance["concat"].append(copy.deepcopy(table.provenance))
+
+            # Merge annotations
+            if "entities" in table.annotations:
+                for ci, ri_ents in table.annotations["entities"].items():
+                    annotations.setdefault("entities", {}).setdefault(ci, {}).update(
+                        {str(int(ri) + row_offset): es for ri, es in ri_ents.items()}
+                    )
+            for ci, classes in table.annotations.get("classes", {}).items():
+                annotations.setdefault("classes", {}).setdefault(ci, {}).update(classes)
+            for fromci, toci_props in table.annotations.get("properties", {}).items():
+                newprops = annotations.setdefault("properties", {}).setdefault(fromci, {})
+                for toci, props in toci_props:
+                    newprops.setdefault(toci, {}).update(props)
+
+            row_offset += len(table.body)
+        
+        return Table(
+            head=head,
+            body=body,
+            annotations=annotations,
+            provenance=provenance,
+        )
 
     def append(self, other: "Table"):
         assert self.head == other.head

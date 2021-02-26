@@ -4,7 +4,7 @@ import logging as log
 import rdflib
 from rdflib import URIRef, Literal
 
-from .. import link
+# from .. import link
 
 
 def config_init_class(self, **context):

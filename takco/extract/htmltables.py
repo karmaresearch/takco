@@ -304,9 +304,67 @@ def hack_annoying_layouts(all_htmlrows):
 
     return all_htmlrows
 
+def node_extract_tables(table_node):
+    extractor = Extractor(table_node, transformer=lambda x: x)
+    extractor.parse()
+    all_htmlrows = [
+        [clean_wikihtml(cell) for cell in row]
+        for row in extractor.return_list()
+    ]
+
+    all_htmlrows = hack_annoying_layouts(all_htmlrows)
+
+    for htmlrows in vertically_split_tables_on_subheaders(all_htmlrows):
+        tableId += 1
+
+        numCols = max((len(row) for row in htmlrows), default=0)
+        td = BeautifulSoup("<td></td>", "html.parser")
+        th = BeautifulSoup("<th></th>", "html.parser")
+
+        tableHeaders = []
+        tableData = []
+        for row in htmlrows:
+            h, e = (
+                (tableHeaders, th)
+                if all(c.name == "th" for c in row)
+                else (tableData, td)
+            )
+            row = [(row[i] if i < len(row) else e) for i in range(numCols)]
+            h.append(
+                [
+                    Extractor.get_cell_dict(
+                        cell, surface_pattern, surface_links
+                    )
+                    for cell in row
+                ]
+            )
+
+        if tableData:
+            numDataRows = len(tableData)
+            numHeaderRows = len(tableHeaders)
+            log.debug(f"Extracted table {tableId} from {pgTitle}")
+            yield Table(
+                dict(
+                    _id=f"{pgId}#{tableId}",
+                    pgId=pgId,
+                    pgTitle=pgTitle,
+                    tableId=tableId,
+                    aboutURI=aboutURI,
+                    sectionTitle=sectionTitle,
+                    tableCaption=tableCaption,
+                    numCols=numCols,
+                    numDataRows=numDataRows,
+                    numHeaderRows=numHeaderRows,
+                    tableData=tableData,
+                    tableHeaders=tableHeaders,
+                    originalHTML=str(table),
+                )
+            )
+
 
 def page_extract_tables(
-    htmlpage: str, aboutURI=None, pgTitle=None, pgId=None, link_pattern=None
+    htmlpage: str, aboutURI=None, pgTitle=None, pgId=None, link_pattern=None,
+    class_restrict=()
 ):
     """Extract tables from html in Baghavatula's json format
     
@@ -349,72 +407,18 @@ def page_extract_tables(
             pgId = 0
 
         tableId = 0
-        for table in page.find_all("table", ["wikitable"]):
+        for table_node in page.find_all("table", list(class_restrict)):
 
-            if '>scope="row"<' in str(table):
-                log.debug(f"Scope in {table}")
+            if '>scope="row"<' in str(table_node):
+                log.debug(f"Scope in {table_node}")
 
-            if not table.text.strip():
+            if not table_node.text.strip():
                 continue
-            sectionTitle = table.find_previous_sibling("summary")
+            sectionTitle = table_node.find_previous_sibling("summary")
             sectionTitle = sectionTitle.text if sectionTitle else ""
 
-            tableCaption = table.find("caption")
+            tableCaption = table_node.find("caption")
             tableCaption = tableCaption.text if tableCaption else sectionTitle
             tableCaption = tableCaption.strip()
 
-            extractor = Extractor(table, transformer=lambda x: x)
-            extractor.parse()
-            all_htmlrows = [
-                [clean_wikihtml(cell) for cell in row]
-                for row in extractor.return_list()
-            ]
-
-            all_htmlrows = hack_annoying_layouts(all_htmlrows)
-
-            for htmlrows in vertically_split_tables_on_subheaders(all_htmlrows):
-                tableId += 1
-
-                numCols = max((len(row) for row in htmlrows), default=0)
-                td = BeautifulSoup("<td></td>", "html.parser")
-                th = BeautifulSoup("<th></th>", "html.parser")
-
-                tableHeaders = []
-                tableData = []
-                for row in htmlrows:
-                    h, e = (
-                        (tableHeaders, th)
-                        if all(c.name == "th" for c in row)
-                        else (tableData, td)
-                    )
-                    row = [(row[i] if i < len(row) else e) for i in range(numCols)]
-                    h.append(
-                        [
-                            Extractor.get_cell_dict(
-                                cell, surface_pattern, surface_links
-                            )
-                            for cell in row
-                        ]
-                    )
-
-                if tableData:
-                    numDataRows = len(tableData)
-                    numHeaderRows = len(tableHeaders)
-                    log.debug(f"Extracted table {tableId} from {pgTitle}")
-                    yield Table(
-                        dict(
-                            _id=f"{pgId}#{tableId}",
-                            pgId=pgId,
-                            pgTitle=pgTitle,
-                            tableId=tableId,
-                            aboutURI=aboutURI,
-                            sectionTitle=sectionTitle,
-                            tableCaption=tableCaption,
-                            numCols=numCols,
-                            numDataRows=numDataRows,
-                            numHeaderRows=numHeaderRows,
-                            tableData=tableData,
-                            tableHeaders=tableHeaders,
-                            originalHTML=str(table),
-                        )
-                    )
+            yield from node_extract_tables(table_node)

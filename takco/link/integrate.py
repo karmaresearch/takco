@@ -28,14 +28,14 @@ class NaryDB(Database):
     def get_rowfacts(
         self, celltexts: List[str], entsets: List[Collection[str]]
     ) -> Iterable[NaryMatchResult]:
-        return
+        return ()
 
     def integrate(self, rows, row_entsets):
         """Find n-ary matches"""
         nrows = len(rows)
 
-        colmatch_count = Counter()
-        colmatch_qcolprop_count = defaultdict(Counter)
+        colmatch_count: Counter = Counter()
+        colmatch_qcolprop_count: Dict[Tuple, Counter] = defaultdict(Counter)
         for celltexts, entsets in zip(rows, row_entsets):
 
             for (c1, c2), (s, p, o), qs in self.get_rowfacts(celltexts, entsets):
@@ -58,7 +58,7 @@ class NaryDB(Database):
             n = colmatch_count[(c1, c2, p)]
             tocol_fromcolprop[c2] = {c1: {p: n / nrows}}
 
-            col_qprops = defaultdict(Counter)
+            col_qprops: Dict[int, Counter] = defaultdict(Counter)
             for (col, prop), count in qcolprop_count.items():
                 col_qprops[col][prop] += count
 

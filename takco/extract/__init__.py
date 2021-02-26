@@ -7,7 +7,7 @@ from .htmltables import page_extract_tables
 from .pages import *
 
 
-def extract_tables(pages: Iterable[Page], link_pattern=None) -> Iterable[Dict]:
+def extract_tables(pages: Iterable[Page], link_pattern=None, class_restrict=()) -> Iterable[Dict]:
     """Extract tables from pages.
 
     Pages are dicts with an ``html`` field.
@@ -20,5 +20,6 @@ def extract_tables(pages: Iterable[Page], link_pattern=None) -> Iterable[Dict]:
     """
     for page in pages:
         yield from page_extract_tables(
-            page.html, aboutURI=page.about, pgId=page.url, link_pattern=link_pattern
+            page.html, aboutURI=page.about, pgId=page.url, link_pattern=link_pattern,
+            class_restrict=class_restrict
         )

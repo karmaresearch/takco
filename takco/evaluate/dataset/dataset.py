@@ -62,7 +62,7 @@ class Dataset:
 
         return params
 
-    def get_unannotated_tables(self):
+    def get_unannotated_tables(self) -> typing.Sequence[Table]:
         for table in self.tables:
             table = dict(table)
             rows = [[{"text": c} for c in row] for row in table.pop("rows", [])]
@@ -79,7 +79,7 @@ class Dataset:
                 **table,
             })
 
-    def get_annotated_tables(self):
+    def get_annotated_tables(self) -> typing.Sequence[Table]:
         return Table({table["name"]: table for table in self.tables})
 
     def get_annotated_tables_as_predictions(self):

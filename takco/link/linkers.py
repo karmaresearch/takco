@@ -198,6 +198,7 @@ class Salient(Linker):
         max_backlink: When expanding, only use properties that have fewer backlinks
 
     """
+    graph: GraphDB
 
     def __init__(
         self,
@@ -222,7 +223,7 @@ class Salient(Linker):
         if graph is None and isinstance(searcher, GraphDB):
             self.graph = searcher
         elif isinstance(graph, GraphDB):
-            self.graph = graph
+            self.graph = graph # type: ignore
         else:
             raise Exception(f"Must provide GraphDB searcher or separate graph!")
         self.max_backlink = max_backlink

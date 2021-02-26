@@ -1,0 +1,181 @@
+#takcobar > *, #takcobar > * > * {
+  all: unset;
+}
+#takcobar, #takcobar-content, #takcobar-btn {
+  all: initial;
+  box-sizing: content-box;
+  pointer-events:  auto;
+  font-family: "Helvetica", sans-serif;
+  font-size: small;
+}
+#takcobar input {
+  line-height: 1.5em;
+  padding: 4px 8px;
+  border-radius: 3px;
+}
+#takcobar input[type=button]:hover {
+  background: #ddd;
+}
+#takcobar a, #takcobar input[type=button] {
+  cursor: pointer;
+}
+#takcobar a {
+  color: #0645ad;
+}
+#takcobar a:hover {
+  text-decoration: underline;
+}
+
+#takcobar div {
+  display:block;
+}
+#takcobar table {
+  display: table; 
+  margin: 4pt;
+}
+#takcobar tr {
+  display: table-row;
+}
+#takcobar th, #takcobar td {
+  display: table-cell;
+  padding: 4pt;
+}
+#takcobar h1, #takcobar h2, #takcobar h3, #takcobar h4, #takcobar h5, #takcobar h6 {
+  display: block;
+}
+#takcobar th, #takcobar em, #takcobar h4 {
+  font-weight:bold;
+}
+
+/* The Overlay (background) */
+#takcobar {
+  /* Height & width depends on how you want to reveal the overlay (see JS below) */
+  width: 100%;
+  position: fixed; /* Stay in place */
+  z-index: 2147483647; /* Sit on top */
+  left: 0;
+  top: 0;
+  background-color: rgba(255, 255, 255, 0); /* Black fallback color */
+  background-color: rgba(255, 255, 255, 0.9); /* Black w/opacity */
+  overflow-y: visible;
+  border-bottom: 1px solid gray;
+}
+
+/* Position the content inside the overlay */
+#takcobar-content {
+  display: flex !important;
+  position: relative;
+  width: 100%;
+  margin-top: 35px;
+  padding: 1em;
+  
+  height: 200px;
+
+  overflow-y: hidden;
+  border: 0px;
+  z-index: 2147483640;
+  transition: 0.2s;
+}
+#takcobar-content p {
+  margin: 5pt 0;
+}
+#takcobar-content > div {
+  height: 100%;
+  display: inline-block;
+  margin: 0 4pt;
+}
+
+#takcobar-top {
+  position: absolute;
+  top: 0;
+  text-align: left;
+  width: 100%;
+  font-size: small;
+  line-height: 35px;
+  height: 35px;
+  background: #f8f8f8;
+  text-decoration: none;
+  border: 1px solid gray;
+  z-index: 2147483650;
+}
+#takcobar-btn {
+  color: black !important;
+  display: inline-block;
+  width: 3em;
+  font-family: monospace;
+}
+#takcobar-btn:hover {
+  text-decoration: none !important;
+}
+#takcobar-loader {
+  display: none;
+  position: relative;
+  top: 4pt;
+}
+
+#takcobar-tabs {
+  display: inline-flex;
+}
+#takcobar-tabs > a {
+  color: black;
+  height: 33px;
+  padding: 0 14px;
+  margin: 0px;
+  border: 1px solid #ddd;
+  border-top-width: 2px;
+  border-bottom: 0px;
+  background: #eee;
+}
+#takcobar-tabs > a:not(:last-child) {
+  border-right-width: 0;
+}
+#takcobar-tabs > a:hover {
+  text-decoration: none;
+  border-color: #ccc;
+  background: #ddd;
+}
+#takcobar-tabs > a:active, #takcobar-tabs > a.tab-active {
+  background: #f8f8f8;
+  border-bottom: 1px solid #f8f8f8 ;
+}
+
+@keyframes shadowPulse {
+  0% {
+      box-shadow: none;
+  }
+
+  100% {
+      box-shadow: 0 0 0 99999px rgba(0, 0, 0, .5);
+  }
+}
+@keyframes shadowPulseReverse {
+  0% {
+      box-shadow: 0 0 0 99999px rgba(0, 0, 0, .5);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+
+.shadow-pulse {
+  position: relative;
+  z-index: 9999;
+  animation-name: shadowPulse;
+  animation-duration: .5s;
+  animation-iteration-count: 1;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;  
+  pointer-events:  auto;
+}
+.shadow-pulse-reverse {
+  animation-name: shadowPulseReverse;
+  animation-duration: .5s;
+  animation-iteration-count: 1;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;  
+  pointer-events:  auto;
+}
+
+.no-pointer-events {
+  pointer-events:  none;
+}

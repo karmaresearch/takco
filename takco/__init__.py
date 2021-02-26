@@ -102,6 +102,7 @@ class TableSet:
     def extract(
         cls,
         source: typing.Union[extract.PageSource, HashBag] = None,
+        class_restrict: typing.List[str] = ["wikitable"],
         executor: HashBag = HashBag(),
     ):
         """Collect tables from HTML files
@@ -118,7 +119,8 @@ class TableSet:
         else:
             htmlpages = HashBag(source)
 
-        return TableSet(htmlpages.pipe(extract.extract_tables))
+        return TableSet(htmlpages.pipe(extract.extract_tables, 
+            class_restrict=class_restrict))
 
     def reshape(
         self: TableSet,
@@ -738,3 +740,86 @@ class TableSet:
                 )
             else:
                 return streams
+
+    def preview(tables, nrows=5, ntables=10, nchars=50, hide_correct_rows=False):
+        """Show table previews in Jupyter"""
+        import json
+        from jinja2 import Environment, PackageLoader
+        from IPython.display import HTML
+
+        if isinstance(tables, dict):
+            tables = [tables]
+
+        env = Environment(loader=PackageLoader("takco", "app"),)
+        env.filters["any"] = any
+        env.filters["all"] = all
+        env.filters["lookup"] = lambda ks, d: [d.get(k) for k in ks]
+
+        template = env.get_or_select_template("templates/onlytable.html")
+
+        content = ""
+        for i, table in enumerate(tables):
+            table = Table(table).to_dict()
+
+            ri_ann = {}
+            hidden_rows = {}
+            for ci, res in table.get("gold", {}).get("entities", {}).items():
+                for ri, es in res.items():
+                    ri_ann[ri] = bool(es)
+                    if hide_correct_rows:
+                        if es:
+                            predents = table.get("entities", {}).get(ci, {}).get(ri, {})
+                            hide = all(e in predents for e in es)
+                            hidden_rows[ri] = hidden_rows.get(ri, True) and hide
+                        else:
+                            hidden_rows[ri] = hidden_rows.get(ri, True)
+
+            if nrows and any(hidden_rows.values()):
+                n, nshow = 0, 0
+                for ri, h in sorted(hidden_rows.items()):
+                    n += 1
+                    nshow += int(not h)
+                    if nshow >= nrows:
+                        break
+            else:
+                n = nrows
+
+            def cellchars(s):
+                return (s[:nchars] + " (...)") if len(s) > nchars else s
+
+            table["tableData"] = table.get("tableData", [])
+            rows = [
+                [cellchars(c.get("text", "")) for c in r]
+                for r in table.get("tableData", [])
+            ]
+            headers = [[c.get("text") for c in r] for r in table.get("tableHeaders", [])]
+            table["headers"] = headers
+
+            table.setdefault("entities", {})
+            table.setdefault("classes", {})
+            table.setdefault("properties", {})
+
+            t = template.render(
+                table=json.loads(json.dumps({**table, "rows": rows[:n]})),
+                annotated_rows=ri_ann,
+                hidden_rows=hidden_rows,
+            )
+            more_rows = max(0, len(table.get("tableData", [])) - nrows) if nrows else 0
+            if more_rows:
+                t += f"<p>({more_rows} more rows)</p>"
+
+            content += f"""
+            <span style='align-self: flex-start; margin: 1em; '>
+            {t}
+            </span>
+            """
+            if ntables and i + 1 >= ntables:
+                break
+
+        return HTML(
+            f"""
+        <div style="width: 100%; overflow-x: scroll; white-space: nowrap; display:flex;">
+        {content}
+        </div>
+        """
+        )
