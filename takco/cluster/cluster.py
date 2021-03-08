@@ -463,10 +463,10 @@ def cluster_partition_columns(
             distance_threshold=1,
         )
 
-    ti_pi = {}
-    pi_ncols = {}
-    ci_pci = {}
-    pi_colsim = {}
+    ti_pi = {} # table -> partition
+    pi_ncols = {} # partition -> column count
+    ci_pci = {} # column -> partition column
+    pi_colsim = {} # partition -> column similarity matrix
 
     with contextlib.ExitStack() as matcherstack:
         entered = [matcherstack.enter_context(m) for m in matchers]

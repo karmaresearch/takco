@@ -7,20 +7,21 @@ class Tane():
     
     def __init__(self, root, tmpdir = '/tmp/'):
         self.root = os.path.abspath(root)
-        self.tanebin = os.path.join(self.root, 'bin', 'tane')
+        self.tanebin = os.path.join(self.root, 'bin', 'taneg3')
         self.tmpdir = tmpdir
         
-    def rundf(self, df, level=None, num_records=None, num_attributes=None, tmpname=None, ):
+    def rundf(self, df, stoplevel=None, num_records=None, num_attributes=None, g3_threshold=None, tmpname=None, ):
         """Run TANE algorithm on dataframe to find functional dependencies."""
         nrows, ncols = df.shape
-        level = level or ncols
+        stoplevel = stoplevel or ncols
         num_records = num_records or nrows
         num_attributes = num_attributes or ncols
+        g3_threshold = g3_threshold or 0
         
         datfile = self._prepare(df, tmpname=tmpname)
-        fds = self._run(datfile, level, num_records, num_attributes)
+        fds = self._run(stoplevel, num_records, num_attributes, datfile, g3_threshold)
         
-        # Aggregate dependents per determiner
+        # Aggregate dependents per determinant
         det_deps = {}
         for src, dst in fds:
             det = tuple(df.columns[list(src)])
@@ -37,10 +38,10 @@ class Tane():
         codes.to_csv(fname, header=False, index=False)
         return fname
         
-    def _run(self, datfile, level, num_records, num_attributes):
+    def _run(self, stoplevel, num_records, num_attributes, datfile, g3_threshold):
         # run tane binary on coded data
         datfile = os.path.join(self.root, datfile)
-        cmd = (self.tanebin, level, num_records, num_attributes, datfile)
+        cmd = (self.tanebin, stoplevel, num_records, num_attributes, datfile, g3_threshold)
         out = subprocess.run([str(arg) for arg in cmd], capture_output=True)
         if out.returncode:
             raise self.TaneException(out.stderr.decode())
@@ -52,6 +53,7 @@ class Tane():
             if line and line[0].isnumeric():
                 try:
                     a, b = line.split('->', 1)
+                    b = b.split()[0]
                     # TANE output is 1-indexed, so make 0-indexed
                     yield tuple(int(i)-1 for i in a.split()), int(b)-1
                 except ValueError:
