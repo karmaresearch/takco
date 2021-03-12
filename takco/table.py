@@ -75,7 +75,7 @@ def get_tabel_rows(matrix, linked=True):
     for row in matrix:
         newrow = []
         for cell in row:
-            text = cell.get("text", "") or ""
+            text = str(cell.get("text", "") or "")
             for p in TABEL_PROBLEMS:
                 text = text.replace(p, "")
 

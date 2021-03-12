@@ -92,6 +92,7 @@ class SimpleTyper(Typer):
 
     def _dateparse(self, x):
         if self.use_dateparser == "dateparser":
+            # Slowest
             import dateparser
 
             try:
@@ -106,6 +107,7 @@ class SimpleTyper(Typer):
             except:
                 pass
         else:
+            # Fastest
             import datetime
 
             try:

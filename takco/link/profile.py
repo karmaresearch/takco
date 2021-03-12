@@ -113,46 +113,33 @@ def perTuple_pFDs(
                         )
                         yield (cs, a, pFD)
 
+def pfd_prob_pervalue(R: List[Tuple[str]]):
+    """
+        R is a sorted dataframe where the last column is the dependent attribute
+        det_count is determinant count (Vx)
+        tup_count is attribute value count (Vx,Va)
+        max_tup_count is most-frequent tuple count (Vx,Va)
+    """
+    R = sorted(R)
+    assert(R)
 
-def get_pdprob(R: List[List[str]], X: Tuple[int, ...], A: int, perValue=False):
-    assert len(R)
-    i = lambda t, X: tuple(t[i] for i in X)
-    # 1 sort(R,{X,A})
-    R = sorted(R, key = lambda x: i(x, X+(A,)))
-    # 2 c ← t1(X); |π(X)| ← 1; count(c) ← 0
-    c, distinct, ccount = i(R[0], X), 1, 0
-    # 3 c′ ← t1(X,A); count(c′) ← 0;  sum ← 0;  maxCount(c) ← 0
-    d, dcount, total, maxdcount = i(R[0], X + (A,)), 0, 0.0, 0
-    # 4 foreach t ∈ R do
-    for t in R:
-        Vx = i(t, X)
-        Va = i(t, X + (A,))
-        # 5 if t(X) == c then
-        if Vx == c:
-            # 6 count(c) ← count(c)+1
-            ccount += 1
-            # 7 if t(X,A) == c′ then
-            if Va == d:
-                # 8 count(c′) ← count(c′)+1
-                dcount += 1
-            # 9 else
-            else:
-                # 10 if maxCount(c) < count(c′) then
-                if maxdcount < dcount:
-                    # 11 maxCount(c) ← count(c′)
-                    maxdcount = dcount
-                # 12 endif 
-                # 13 c′ ← t(X,A); count(c′) ← 0
-                d, dcount = Va, 0
-            # 14 endif 
-        # 15 else
-        else:
-            # 16 sum ← sum+maxCount(c)/count(c)
-            total += (maxdcount / ccount if perValue else maxdcount)
-            # 17 c ← t(X); |π(X)| ← |π(X)|+1
-            c, distinct = Vx, distinct + 1
-            # 18 count(c) ← 0; maxCount(c) ← 0
-            ccount, maxdcount = 0, 0
-    # 19 endif  endfor
-    return total / distinct
-    # 20 return sum / |πX|
+    row = R[0]
+    det, det_count, max_tup_count = row[:-1], 1, 1
+    val, tup_count = row[-1], 1
+    ndistinct, total_prob = 1, 0.0
+    for row in R[1:]:
+        if row[:-1] == det: # same determinant
+            det_count += 1
+            if row[-1] == val: # same tuple
+                tup_count += 1
+                if max_tup_count < tup_count:
+                    max_tup_count = tup_count
+            else: # new tuple
+                val, tup_count = row[-1], 1
+        else: # new determinant = new tuple
+            total_prob += max_tup_count / det_count
+            ndistinct += 1
+            det, det_count, max_tup_count = row[:-1], 1, 1
+            val, tup_count = row[-1], 1
+    total_prob += max_tup_count / det_count
+    return total_prob / ndistinct

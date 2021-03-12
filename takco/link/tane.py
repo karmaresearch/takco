@@ -43,7 +43,7 @@ class Tane():
         datfile = os.path.join(self.root, datfile)
         cmd = (self.tanebin, stoplevel, num_records, num_attributes, datfile, g3_threshold)
         out = subprocess.run([str(arg) for arg in cmd], capture_output=True)
-        if out.returncode:
+        if out.returncode and (not out.stdout):
             raise self.TaneException(out.stderr.decode())
         return list(self.parse_output(out.stdout.decode()))
     
