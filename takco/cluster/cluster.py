@@ -214,7 +214,7 @@ def make_blocked_matches_df(
 def aggregate_match_sims(simdf: DataFrame, agg_func: str):
     """Aggregate similarities using a numexpr aggregation function.
 
-    Extra functions available: ``max(*a)``, ``min(*a)``, ``mean(*a)``, ``pow(a,b)``.
+    Extra functions available: ``@max(*a)``, ``@min(*a)``, ``@mean(*a)``, ``@pow(a,b)``.
 
     See also:
         `Pandas eval <https://pandas.pydata.org/pandas-docs/stable/user_guide/enhancingperf.html#supported-syntax>`_
@@ -240,7 +240,7 @@ def aggregate_match_sims(simdf: DataFrame, agg_func: str):
             agg = funcs[agg_func](*(simdf[c] for c in simdf))  # type: ignore
         else:
             agg = simdf.eval(agg_func, local_dict=funcs, engine="python")
-        return pd.Series(agg, index=simdf.index)
+        return pd.Series(agg, index=simdf.index, name=0)
 
 
 def greedy_align(g: Series) -> float:
