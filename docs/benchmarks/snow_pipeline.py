@@ -82,10 +82,13 @@ def looks_date(series, threshold=0.75):
     flags = re.IGNORECASE
     return series.str.match(rex, flags=flags).mean() > threshold
 
+def looks_duration(series, threshold=0.75):
+    series = series.replace("", np.nan).dropna().astype("str")
+    return series.str.match("(?:\d+:)+\d+").mean() > threshold
 
 def looks_numeric(series, threshold=0.75):
     series = series.replace("", np.nan).dropna().astype("str")
-    if looks_date(series, threshold=threshold):
+    if looks_date(series, threshold=threshold) or looks_duration(series):
         return False  # date
     return (series.str.count("[\d\.\-%]") / series.str.len()).mean() > threshold
 
@@ -149,10 +152,7 @@ class KB:
     @staticmethod
     def _analyze(xs):
         """Extract full-cell and BoW features"""
-        texts = pd.Series(xs).dropna()
-        texts = texts[texts.map(bool)].astype("str").str.replace("[\d\W]+", " ")
-        texts = texts.str.strip().str.lower()
-        return list(texts) + list(texts.str.split(expand=True).stack())
+        return [t for x in xs if x for t in ([x.lower()] + x.lower().split()) if t]
 
     def _get_query(self, df):
         ok_cols = [
@@ -171,7 +171,7 @@ class KB:
         Q = self.kb_vectorizer.transform(qtexts)
         return ok_cols, Q
 
-    def _get_sim(self, df):
+    def get_sim(self, df):
         ok_cols, Q = self._get_query(df)
         if not ok_cols:
             return None
@@ -180,12 +180,12 @@ class KB:
         # weight similarities by log-frac of matching cells in column
         sim *= np.log1p(np.array((Q > 0).sum(axis=1)).T[0]) / np.log1p(len(df))
         # also weight by fraction unique
-        sim *= (df.describe().T.reset_index().unique / len(df)).astype("float")
+        sim *= df.describe().T.reset_index().unique.astype("float") / len(df)
         return sim
 
     def predict_classes(self, df, threshold=0.01):
         """Predict KB classes for short, non-numeric columns"""
-        sim = self._get_sim(df)
+        sim = self.get_sim(df)
         if sim is None:
             return {}
         preds = pd.DataFrame({"class": sim.idxmax(), "score": sim.max()})
@@ -233,6 +233,7 @@ class ForeignKeyTracker:
 
                 # get filled unique rows
                 filled_mask = fd_df[[c]].fillna(False).applymap(bool).any(axis=1)
+                filled_mask &= fd_df[list(keys)].fillna(False).applymap(bool).all(axis=1)
                 fd_df = fd_df[filled_mask].drop_duplicates(ignore_index=True)
 
                 if header is not None:
@@ -250,8 +251,10 @@ class ForeignKeyTracker:
 
 ## Matching and stitching
 
-
 class TfidfMatcher:
+    curr = r"(?:\$|kr|\€|usd|chf|\£|\¥|\₹|s\$|hk\$|nt\$|tl|р|aed)"
+    re_money = re.compile(f"(?:{curr}[\d\s,\.]+)|(?:[\d\s,\.]+{curr})|free|gratis")
+
     def __init__(self, name=None, num_threshold=0.5, **kwargs):
         self.num_threshold = num_threshold
         kwargs["analyzer"] = self.__class__._analyzer
@@ -263,27 +266,30 @@ class TfidfMatcher:
         for tabid, df in progress(tabid_df.items(), desc="Getting column text"):
             columns = list(df.columns)
             numeric_cis = set(guess_numeric_cols(df, threshold=num_threshold))
+            date_cis = set(guess_date_cols(df, threshold=num_threshold))
+            literal_cis = numeric_cis | date_cis
+
             context_cis = set(get_context_headers(columns))
             singleton_cis = set(get_singleton_cols(df))
             longtext_cis = set(get_longtext_cols(df))
             for colnr, c in enumerate(df):
                 text = []
                 # Only cluster non-numeric, short, non-singleton-context columns
-                bad_colnrs = numeric_cis | longtext_cis | (singleton_cis & context_cis)
+                bad_colnrs = literal_cis | longtext_cis | (singleton_cis & context_cis)
                 if colnr not in bad_colnrs:
-                    text = df.iloc[:, colnr].unique()
+                    text = df.iloc[:, colnr]
                 yield tabid, colnr, text
 
-    @staticmethod
-    def _analyzer(values):
-        series = pd.Series(values).replace("", np.nan).dropna().astype("str")
-        # replace money
-        curr = r"(?:\$|kr|\€|usd|chf|\£|\¥|\₹|s\$|hk\$|nt\$|tl|р|aed)"
-        re_money = f"(?:{curr}[\d\s,\.]+)|(?:[\d\s,\.]+{curr})|free|gratis"
-        series = series.str.replace(re_money, "$MONEY$")
-        # replace numbers
-        series = series.str.replace("\d", "$")
-        return list(series.str.split().sum() or [])
+    @classmethod
+    def _analyzer_tokens(cls, value):
+        value = cls.re_money.sub(" $MONEY$ ", value)
+        value = re.sub("\d", "$", value)
+        yield from value.split()
+
+
+    @classmethod
+    def _analyzer(cls, values):
+        return [t for v in values if v for t in cls._analyzer_tokens(v) if t]
 
     def _get_index_and_features(self, tabid_df, tabid_and_colnr_to_colid):
         from sklearn.feature_extraction.text import TfidfVectorizer
@@ -329,29 +335,50 @@ class ExactHeadMatcher:
 
 
 class KBClassMatcher:
-    def __init__(self, kb, name=None, include_context=True):
+    def __init__(self, kb, name=None, include_context=True, pred_max_threshold = 0.5):
         self.kb = kb
         self.include_context = include_context
         self.name = name or self.__class__.__name__
+        self.pred_max_threshold = pred_max_threshold
 
     def match(self, tabid_df, tabid_and_colnr_to_colid):
-        tabid_fkclass = predict_fkclasses(tabid_df, self.name, self.kb)
-        D = pd.DataFrame(
-            [
-                (ti, ci, tabid_fkclass[ti][1])
-                for (ti, cn), ci in tabid_and_colnr_to_colid.items()
-                if ti in tabid_fkclass
-            ],
-            columns=["ti", "ci", "c"],
-        )
-        sim = D.merge(D, on="c", suffixes=("1", "2")).set_index(
-            ["ci1", "ti1", "ti2", "ci2"]
-        )
-        return sim.assign(c=1).c.rename(self.name)
+        tabid_fkpreds = {}
+        for tabid, df in progress(tabid_df.items(), f'Getting {self.name} candidates'):
+            pred = self.kb.get_sim(df).agg(['idxmax', 'max']).T
+            pred['max'] /= pred['max'].max()
+            pred = pred[ pred['max'] > self.pred_max_threshold ]
+            tabid_fkpreds[tabid] = pred.values
+            # tabid_fkpreds[tabid] = pred.to_dict(orient='index')
 
+        # fkclass_candidates = []
+        # for tabid, fkpreds in tabid_fkpreds.items():
+        #     context  = set(get_context_headers(df.columns))
+        #     for cn, fkpred in fkpreds.items():
+        #         fkclass, score = fkpred['idxmax'], fkpred['max']
+        #         if self.include_context or (cn not in context):
+        #             ci = tabid_and_colnr_to_colid.get((tabid, cn))
+        #             if ci is not None:
+        #                 cands = (tabid, ci, fkclass, score)
+        #                 fkclass_candidates.append( cands )
 
-def match_columns(tabid_df, matchers, agg_func="max", agg_threshold_col=0.01):
-    """Match columns based on matcher similarities, aggregating by ``agg_func`` """
+        fkclass_candidates = []
+        for (ti, cn), ci in tabid_and_colnr_to_colid.items():
+            if ti in tabid_fkpreds:
+                context  = set(get_context_headers(tabid_df[ti].columns))
+                if self.include_context or (cn not in context):
+                    for fkclass, score in tabid_fkpreds.get(tabid, []):
+                        cands = (ti, ci, fkclass, score)
+                        fkclass_candidates.append( cands )
+        
+        D = pd.DataFrame(fkclass_candidates, columns=["ti", "ci", "fkclass", "score"])
+        cross = D.merge(D, on="fkclass", suffixes=("1", "2"))
+        cross = cross.set_index(["ci1", "ti1", "ti2", "ci2"])
+        sim = cross['score1'] * cross['score2']
+        sim = sim.sort_index()
+        sim = sim.groupby(level=sim.index.names).agg('max')
+        return sim.rename(self.name)
+
+def get_colsim_and_codes(tabid_df, matchers, agg_func="max", agg_threshold_col=0.01):
     # Make global column IDs
     colid_to_tabid_and_colnr = {
         f"{tabid}~Col{colnr} {c}": (tabid, colnr)
@@ -371,7 +398,10 @@ def match_columns(tabid_df, matchers, agg_func="max", agg_threshold_col=0.01):
     colsim = colsim[(colsim["ti1"] != colsim["ti2"])]
     colsim = colsim.set_index(["ci1", "ci2"])[0]
     colsim = colsim[~colsim.index.duplicated()]
+    return colsim, colid_to_tabid_and_colnr
 
+def cluster_columns(colsim):
+    """Cluster columns based on column similarities"""
     # Make symmetric distance matrix
     d = 1 - colsim.unstack().sort_index(0).sort_index(1).fillna(0)
     d = pd.DataFrame(np.minimum(d, d.T))
@@ -387,9 +417,7 @@ def match_columns(tabid_df, matchers, agg_func="max", agg_threshold_col=0.01):
         distance_threshold=1,
     )
     clusters = clus.fit(d)
-    colid_to_partcolid = dict(zip(d.index, clusters.labels_))
-
-    return colid_to_partcolid, colid_to_tabid_and_colnr
+    return dict(zip(d.index, clusters.labels_))
 
 
 def partition_connected_components(
@@ -472,17 +500,17 @@ def df_pfd_prob_pervalue(dfi, key, c):
         return 0.0
 
 
-def get_keylike_columns(dfi, numeric_threshold=0.5, stdmean=3, meanlen=50, cover=0.5):
+def get_keylike_columns(dfi, numeric_threshold=0.5, stdmean=3, meanlen=65, cover=0.05):
     # column statistics
     cs = dfi.applymap(len).replace(0, np.nan).describe().T
     numeric_cols = guess_numeric_cols(dfi, threshold=numeric_threshold)
     cs["numeric"] = False
     cs.loc[numeric_cols, "numeric"] = True
     ok_cols = (
-        (cs["std"] / cs["mean"] < stdmean)
-        & (cs["mean"] < meanlen)
-        & (~cs["numeric"])
-        & (cs["count"] / len(dfi) > cover)
+        (cs["std"] / cs["mean"] < stdmean) # should have roughly same cell length
+        & (cs["mean"] < meanlen) # should not be too long
+        & (~cs["numeric"]) # should not be numeric
+        & (cs["count"] / len(dfi) > cover) # should occur frequently enough
     )
     return list(cs[ok_cols].index)
 
@@ -496,28 +524,29 @@ def get_pervalue_pdfs(dfi, fkcolnr, candidate_keys, stoplevel=4, minp=1):
     cols = set(dfi.columns)
     candidate_keys = set(candidate_keys) - set([fkcolnr])
     candidates = sorted(combinations_upto(candidate_keys, stoplevel))
-    dep_dets = {}
+    dep_det_score = {}
     for candkey in progress(candidates, desc="FD candidates"):
         candkey = candkey + (fkcolnr,)
         dfi.sort_values(list(candkey), inplace=True)
         for depcol in cols - set(candkey):
             p = df_pfd_prob_pervalue(dfi, candkey, depcol)
             if p >= minp:
-                dep_dets.setdefault(depcol, set()).add(candkey)
+                dep_det_score.setdefault(depcol, {})[candkey] = p
 
     # Find minimal determinants
     det_dep = {}
-    for depcol, dets in dep_dets.items():
-        dets = [set(d) for d in dets]
-        for det in dets:
-            if all(d - det for d in dets if d != det):
-                det_dep.setdefault(tuple(det), set()).add(depcol)
+    for depcol, det_score in dep_det_score.items():
+        dets = [set(d) for d in det_score]
+        best_det, best_score = None, 0
+        for det, p in det_score.items():
+            det = set(det)
+            score = p * len(det)
+            if all(d - det for d in dets if d != det) and (p > best_score):
+                best_det, best_score = det, score
+        if best_det:
+            det_dep.setdefault(tuple(best_det), set()).add(depcol)
 
     return det_dep
-
-
-def violation_selection(det_dep):
-    return max(det_dep, key=lambda x: len(x))
 
 
 def get_tane_pdfs(tane, stoplevel=4, numeric_threshold=0.5, g3_threshold=0):
@@ -550,7 +579,7 @@ def heuristic_bracket_disambiguation(
 ):
     """Extract bracketed strings into new columns"""
     tabid_df = dict(tabid_df)
-    for tabid, df in tabid_df.items():
+    for tabid, df in progress(tabid_df.items(), 'Extracting disambguation columns'):
         df = df.copy()
         for colnr in range(df.shape[1]):
             series = df.iloc[:, colnr]
@@ -575,7 +604,7 @@ def heuristic_context_date(tabid_df, threshold=0.5):
     year_re = "\d{4}$"
 
     tabid_df = dict(tabid_df)
-    for tabid, df in tabid_df.items():
+    for tabid, df in progress(tabid_df.items(), 'Renaming temporal columns'):
         newcolumns = {}
         for colname, series in df.iloc[:, get_context_headers(df.columns)].iteritems():
             series = series.astype("str")
@@ -596,7 +625,7 @@ def heuristic_uri_pattern(tabid_df):
     """Change name of URI columns preceded by singletons
 
     * First, group tables by number of URI parts
-    * Then, find URI columns that are always singletons
+    * Then, find URI columns that are always singletons, but vary in value
     * Put the singleton value into the title of the next column
     """
 
@@ -607,7 +636,8 @@ def heuristic_uri_pattern(tabid_df):
         return len(get_uri_headers(tid_df[1].columns))
 
     tabid_df = dict(tabid_df)
-    for n, tables in groupby(sorted(tabid_df.items(), key=uri_len), uri_len):
+    grouped = groupby(sorted(tabid_df.items(), key=uri_len), uri_len)
+    for n, tables in progress(grouped, 'Renaming URI prefix columns'):
         if n < 2:
             continue
         tables = list(tables)
@@ -619,16 +649,18 @@ def heuristic_uri_pattern(tabid_df):
             candidates = set(s for s in singletons if s + 1 in uricols)
             pattern_cols = (pattern_cols & candidates) if pattern_cols else candidates
 
-        for tid, df in tables:
-            if pattern_cols:
-                leftcolnr = list(pattern_cols)[-1]
-                leftcol = df.columns[leftcolnr]
-                rightcol = df.columns[leftcolnr + 1]
-
-                name = f"{leftcol[0]} ({ df.iloc[0, leftcolnr] })"
-                col = df[rightcol].copy().astype("str")
-                df[(name,)] = col
-                tabid_df[tid] = df.drop(columns=[leftcol, rightcol])
+        if pattern_cols:
+            leftcolnr = list(pattern_cols)[-1]
+            # Only extract from singletons that have different values
+            values = [v for _, df in tables for v in df.iloc[:, leftcolnr + 1]]
+            if (len(set(values)) > 1) and (not looks_numeric(pd.Series(values))):
+                for tid, df in tables:
+                    leftcol = df.columns[leftcolnr]
+                    rightcol = df.columns[leftcolnr + 1]
+                    name = f"{rightcol[0]} ({ df.iloc[0, leftcolnr] })"
+                    col = df[rightcol].copy().astype("str")
+                    df[(name,)] = col
+                    tabid_df[tid] = df.drop(columns=[leftcol, rightcol])
     return tabid_df
 
 
@@ -748,7 +780,7 @@ def load_fkclasses(snow_root, dataset_name):
 
 
 def predict_fkclasses(
-    tabid_df: Mapping[str, pd.DataFrame], dataset_name: str, kb: KB, threshold=threshold
+    tabid_df: Mapping[str, pd.DataFrame], dataset_name: str, kb: KB, threshold=0
 ):
     tabid_to_colnr_and_fkclass = {}
     for tabid, df in tabid_df.items():
@@ -823,16 +855,22 @@ def iter_decomposed(
                 fds = get_pervalue_pdfs(
                     dfi, fkcolnr, candkeys, stoplevel=nary_stoplevel, minp=nary_minp
                 )
-                # undetermined = set(dfi.columns) - badcols
-                # for det, dep in fds.items():
-                #     tdebug("Got FD key %s -> %s", schema(det), schema(dep - badcols) )
-                #     deps.append((det, list(det) + list(dep)))
-                #     undetermined -= set(dep) | set(det)
-                # tdebug("Undetermined cols: %s", schema(undetermined))
-                det = violation_selection(fds)
-                dep = set(dfi.columns) - badcols - set(det)
-                tdebug("Got FD key %s -> %s", schema(det), schema(dep))
-                deps = [(list(det), dfi.columns)]
+
+                deps = []
+                undetermined = set(dfi.columns) - badcols
+                for det, dep in fds.items():
+                    dep -= badcols
+                    if dep:
+                        tdebug("Got FD key %s -> %s", schema(det), schema(dep) )
+                        deps.append((det, list(det) + list(dep)))
+                        undetermined -= set(dep) | set(det)
+                tdebug("Undetermined cols: %s", schema(undetermined))
+
+                # "violation selection"
+                # det = max(det_dep, key=lambda x: len(x))
+                # dep = set(dfi.columns) - badcols - set(det)
+                # tdebug("Got FD key %s -> %s", schema(det), schema(dep))
+                # deps = [(list(det), dfi.columns)]
             else:
                 deps = [([fkcolnr], dfi.columns)]
 
@@ -896,7 +934,7 @@ def main(
     if match_tfidf:
         matchers.append(TfidfMatcher(num_threshold=0.75, min_df=2))
     if match_kbclass:
-        matchers.append(KBClassMatcher(kb))
+        matchers.append(KBClassMatcher(kb, include_context=False))
 
     for dataset_name in use_datasets:
 
@@ -918,12 +956,12 @@ def main(
                 partcols, idpairs = load_gold_colmatches(snow_root, dataset_name)
             else:
                 debug("Matching %d tables", len(tabid_df))
-                partcols, idpairs = match_columns(
-                    tabid_df,
-                    matchers,
-                    agg_func=agg_func,
-                    agg_threshold_col=agg_threshold_col,
+                colsim, idpairs = get_colsim_and_codes(
+                    tabid_df, matchers,
+                    agg_func=agg_func, 
+                    agg_threshold_col=agg_threshold_col
                 )
+                partcols = cluster_columns(colsim)
 
             if gold_fkclasses:
                 colids_fkclass = load_fkclasses(snow_root, dataset_name)
