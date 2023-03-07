@@ -416,6 +416,6 @@ def page_extract_tables(
                             numHeaderRows=numHeaderRows,
                             tableData=tableData,
                             tableHeaders=tableHeaders,
-                            originalHTML=str(table),
+                            originalHTML=str(table_node),
                         )
                     )
