@@ -11,3 +11,8 @@ dependencies:
     - jupyterlab-link-share
     - pandas
     - matplotlib
+    - rdflib
+    - tqdm
+    - toml
+    - bs4
+    - defopt
