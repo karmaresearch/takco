@@ -28,7 +28,7 @@ class DawgLookup(Lookup):
     path: Path
     prefix: str
     extract: typing.Optional[typing.Pattern] = None
-    lookup: typing.Optional[dawg.IntDAWG] = None
+    lookup: typing.Optional['dawg.IntDAWG'] = None
 
     def __post_init__(self):
         if isinstance(self.extract, str):
