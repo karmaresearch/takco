@@ -2,7 +2,7 @@ import rdflib
 import logging as log
 import os
 
-from rdflib.plugins.parsers.ntriples import NTriplesParser
+from rdflib.plugins.parsers.ntriples import W3CNTriplesParser
 
 
 class TridentNode(rdflib.term.Node):
@@ -23,7 +23,7 @@ class TridentNode(rdflib.term.Node):
 
     @staticmethod
     def _parse(s):
-        n = NTriplesParser()
+        n = W3CNTriplesParser()
         n.line = s
         return n.object()
 
