@@ -6,6 +6,6 @@ python-igraph==0.8.3
 rdflib==5.0.0
 toml==0.10.2
 DAWG==0.8.0
-Flask==1.1.2
+Flask==2.3.2
 tqdm==4.56.2
 IPython
