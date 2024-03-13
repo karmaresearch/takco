@@ -23,7 +23,7 @@ class TridentNode(rdflib.term.Node):
 
     @staticmethod
     def _parse(s):
-        n = NTriplesParser()
+        n = W3CNTriplesParser()
         n.line = s
         return n.object()
 

@@ -1,0 +1,18 @@
+channels:
+  - conda-forge
+  - anaconda
+dependencies:
+  - ipykernel>=6
+  - jupyterlab
+  - numpy
+  - pip
+  - pip:
+    - jupyter_contrib_nbextensions
+    - jupyterlab-link-share
+    - pandas
+    - matplotlib
+    - rdflib
+    - tqdm
+    - toml
+    - bs4
+    - defopt

@@ -1,3 +1,6 @@
+.. |binder| image:: https://mybinder.org/badge_logo.svg
+ :target: https://mybinder.org/v2/gh/karmaresearch/takco/HEAD
+
 takco
 =====
 
@@ -28,3 +31,5 @@ Example run:
     takco run -C config.toml your-pipeline.toml
 
 To start using the library, check out the `tutorials <https://takco.readthedocs.io/en/latest/tutorials/intro.html>`_.
+
+For an easy way to explore the package, run it in binder: |binder|
