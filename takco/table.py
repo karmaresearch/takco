@@ -57,7 +57,11 @@ class TakcoAccessor:
         return self.highlight_cells(head=head, color=color, props=props)
 
     def to_html(self):
-        return self.style.render()
+        style = self.style
+        caption = self._df.attrs.get('tableCaption')
+        if caption:
+            style = style.set_caption(caption)
+        return style.render()
 
     def _repr_html_(self):
         return self._df.head().takco.to_html()
@@ -242,7 +246,11 @@ class Table(dict):
     @property
     def df(self):
         columns = pd.MultiIndex.from_arrays(self.head) if len(self.head) else None
-        return pd.DataFrame(self.body, columns=columns)
+        df = pd.DataFrame(self.body, columns=columns)
+        df.attrs['annotations'] = self.annotations
+        df.attrs['provenance'] = self.provenance
+        df.attrs.update(self)
+        return df
 
     def __getitem__(self, k):
         if k in self._old_keys:

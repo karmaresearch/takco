@@ -304,7 +304,7 @@ def hack_annoying_layouts(all_htmlrows):
 
     return all_htmlrows
 
-def node_extract_tables(table_node):
+def node_extract_tables(table_node, link_surface_pattern=None, surface_links=()):
     extractor = Extractor(table_node, transformer=lambda x: x)
     extractor.parse()
     all_htmlrows = [
@@ -315,7 +315,6 @@ def node_extract_tables(table_node):
     all_htmlrows = hack_annoying_layouts(all_htmlrows)
 
     for htmlrows in vertically_split_tables_on_subheaders(all_htmlrows):
-        tableId += 1
 
         numCols = max((len(row) for row in htmlrows), default=0)
         td = BeautifulSoup("<td></td>", "html.parser")
@@ -333,7 +332,7 @@ def node_extract_tables(table_node):
             h.append(
                 [
                     Extractor.get_cell_dict(
-                        cell, surface_pattern, surface_links
+                        cell, link_surface_pattern, surface_links
                     )
                     for cell in row
                 ]
@@ -342,22 +341,14 @@ def node_extract_tables(table_node):
         if tableData:
             numDataRows = len(tableData)
             numHeaderRows = len(tableHeaders)
-            log.debug(f"Extracted table {tableId} from {pgTitle}")
             yield Table(
                 dict(
-                    _id=f"{pgId}#{tableId}",
-                    pgId=pgId,
-                    pgTitle=pgTitle,
-                    tableId=tableId,
-                    aboutURI=aboutURI,
-                    sectionTitle=sectionTitle,
-                    tableCaption=tableCaption,
                     numCols=numCols,
                     numDataRows=numDataRows,
                     numHeaderRows=numHeaderRows,
                     tableData=tableData,
                     tableHeaders=tableHeaders,
-                    originalHTML=str(table),
+                    originalHTML=str(table_node),
                 )
             )
 
@@ -388,13 +379,13 @@ def page_extract_tables(
     soup = BeautifulSoup(htmlpage, "html.parser")
 
     surface_links = {}
-    surface_pattern = None
+    link_surface_pattern = None
     if extract_links_pattern is not None:
         for a in soup.find_all("a"):
             href = a.attrs.get("href")
             if href and extract_links_pattern.match(href) and len(a.text.strip()) > 1:
                 surface_links[a.text.strip()] = href
-        surface_pattern = re.compile("|".join(map(re.escape, surface_links.keys())))
+        link_surface_pattern = re.compile("|".join(map(re.escape, surface_links.keys())))
         log.debug(f"Got {len(surface_links)} extra surface links")
 
     for page in soup.find_all("html"):
@@ -421,4 +412,21 @@ def page_extract_tables(
             tableCaption = tableCaption.text if tableCaption else sectionTitle
             tableCaption = tableCaption.strip()
 
-            yield from node_extract_tables(table_node)
+            for table in node_extract_tables(
+                table_node, 
+                link_surface_pattern=link_surface_pattern,
+                surface_links=surface_links,
+            ):
+                tableId += 1
+                log.debug(f"Extracted table {tableId} from {pgTitle}")
+                
+                table.update(dict(
+                    _id=f"{pgId}#{tableId}",
+                    pgId=pgId,
+                    tableId=tableId,
+                    pgTitle=pgTitle,
+                    aboutURI=aboutURI,
+                    sectionTitle=sectionTitle,
+                    tableCaption=tableCaption,
+                ))
+                yield table

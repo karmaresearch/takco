@@ -4,8 +4,6 @@ from pathlib import Path
 import glob
 from abc import ABC, abstractmethod
 
-from .. import link
-
 
 class Page(typing.NamedTuple):
     url: str  #:
@@ -111,7 +109,6 @@ class LinePages(PageSource):
         self,
         globstrings: typing.Union[str, typing.List[str]],
         datadir: Path = None,
-        lookup: link.Lookup = None,
         title_regex: typing.Optional[str] = None,
     ):
         if not isinstance(globstrings, list):
@@ -137,9 +134,6 @@ class LinePages(PageSource):
         if sources is None:
             sources = self.sources
 
-        if self.lookup is not None:
-            self.lookup.__enter__()
-
         for fname in sources:
             for line in open(fname):
                 try:
@@ -152,8 +146,6 @@ class LinePages(PageSource):
                             title = m.group(1)
 
                     about: typing.Optional[str] = title
-                    if self.lookup is not None:
-                        about = self.lookup.lookup_title(title)
 
                     yield Page(
                         url=url, about=about, html=json.loads(html),
@@ -161,9 +153,3 @@ class LinePages(PageSource):
 
                 except Exception as e:
                     log.error(e)
-
-                if self.lookup is not None:
-                    self.lookup.flush()
-
-        if self.lookup is not None:
-            self.lookup.__exit__(None, None, None)
